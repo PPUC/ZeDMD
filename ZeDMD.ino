@@ -75,7 +75,7 @@ bool lumtxt[16*5]={0,1,0,0,0,1,0,0,1,0,1,1,0,1,1,0,
                    0,1,0,0,0,1,0,0,1,0,1,0,0,0,1,0,
                    0,1,1,1,0,0,1,1,1,0,1,0,0,0,1,0};
 
-
+unsigned char lumval[16]={0,2,4,7,11,18,30,40,50,65,80,100,125,160,200,255}; // Non-linear brightness progression
 
 HUB75_I2S_CFG::i2s_pins _pins={R1_PIN, G1_PIN, B1_PIN, R2_PIN, G2_PIN, B2_PIN, A_PIN, B_PIN, C_PIN, D_PIN, E_PIN, LAT_PIN, OE_PIN, CLK_PIN};
 HUB75_I2S_CFG mxconfig(
@@ -157,53 +157,26 @@ void DisplayChiffre(unsigned int chf, int x,int y,int R, int G, int B)
   }
 }
 
-void DisplayNombre(unsigned int chf,int x,int y,int R,int G,int B)
+void DisplayNombre(unsigned int chf,unsigned char nc,int x,int y,int R,int G,int B)
 {
   // affiche un nombre verticalement
-  unsigned int c=chf&0xff;
-  unsigned int acc=c,acd=100;
-  for (int ti=0;ti<3;ti++)
+  unsigned int acc=chf,acd=10;
+  if (nc>2) {for (int ti=0;ti<(nc-1);ti++) acd*=10;}
+  for (int ti=0;ti<nc;ti++)
   {
-    unsigned int val=(unsigned int)(acc/acd);
+    unsigned int val;
+    if (nc>1) val=(unsigned int)(acc/acd); else val=chf;
     DisplayChiffre(val,x+4*ti,y,R,G,B);
     acc=acc-val*acd;
     acd/=10;
   }
 }
 
-void DisplayNombre2(unsigned int chf,int x,int y,int R,int G,int B)
-{
-  // affiche un nombre verticalement
-  unsigned int c=chf&0xffff;
-  unsigned int acc=c,acd=10000;
-  for (int ti=0;ti<5;ti++)
-  {
-    unsigned int val=(unsigned int)(acc/acd);
-    DisplayChiffre(val,x+4*ti,y,R,G,B);
-    acc=acc-val*acd;
-    acd/=10;
-  }
-}
-
-void DisplayNombre3(unsigned int chf,int x,int y,int R,int G,int B)
-{
-  // affiche un nombre verticalement
-  unsigned int c=chf;
-  unsigned int acc=c,acd=1000000000;
-  for (int ti=0;ti<10;ti++)
-  {
-    unsigned int val=(unsigned int)(acc/acd);
-    DisplayChiffre(val,x+4*ti,y,R,G,B);
-    acc=acc-val*acd;
-    acd/=10;
-  }
-}
-
-int Luminosite=95;
+unsigned char lumstep=1;
 
 void DisplayLum(void)
 {
-  DisplayNombre(Luminosite,PANE_WIDTH/2-16/2-3*4/2+16,PANE_HEIGHT-5,255,255,255);
+  DisplayNombre(lumstep,2,PANE_WIDTH/2-16/2-2*4/2+16,PANE_HEIGHT-5,255,255,255);
 }
 
 void DisplayText(bool* text, int width, int x, int y, int R, int G, int B)
@@ -253,59 +226,16 @@ void LoadLum()
 {
   flum=SPIFFS.open("/lum.val");
   if (!flum) return;
-  Luminosite=flum.read();
+  lumstep=flum.read();
   flum.close();
 }
 
 void SaveLum()
 {
   flum=SPIFFS.open("/lum.val","w");
-  flum.write(Luminosite);
+  flum.write(lumstep);
   flum.close();
 }
-
-/*#define WIDTH_LOGO_FILE 128
-#define HEIGHT_LOGO_FILE 32
-
-unsigned char tempbuf[WIDTH_LOGO_FILE*HEIGHT_LOGO_FILE*3];
-
-void DisplayLogo(void)
-{
-  const float X_LOGO_RATIO=(float)WIDTH_LOGO_FILE/(float)PANE_WIDTH;
-  const float Y_LOGO_RATIO=(float)HEIGHT_LOGO_FILE/(float)PANE_HEIGHT;
-  for (unsigned int tj = 0; tj < PANE_HEIGHT; tj++)
-  {
-    for (unsigned int ti = 0; ti < PANE_WIDTH; ti++)
-    {
-      float xpos=(float)ti*X_LOGO_RATIO;
-      float ypos=(float)tj*Y_LOGO_RATIO;
-      int xposL=(int)xpos;
-      int yposU=(int)ypos;
-      float xdeci=xpos-(float)xposL;
-      float ydeci=ypos-(float)yposU;
-      int idxUL=xposL*3+yposU*WIDTH_LOGO_FILE*3;
-      int idxUR=idxUL+3;
-      int idxDL=idxUL+WIDTH_LOGO_FILE*3;
-      int idxDR=idxDL+3;
-      float vU=(1.0f-xdeci)*tempbuf[idxUL]+xdeci*tempbuf[idxUR];
-      float vD=(1.0f-xdeci)*tempbuf[idxDL]+xdeci*tempbuf[idxDR];
-      float v=(unsigned char)((1.0f-ydeci)*vU+ydeci*vD);
-      if (v>255) v=255.0f; else if (v<0) v=0.0f;
-      pannel[ti * 3 + tj * 3 * PANE_WIDTH]=(int)v;
-      vU=(1.0f-xdeci)*tempbuf[idxUL+1]+xdeci*tempbuf[idxUR+1];
-      vD=(1.0f-xdeci)*tempbuf[idxDL+1]+xdeci*tempbuf[idxDR+1];
-      v=(unsigned char)((1.0f-ydeci)*vU+ydeci*vD);
-      if (v>255) v=255.0f; else if (v<0) v=0.0f;
-      pannel[ti * 3 + tj * 3 * PANE_WIDTH+1]=(int)v;
-      vU=(1.0f-xdeci)*tempbuf[idxUL+2]+xdeci*tempbuf[idxUR+2];
-      vD=(1.0f-xdeci)*tempbuf[idxDL+2]+xdeci*tempbuf[idxDR+2];
-      v=(unsigned char)((1.0f-ydeci)*vU+ydeci*vD);
-      if (v>255) v=255.0f; else if (v<0) v=0.0f;
-      pannel[ti * 3 + tj * 3 * PANE_WIDTH+2]=(int)v;
-    }
-  }
-  fillpannel();
-}*/
 
 void DisplayLogo(void)
 {
@@ -363,13 +293,13 @@ void setup()
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   dma_display->begin();
   LoadLum();
-  dma_display->setBrightness8(Luminosite);    // range is 0-255, 0 - 0%, 255 - 100%
+  dma_display->setBrightness8(lumval[lumstep]);    // range is 0-255, 0 - 0%, 255 - 100%
   dma_display->clearScreen();
 
   LoadOrdreRGB();
 
   DisplayLogo();
-  DisplayText(lumtxt,16,PANE_WIDTH/2-16/2-3*4/2,PANE_HEIGHT-5,255,255,255);
+  DisplayText(lumtxt,16,PANE_WIDTH/2-16/2-2*4/2,PANE_HEIGHT-5,255,255,255);
   DisplayLum();
 
   InitPalettes(255,109,0);
@@ -491,8 +421,8 @@ void SerialReadRLEBuffer(int FileSize)
 
 void Say(unsigned char where,unsigned int what)
 {
-  DisplayNombre(where,0,where*5,255,255,255);
-  if (what!=(unsigned int)-1) DisplayNombre3(what,15,where*5,255,255,255);
+  DisplayNombre(where,3,0,where*5,255,255,255);
+  if (what!=(unsigned int)-1) DisplayNombre(what,10,15,where*5,255,255,255);
   delay(1000);
 }
 
@@ -518,12 +448,14 @@ void loop()
       if (acordreRGB >= 6) acordreRGB = 0;
       SaveOrdreRGB();
       fillpannel();
+      DisplayText(lumtxt,16,PANE_WIDTH/2-16/2-2*4/2,PANE_HEIGHT-5,255,255,255);
+      DisplayLum();
     }
     if (CheckButton(LUMINOSITE_BUTTON_PIN, &LuminositeBtnRel, &LuminositeBtnPos, &LuminositeBtnDebounceTime) == 2)
     {
-      Luminosite+=10;
-      if (Luminosite>255) Luminosite=15;
-      dma_display->setBrightness8(Luminosite);
+      lumstep++;
+      if (lumstep>=16) lumstep=1;
+      dma_display->setBrightness8(lumval[lumstep]);
       DisplayLum();
       SaveLum();
     }
