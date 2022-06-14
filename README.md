@@ -9,4 +9,6 @@ The full tuto on installation is available in English here https://www.pincabpas
 
 Any other language translation is welcome and will be added to the tuto if sent.
 
+Download the files on the release page here https://github.com/zesinger/ZeDMD_ESP32/releases/tag/ZeDMD
+
 Thanks, David aka "Zed"
