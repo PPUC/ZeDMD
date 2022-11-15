@@ -283,6 +283,7 @@ unsigned char img2[3*64+6 * PANE_WIDTH/8*PANE_HEIGHT];
 void setup()
 {
   Serial.begin(921600);
+  while (!Serial);
   Serial.setRxBufferSize(SERIAL_TRANSFER_SIZE+100);
   if (!SPIFFS.begin(true)) return;
 
@@ -303,7 +304,6 @@ void setup()
   DisplayLum();
 
   InitPalettes(255,109,0);
-
 }
 
 int SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
@@ -318,15 +318,11 @@ int SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
   unsigned int c1=min((unsigned int)SERIAL_TRANSFER_SIZE-(unsigned int)N_CTRL_CHARS-1,remBytes);
   while (remBytes>0)
   {
-
-
-
     
-    if (c1>500) while (Serial.available() < c1*1/2);
-    
-    
-    
-    
+    // In previous versions we waited for more bytes before processing. But the Linux driver for CP210x
+    // requires to empty the buffer earlier. 128 seems to be fine in combination with PPUC/libpimame.
+    // todo: avoid endless loop (DMD freeze) in case of an incomplete buffer submission.
+    if (c1>500) while (Serial.available() < 128);
     
     for (int ti=0;ti<c1;ti++)
     {
@@ -477,6 +473,13 @@ void loop()
     Serial.write(PANE_HEIGHT&0xff);
     Serial.write((PANE_HEIGHT>>8)&0xff);
   }
+  if (c4 == 99) // communication debug
+  {
+    if (Serial.available())
+    { 
+      Say(0, (unsigned int) Serial.read());
+    }
+  }
   else if (c4 == 6) // reinit palettes
   {
     InitPalettes(255, 109, 0);
@@ -535,6 +538,7 @@ void loop()
         }
       }
     }
+
     fillpannel();
   }
   else if (c4 == 7) // mode 16 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 2 pixels par byte
