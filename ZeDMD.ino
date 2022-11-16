@@ -322,57 +322,19 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
   while (remainingBytes > 0)
   {
     int receivedBytes = Serial.readBytes(pBuffer + BufferSize - remainingBytes, (remainingBytes > chunkSize) ? chunkSize : remainingBytes);
-    if (receivedBytes != remainingBytes && receivedBytes != chunkSize) return false;
-    // Send an (R)eady signal to tell the client that we're ready to read the next chunk.
-    Serial.write('R');
+    if (receivedBytes != remainingBytes && receivedBytes != chunkSize)
+    {
+      // Send an (E)rror signal to tell the client that no more chunks should be send or to repeat the entire frame from the beginning.
+      Serial.write('E');
+      return false;
+    }
+    // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
+    Serial.write('A');
     remainingBytes -= chunkSize;
     // From now on read full 256 byte chunks.
     chunkSize = SERIAL_TRANSFER_SIZE;
   }
   return true;
-}
-
-void SerialReadRLEBuffer(int FileSize)
-{
-  int remBytes=FileSize;
-  int tj=0;
-  int ptrB=0;
-  unsigned char readbuf[4];
-  while (remBytes>0)
-  {
-    int c1, c2, c3, c4;
-    while (!Serial.available());
-    c1 = Serial.read();
-    while (!Serial.available());
-    c2 = Serial.read();
-    while (!Serial.available());
-    c3 = Serial.read();
-    while (!Serial.available());
-    c4 = Serial.read();
-    c1+=c2*256+c3*65536+c4*16777216;
-    while (Serial.available() < min(SERIAL_TRANSFER_SIZE-256,c1*1/2));
-    int ti=0;
-    while (ti<c1)
-    {
-      readbuf[tj]=Serial.read();
-      tj++;
-      ti++;
-      if (tj==4)
-      {
-        tj=0;
-        while((ptrB<PANE_WIDTH*PANE_HEIGHT)&&(readbuf[0]>0))
-        {
-          pannel[ptrB*3]=readbuf[1];
-          pannel[ptrB*3+1]=readbuf[2];
-          pannel[ptrB*3+2]=readbuf[3];
-          readbuf[0]--;
-          ptrB++;
-        }
-      }
-    }
-    remBytes-=c1;
-    while (Serial.available()) Serial.read();
-  }
 }
 
 void Say(unsigned char where,unsigned int what)
@@ -458,21 +420,6 @@ void loop()
     {
       fillpannel();
     }
-  }
-  else if (c4 == 13)
-  {
-    //while (Serial.available()) Serial.read();
-    while (!Serial.available());
-    unsigned int c1;
-    c1 = (int)Serial.read();
-    while (!Serial.available());
-    c1 += (int)Serial.read()*256;
-    while (!Serial.available());
-    c1 += (int)Serial.read()*65536;
-    while (!Serial.available());
-    c1 += (int)Serial.read()*16777216;
-    SerialReadRLEBuffer(c1);
-    fillpannel();
   }
   else if (c4 == 8) // mode 4 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 4 pixels par byte
   {
