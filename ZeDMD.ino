@@ -277,14 +277,18 @@ void InitPalettes(int R, int G, int B)
 }
 
 bool MireActive=true;
-#define SERIAL_TRANSFER_SIZE 9400
+bool handshake=false;
+// 256 is the default buffer size of the CP210x linux kernel driver, we should not exceed it.
+#define SERIAL_TRANSFER_SIZE 256
 unsigned char img2[3*64+6 * PANE_WIDTH/8*PANE_HEIGHT];
 
 void setup()
 {
   Serial.begin(921600);
   while (!Serial);
-  Serial.setRxBufferSize(SERIAL_TRANSFER_SIZE+100);
+  Serial.setRxBufferSize(SERIAL_TRANSFER_SIZE);
+  Serial.setTimeout(100);
+
   if (!SPIFFS.begin(true)) return;
 
   pinMode(ORDRE_BUTTON_PIN, INPUT_PULLUP);
@@ -306,70 +310,26 @@ void setup()
   InitPalettes(255,109,0);
 }
 
-int SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
+bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
 {
-  // 0 - ça s'est passé nickel
-  // 1 - caractères de contrôle détectés
-  // 255 - fin du buffer atteint
   memset(pBuffer, 0, BufferSize);
-  unsigned int ptrB=0,iniptrB=0;
-  unsigned int remBytes=BufferSize;
-  unsigned char nCtrlCharFound=0,nCtrlIntCharFound=0;
-  unsigned int c1=min((unsigned int)SERIAL_TRANSFER_SIZE-(unsigned int)N_CTRL_CHARS-1,remBytes);
-  while (remBytes>0)
+
+  // We always receive chunks of 256 bytes (maximum).
+  // At this point, the control chars and the one byte command have been read already.
+  // So we only need to read the remaining bytes of the first chunk abd full 256 byte chunks afterwards.
+  int chunkSize = SERIAL_TRANSFER_SIZE - N_CTRL_CHARS - 1;
+  int remainingBytes = BufferSize;
+  while (remainingBytes > 0)
   {
-    
-    // In previous versions we waited for more bytes before processing. But the Linux driver for CP210x
-    // requires to empty the buffer earlier. 128 seems to be fine in combination with PPUC/libpimame.
-    // todo: avoid endless loop (DMD freeze) in case of an incomplete buffer submission.
-    if (c1>500) while (Serial.available() < 128);
-    
-    for (int ti=0;ti<c1;ti++)
-    {
-      while (Serial.available()==0);
-      pBuffer[ptrB]=Serial.read();
-      // on vérifie si on ne reçoit pas une nouvelle image
-      if (pBuffer[ptrB]==CtrlCharacters[nCtrlCharFound])
-      {
-        nCtrlCharFound++;
-        if (nCtrlCharFound==N_CTRL_CHARS) return 1;
-      }
-      else nCtrlCharFound=0;
-      // on vérifie si on n'est pas au début d'un nouveau transfert
-      if (pBuffer[ptrB]==CtrlCharacters[N_INTERMEDIATE_CTR_CHARS-1-nCtrlIntCharFound]) // ctrl chars dans l'autre sens pour le début d'un nouveau transfert
-      {
-        nCtrlIntCharFound++;
-        if (nCtrlIntCharFound==N_INTERMEDIATE_CTR_CHARS)
-        {
-          iniptrB+=c1;
-          ptrB=iniptrB;
-          break; // début du transfert suivant
-        }
-      }
-      else nCtrlIntCharFound=0;
-      ptrB++;
-      // on vérifie si on n'a pas atteint la fin du buffer
-      if (ptrB>=BufferSize)
-      {
-        //while (Serial.available()>0) Serial.read();
-        return 255;
-      }
-    }
-    remBytes-=c1;
-    c1=min((unsigned int)SERIAL_TRANSFER_SIZE-(unsigned int)N_INTERMEDIATE_CTR_CHARS,remBytes);
-    // on élimine les N_INTERMEDIATE_CTR_CHARS premiers caractères en supposant que ce sont les caractères de contrôle
-    // on ne vérifie pas que ce sont les bons
-    if (remBytes>0)
-    {
-      for (int ti=0;ti<N_INTERMEDIATE_CTR_CHARS;ti++)
-      {
-        while (Serial.available()==0);
-        Serial.read();
-      }
-    }
-    //while (Serial.available()>0) Serial.read();
+    int receivedBytes = Serial.readBytes(pBuffer + BufferSize - remainingBytes, (remainingBytes > chunkSize) ? chunkSize : remainingBytes);
+    if (receivedBytes != remainingBytes && receivedBytes != chunkSize) return false;
+    // Send an (R)eady signal to tell the client that we're ready to read the next chunk.
+    Serial.write('R');
+    remainingBytes -= chunkSize;
+    // From now on read full 256 byte chunks.
+    chunkSize = SERIAL_TRANSFER_SIZE;
   }
-  return 0;
+  return true;
 }
 
 void SerialReadRLEBuffer(int FileSize)
@@ -422,9 +382,7 @@ void Say(unsigned char where,unsigned int what)
   delay(1000);
 }
 
-unsigned int RetSRB=0;
-
-void wait_for_new_image(void)
+void wait_for_ctrl_chars(void)
 {
   unsigned char nCtrlCharFound=0;
   while (nCtrlCharFound<N_CTRL_CHARS)
@@ -461,7 +419,12 @@ void loop()
       MireActive = false;
     }
   }
-  if (RetSRB!=1) wait_for_new_image();
+
+  // After handshake, send a (R)eady signal to indicate that a new command could be sent.
+  // The client has to wait for it to avoid buffer issues. The handshake it self works without it.
+  if (handshake) Serial.write('R');
+  wait_for_ctrl_chars();
+
   unsigned char c4;
   while (Serial.available()==0);
   c4=Serial.read();
@@ -472,6 +435,7 @@ void loop()
     Serial.write((PANE_WIDTH>>8)&0xff);
     Serial.write(PANE_HEIGHT&0xff);
     Serial.write((PANE_HEIGHT>>8)&0xff);
+    handshake=true;
   }
   if (c4 == 99) // communication debug
   {
@@ -490,8 +454,10 @@ void loop()
   }
   else if (c4 == 3)
   {
-    RetSRB=SerialReadBuffer(pannel,PANE_WIDTH*PANE_HEIGHT*3);
-    fillpannel();
+    if (SerialReadBuffer(pannel,PANE_WIDTH*PANE_HEIGHT*3))
+    {
+      fillpannel();
+    }
   }
   else if (c4 == 13)
   {
@@ -510,156 +476,163 @@ void loop()
   }
   else if (c4 == 8) // mode 4 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 4 pixels par byte
   {
-    RetSRB=SerialReadBuffer(img2,3*4+2*PANE_WIDTH/8*PANE_HEIGHT);
-    for (int ti = 3; ti >= 0; ti--)
+    if (SerialReadBuffer(img2,3*4+2*PANE_WIDTH/8*PANE_HEIGHT))
     {
-      Palette4[ti * 3] = img2[ti*3];
-      Palette4[ti * 3 + 1] = img2[ti*3+1];
-      Palette4[ti * 3 + 2] = img2[ti*3+2];
-    }
-    unsigned char* img=&img2[3*4];
-    for (int tj = 0; tj < PANE_HEIGHT; tj++)
-    {
-      for (int ti = 0; ti < PANE_WIDTH / 8; ti++)
+      for (int ti = 3; ti >= 0; ti--)
       {
-        unsigned char mask = 1;
-        unsigned char planes[2];
-        planes[0] = img[ti + tj * PANE_WIDTH/8];
-        planes[1] = img[PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
-        for (int tk = 0; tk < 8; tk++)
+        Palette4[ti * 3] = img2[ti*3];
+        Palette4[ti * 3 + 1] = img2[ti*3+1];
+        Palette4[ti * 3 + 2] = img2[ti*3+2];
+      }
+      unsigned char* img=&img2[3*4];
+      for (int tj = 0; tj < PANE_HEIGHT; tj++)
+      {
+        for (int ti = 0; ti < PANE_WIDTH / 8; ti++)
         {
-          unsigned char idx = 0;
-          if ((planes[0] & mask) > 0) idx |= 1;
-          if ((planes[1] & mask) > 0) idx |= 2;
-          pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3] = Palette4[idx * 3];
-          pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 1] = Palette4[idx * 3 + 1];
-          pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 2] = Palette4[idx * 3 + 2];
-          mask <<= 1;
+          unsigned char mask = 1;
+          unsigned char planes[2];
+          planes[0] = img[ti + tj * PANE_WIDTH/8];
+          planes[1] = img[PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
+          for (int tk = 0; tk < 8; tk++)
+          {
+            unsigned char idx = 0;
+            if ((planes[0] & mask) > 0) idx |= 1;
+            if ((planes[1] & mask) > 0) idx |= 2;
+            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3] = Palette4[idx * 3];
+            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 1] = Palette4[idx * 3 + 1];
+            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 2] = Palette4[idx * 3 + 2];
+            mask <<= 1;
+          }
         }
       }
+      fillpannel();
     }
-
-    fillpannel();
   }
   else if (c4 == 7) // mode 16 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 2 pixels par byte
   {
-    RetSRB=SerialReadBuffer(img2,3*4+4*PANE_WIDTH/8*PANE_HEIGHT);
-    for (int ti = 3; ti >= 0; ti--)
+    if (SerialReadBuffer(img2,3*4+4*PANE_WIDTH/8*PANE_HEIGHT))
     {
-      Palette16[ti * 3] = img2[ti*3];
-      Palette16[ti * 3 + 1] = img2[ti*3+1];
-      Palette16[ti * 3 + 2] = img2[ti*3+2];
-    }
-    unsigned char* img=&img2[3*4];
-    for (int tj = 0; tj < PANE_HEIGHT; tj++)
-    {
-      for (int ti = 0; ti < PANE_WIDTH / 8; ti++)
+      for (int ti = 3; ti >= 0; ti--)
       {
-        unsigned char mask = 1;
-        unsigned char planes[4];
-        planes[0] = img[ti + tj * PANE_WIDTH/8];
-        planes[1] = img[PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
-        planes[2] = img[2*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
-        planes[3] = img[3*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
-        for (int tk = 0; tk < 8; tk++)
+        Palette16[ti * 3] = img2[ti*3];
+        Palette16[ti * 3 + 1] = img2[ti*3+1];
+        Palette16[ti * 3 + 2] = img2[ti*3+2];
+      }
+      unsigned char* img=&img2[3*4];
+      for (int tj = 0; tj < PANE_HEIGHT; tj++)
+      {
+        for (int ti = 0; ti < PANE_WIDTH / 8; ti++)
         {
-          unsigned char idx = 0;
-          if ((planes[0] & mask) > 0) idx |= 1;
-          if ((planes[1] & mask) > 0) idx |= 2;
-          if ((planes[2] & mask) > 0) idx |= 4;
-          if ((planes[3] & mask) > 0) idx |= 8;
-          float fvalue = (float)idx / 4.0f;
-          float fvalueR = (float)Palette16[((int)fvalue + 1) * 3] * (fvalue - (int)fvalue) + (float)Palette16[((int)fvalue) * 3] * (1.0f - (fvalue - (int)fvalue));
-          if (fvalueR>255) fvalueR=255.0f; else if (fvalueR<0) fvalueR=0.0f;
-          float fvalueG = (float)Palette16[((int)fvalue + 1) * 3 + 1] * (fvalue - (int)fvalue) + (float)Palette16[((int)fvalue) * 3 + 1] * (1.0f - (fvalue - (int)fvalue));
-          if (fvalueG>255) fvalueG=255.0f; else if (fvalueG<0) fvalueG=0.0f;
-          float fvalueB = (float)Palette16[((int)fvalue + 1) * 3 + 2] * (fvalue - (int)fvalue) + (float)Palette16[((int)fvalue) * 3 + 2] * (1.0f - (fvalue - (int)fvalue));
-          if (fvalueB>255) fvalueB=255.0f; else if (fvalueB<0) fvalueB=0.0f;
-          pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3] = (int)fvalueR;
-          pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 1] = (int)fvalueG;
-          pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 2] = (int)fvalueB;
-          mask <<= 1;
+          unsigned char mask = 1;
+          unsigned char planes[4];
+          planes[0] = img[ti + tj * PANE_WIDTH/8];
+          planes[1] = img[PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
+          planes[2] = img[2*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
+          planes[3] = img[3*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
+          for (int tk = 0; tk < 8; tk++)
+          {
+            unsigned char idx = 0;
+            if ((planes[0] & mask) > 0) idx |= 1;
+            if ((planes[1] & mask) > 0) idx |= 2;
+            if ((planes[2] & mask) > 0) idx |= 4;
+            if ((planes[3] & mask) > 0) idx |= 8;
+            float fvalue = (float)idx / 4.0f;
+            float fvalueR = (float)Palette16[((int)fvalue + 1) * 3] * (fvalue - (int)fvalue) + (float)Palette16[((int)fvalue) * 3] * (1.0f - (fvalue - (int)fvalue));
+            if (fvalueR>255) fvalueR=255.0f; else if (fvalueR<0) fvalueR=0.0f;
+            float fvalueG = (float)Palette16[((int)fvalue + 1) * 3 + 1] * (fvalue - (int)fvalue) + (float)Palette16[((int)fvalue) * 3 + 1] * (1.0f - (fvalue - (int)fvalue));
+            if (fvalueG>255) fvalueG=255.0f; else if (fvalueG<0) fvalueG=0.0f;
+            float fvalueB = (float)Palette16[((int)fvalue + 1) * 3 + 2] * (fvalue - (int)fvalue) + (float)Palette16[((int)fvalue) * 3 + 2] * (1.0f - (fvalue - (int)fvalue));
+            if (fvalueB>255) fvalueB=255.0f; else if (fvalueB<0) fvalueB=0.0f;
+            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3] = (int)fvalueR;
+            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 1] = (int)fvalueG;
+            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 2] = (int)fvalueB;
+            mask <<= 1;
+          }
         }
       }
+      fillpannel();
     }
-    fillpannel();
   }
   else if (c4 == 9) // mode 16 couleurs avec 1 palette 16 couleurs (16*3 bytes) suivis de 4 bytes par groupe de 8 points (séparés en plans de bits 4*512 bytes)
   {
-    RetSRB=SerialReadBuffer(img2,3*16+4*PANE_WIDTH/8*PANE_HEIGHT);
-    for (int ti = 15; ti >= 0; ti--)
+    if (SerialReadBuffer(img2,3*16+4*PANE_WIDTH/8*PANE_HEIGHT))
     {
-      Palette16[ti * 3] = img2[ti*3];
-      Palette16[ti * 3 + 1] = img2[ti*3+1];
-      Palette16[ti * 3 + 2] = img2[ti*3+2];
-    }
-    unsigned char* img=&img2[3*16];
-    for (int tj = 0; tj < PANE_HEIGHT; tj++)
-    {
-      for (int ti = 0; ti < PANE_WIDTH / 8; ti++)
+      for (int ti = 15; ti >= 0; ti--)
       {
-        // on reconstitue un indice à partir des plans puis une couleur à partir de la palette
-        unsigned char mask = 1;
-        unsigned char planes[4];
-        planes[0] = img[ti + tj * PANE_WIDTH/8];
-        planes[1] = img[PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
-        planes[2] = img[2*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
-        planes[3] = img[3*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
-        for (int tk = 0; tk < 8; tk++)
+        Palette16[ti * 3] = img2[ti*3];
+        Palette16[ti * 3 + 1] = img2[ti*3+1];
+        Palette16[ti * 3 + 2] = img2[ti*3+2];
+      }
+      unsigned char* img=&img2[3*16];
+      for (int tj = 0; tj < PANE_HEIGHT; tj++)
+      {
+        for (int ti = 0; ti < PANE_WIDTH / 8; ti++)
         {
-          unsigned char idx = 0;
-          if ((planes[0] & mask) > 0) idx |= 1;
-          if ((planes[1] & mask) > 0) idx |= 2;
-          if ((planes[2] & mask) > 0) idx |= 4;
-          if ((planes[3] & mask) > 0) idx |= 8;
-          pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3] = Palette16[idx * 3];
-          pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 1] = Palette16[idx * 3 + 1];
-          pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 2] = Palette16[idx * 3 + 2];
-          mask <<= 1;
+          // on reconstitue un indice à partir des plans puis une couleur à partir de la palette
+          unsigned char mask = 1;
+          unsigned char planes[4];
+          planes[0] = img[ti + tj * PANE_WIDTH/8];
+          planes[1] = img[PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
+          planes[2] = img[2*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
+          planes[3] = img[3*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
+          for (int tk = 0; tk < 8; tk++)
+          {
+            unsigned char idx = 0;
+            if ((planes[0] & mask) > 0) idx |= 1;
+            if ((planes[1] & mask) > 0) idx |= 2;
+            if ((planes[2] & mask) > 0) idx |= 4;
+            if ((planes[3] & mask) > 0) idx |= 8;
+            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3] = Palette16[idx * 3];
+            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 1] = Palette16[idx * 3 + 1];
+            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 2] = Palette16[idx * 3 + 2];
+            mask <<= 1;
+          }
         }
       }
+      fillpannel();
     }
-    fillpannel();
   }
   else if (c4 == 11) // mode 64 couleurs avec 1 palette 64 couleurs (64*3 bytes) suivis de 6 bytes par groupe de 8 points (séparés en plans de bits 6*512 bytes)
   {
-    RetSRB=SerialReadBuffer(img2,3*64+6*PANE_WIDTH/8*PANE_HEIGHT);
-    for (int ti = 63; ti >= 0; ti--)
+    if (SerialReadBuffer(img2,3*64+6*PANE_WIDTH/8*PANE_HEIGHT))
     {
-      Palette64[ti * 3] = img2[ti*3];
-      Palette64[ti * 3 + 1] = img2[ti*3+1];
-      Palette64[ti * 3 + 2] = img2[ti*3+2];
-    }
-    unsigned char* img=&img2[3*64];
-    for (int tj = 0; tj < PANE_HEIGHT; tj++)
-    {
-      for (int ti = 0; ti < PANE_WIDTH / 8; ti++)
+      for (int ti = 63; ti >= 0; ti--)
       {
-        // on reconstitue un indice à partir des plans puis une couleur à partir de la palette
-        unsigned char mask = 1;
-        unsigned char planes[6];
-        planes[0] = img[ti + tj * PANE_WIDTH/8];
-        planes[1] = img[PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
-        planes[2] = img[2*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
-        planes[3] = img[3*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
-        planes[4] = img[4*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
-        planes[5] = img[5*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
-        for (int tk = 0; tk < 8; tk++)
+        Palette64[ti * 3] = img2[ti*3];
+        Palette64[ti * 3 + 1] = img2[ti*3+1];
+        Palette64[ti * 3 + 2] = img2[ti*3+2];
+      }
+      unsigned char* img=&img2[3*64];
+      for (int tj = 0; tj < PANE_HEIGHT; tj++)
+      {
+        for (int ti = 0; ti < PANE_WIDTH / 8; ti++)
         {
-          unsigned char idx = 0;
-          if ((planes[0] & mask) > 0) idx |= 1;
-          if ((planes[1] & mask) > 0) idx |= 2;
-          if ((planes[2] & mask) > 0) idx |= 4;
-          if ((planes[3] & mask) > 0) idx |= 8;
-          if ((planes[4] & mask) > 0) idx |= 0x10;
-          if ((planes[5] & mask) > 0) idx |= 0x20;
-          pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3] = Palette64[idx * 3];
-          pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 1] = Palette64[idx * 3 + 1];
-          pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 2] = Palette64[idx * 3 + 2];
-          mask <<= 1;
+          // on reconstitue un indice à partir des plans puis une couleur à partir de la palette
+          unsigned char mask = 1;
+          unsigned char planes[6];
+          planes[0] = img[ti + tj * PANE_WIDTH/8];
+          planes[1] = img[PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
+          planes[2] = img[2*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
+          planes[3] = img[3*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
+          planes[4] = img[4*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
+          planes[5] = img[5*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
+          for (int tk = 0; tk < 8; tk++)
+          {
+            unsigned char idx = 0;
+            if ((planes[0] & mask) > 0) idx |= 1;
+            if ((planes[1] & mask) > 0) idx |= 2;
+            if ((planes[2] & mask) > 0) idx |= 4;
+            if ((planes[3] & mask) > 0) idx |= 8;
+            if ((planes[4] & mask) > 0) idx |= 0x10;
+            if ((planes[5] & mask) > 0) idx |= 0x20;
+            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3] = Palette64[idx * 3];
+            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 1] = Palette64[idx * 3 + 1];
+            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 2] = Palette64[idx * 3 + 2];
+            mask <<= 1;
+          }
         }
       }
+      fillpannel();
     }
-    fillpannel();
   }
 }
