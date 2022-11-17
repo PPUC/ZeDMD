@@ -278,15 +278,15 @@ void InitPalettes(int R, int G, int B)
 
 bool MireActive=true;
 bool handshake=false;
-// 256 is the default buffer size of the CP210x linux kernel driver, we should not exceed it.
-#define SERIAL_TRANSFER_SIZE 256
+// 256 is the default buffer size of the CP210x linux kernel driver, we should not exceed it as default.
+int serialTransferChunkSize = 256;
 unsigned char img2[3*64+6 * PANE_WIDTH/8*PANE_HEIGHT];
 
 void setup()
 {
   Serial.begin(921600);
   while (!Serial);
-  Serial.setRxBufferSize(SERIAL_TRANSFER_SIZE);
+  Serial.setRxBufferSize(serialTransferChunkSize);
   Serial.setTimeout(100);
 
   if (!SPIFFS.begin(true)) return;
@@ -317,7 +317,7 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
   // We always receive chunks of 256 bytes (maximum).
   // At this point, the control chars and the one byte command have been read already.
   // So we only need to read the remaining bytes of the first chunk abd full 256 byte chunks afterwards.
-  int chunkSize = SERIAL_TRANSFER_SIZE - N_CTRL_CHARS - 1;
+  int chunkSize = serialTransferChunkSize - N_CTRL_CHARS - 1;
   int remainingBytes = BufferSize;
   while (remainingBytes > 0)
   {
@@ -331,8 +331,8 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
     // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
     Serial.write('A');
     remainingBytes -= chunkSize;
-    // From now on read full 256 byte chunks.
-    chunkSize = SERIAL_TRANSFER_SIZE;
+    // From now on read full amount of byte chunks.
+    chunkSize = serialTransferChunkSize;
   }
   return true;
 }
@@ -387,6 +387,17 @@ void loop()
   if (handshake) Serial.write('R');
   wait_for_ctrl_chars();
 
+  // Commands:
+  //  3: render raw data
+  //  6: init palettes
+  //  7: render 16 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 2 pixels par byte
+  //  8: render 4 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 4 pixels par byte
+  //  9: render 16 couleurs avec 1 palette 16 couleurs (16*3 bytes) suivis de 4 bytes par groupe de 8 points (séparés en plans de bits 4*512 bytes)
+  // 10: clear screen
+  // 11: render 64 couleurs avec 1 palette 64 couleurs (64*3 bytes) suivis de 6 bytes par groupe de 8 points (séparés en plans de bits 6*512 bytes)
+  // 12: handshake + report resolution
+  // 13: set serial transfer chunk size
+  // 99: display number
   unsigned char c4;
   while (Serial.available()==0);
   c4=Serial.read();
@@ -399,19 +410,30 @@ void loop()
     Serial.write((PANE_HEIGHT>>8)&0xff);
     handshake=true;
   }
+  else if (c4 == 13) // set serial transfer chunk size
+  {
+    int serialTransferChunkSize = Serial.read();
+    // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
+    Serial.write('A');
+    Serial.setRxBufferSize(serialTransferChunkSize);
+  }
   if (c4 == 99) // communication debug
   {
-    if (Serial.available())
-    { 
-      Say(0, (unsigned int) Serial.read());
-    }
+    unsigned int number = Serial.read();
+    // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
+    Serial.write('A');
+    Say(0, number);
   }
   else if (c4 == 6) // reinit palettes
   {
+    // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
+    Serial.write('A');
     InitPalettes(255, 109, 0);
   }    
   else if (c4 == 10) // clear screen
   {
+    // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
+    Serial.write('A');
     dma_display->clearScreen();
   }
   else if (c4 == 3)
