@@ -1,6 +1,8 @@
 # ZeDMD_ESP32
 Arduino code for the ZeDMD ESP32.
 
+The code is now half my credit and half the credit of Markus Kalkbrenner as he made so many outstanding improvements in the communication part that the display on the device is way more smooth and stable thant before. Thanks Markus.
+
 This is the specific repo for the Arduino code of the ESP32 for the ZeDMD.
 
 The PC code has been integrated in the Freezy dmd-extensions https://github.com/freezy/dmd-extensions inside the LibDmd/Output/ZeDMD directory.
