@@ -3,7 +3,7 @@
 #define PANELS_NUMBER  2     // Number of horizontally chained panels.
 #define SERIAL_TIMEOUT 100   // Time in milliseconds to wait for the next data chunk.
 #define FRAME_TIMEOUT  10000 // Time in milliseconds to wait for a new frame.
-#define DEBUG_FRAMES   1     // Set to 1 to output number of rendered frames on top and number of error at the bottom.
+#define DEBUG_FRAMES   0     // Set to 1 to output number of rendered frames on top and number of error at the bottom.
 // ------------------------------------------ ZeDMD by Zedrummer (http://pincabpassion.net)---------------------------------------------
 // - Install the ESP32 board in Arduino IDE as explained here https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/
 // - Install SPIFFS file system as explained here https://randomnerdtutorials.com/install-esp32-filesystem-uploader-arduino-ide/
@@ -309,7 +309,7 @@ bool MireActive = true;
 bool handshakeSucceeded = false;
 // 256 is the default buffer size of the CP210x linux kernel driver, we should not exceed it as default.
 int serialTransferChunkSize = 256;
-unsigned char img2[3*64+6 * PANE_WIDTH/8*PANE_HEIGHT];
+unsigned char img2[3*64+6*PANE_WIDTH/8*PANE_HEIGHT+3*MAX_COLOR_ROTATIONS];
 unsigned int frameCount = 0;
 unsigned int errorCount = 0;
 unsigned int watchdogCount = 0;
@@ -436,7 +436,6 @@ void wait_for_ctrl_chars(void)
       memset(img2, 0, sizeof(img2));
       // Send a (R)eady signal to tell the client to send the next command.
       Serial.write('R');
-      if (DEBUG_FRAMES) Say(2, watchdogCount);
 
       ms = millis();
       nCtrlCharFound = 0;
