@@ -1,6 +1,9 @@
-#define PANEL_WIDTH 64 // width: number of LEDs for 1 pannel
-#define PANEL_HEIGHT 32 // height: number of LEDs
-#define PANELS_NUMBER 2   // Number of horizontally chained panels 
+#define PANEL_WIDTH    64    // Width: number of LEDs for 1 pannel.
+#define PANEL_HEIGHT   32    // Height: number of LEDs.
+#define PANELS_NUMBER  2     // Number of horizontally chained panels.
+#define SERIAL_TIMEOUT 100   // Time in milliseconds to wait for the next data chunk.
+#define FRAME_TIMEOUT  10000 // Time in milliseconds to wait for a new frame.
+#define DEBUG_FRAMES   0     // Set to 1 to output number of rendered frames on top and number of error at the bottom.
 // ------------------------------------------ ZeDMD by Zedrummer (http://pincabpassion.net)---------------------------------------------
 // - Install the ESP32 board in Arduino IDE as explained here https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/
 // - Install SPIFFS file system as explained here https://randomnerdtutorials.com/install-esp32-filesystem-uploader-arduino-ide/
@@ -121,8 +124,7 @@ unsigned char nCol[MAX_COLOR_ROTATIONS];
 unsigned char acFirst[MAX_COLOR_ROTATIONS];
 unsigned long timeSpan[MAX_COLOR_ROTATIONS];
 
-bool mode64=false;;
-
+bool mode64=false;
 
 #define DEBOUNCE_DELAY 100 // in ms, to avoid buttons pushes to be counted several times https://www.arduino.cc/en/Tutorial/BuiltInExamples/Debounce
 unsigned char CheckButton(int btnpin,bool *pbtnrel,int *pbtpos,unsigned long *pbtdebouncetime)
@@ -217,7 +219,7 @@ void fillpannel()
   //delayMicroseconds(6060);
 }
 
-void fillpannel2()
+void fillpannelMode64()
 {
   for (int tj = 0; tj < PANE_HEIGHT; tj++)
   {
@@ -303,18 +305,20 @@ void InitPalettes(int R, int G, int B)
   }
 }
 
-bool MireActive=true;
-bool handshake=false;
+bool MireActive = true;
+bool handshakeSucceeded = false;
 // 256 is the default buffer size of the CP210x linux kernel driver, we should not exceed it as default.
 int serialTransferChunkSize = 256;
 unsigned char img2[3*64+6 * PANE_WIDTH/8*PANE_HEIGHT];
+unsigned int frameCount = 0;
+unsigned int errorCount = 0;
 
 void setup()
 {
   Serial.begin(921600);
   while (!Serial);
   Serial.setRxBufferSize(serialTransferChunkSize);
-  Serial.setTimeout(100);
+  Serial.setTimeout(SERIAL_TIMEOUT);
 
   if (!SPIFFS.begin(true)) return;
 
@@ -343,7 +347,7 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
 
   // We always receive chunks of 256 bytes (maximum).
   // At this point, the control chars and the one byte command have been read already.
-  // So we only need to read the remaining bytes of the first chunk abd full 256 byte chunks afterwards.
+  // So we only need to read the remaining bytes of the first chunk as full 256 byte chunks afterwards.
   int chunkSize = serialTransferChunkSize - N_CTRL_CHARS - 1;
   int remainingBytes = BufferSize;
   while (remainingBytes > 0)
@@ -351,16 +355,27 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
     int receivedBytes = Serial.readBytes(pBuffer + BufferSize - remainingBytes, (remainingBytes > chunkSize) ? chunkSize : remainingBytes);
     if (receivedBytes != remainingBytes && receivedBytes != chunkSize)
     {
+      if (DEBUG_FRAMES) Say(5, ++errorCount);
+
+      // Flush the read buffer.
+      delay(10);
+      while (Serial.available())
+      {
+        Serial.read();
+      }
       // Send an (E)rror signal to tell the client that no more chunks should be send or to repeat the entire frame from the beginning.
       Serial.write('E');
+
       return false;
     }
+
     // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
     Serial.write('A');
     remainingBytes -= chunkSize;
     // From now on read full amount of byte chunks.
     chunkSize = serialTransferChunkSize;
   }
+
   return true;
 }
 
@@ -368,7 +383,6 @@ void Say(unsigned char where,unsigned int what)
 {
   DisplayNombre(where,3,0,where*5,255,255,255);
   if (what!=(unsigned int)-1) DisplayNombre(what,10,15,where*5,255,255,255);
-  delay(1000);
 }
 
 void updateColorRotations(void)
@@ -391,25 +405,69 @@ void updateColorRotations(void)
         }
     }
   }
-  if (rotfound==true) fillpannel2();
+  if (rotfound==true) fillpannelMode64();
 }
 
 void wait_for_ctrl_chars(void)
 {
-  unsigned char nCtrlCharFound=0;
-  while (nCtrlCharFound<N_CTRL_CHARS)
+  unsigned long ms = millis();
+  unsigned char nCtrlCharFound = 0;
+  unsigned char charReceived;
+
+  while (nCtrlCharFound < N_CTRL_CHARS)
   {
-    while (Serial.available()==0)
+    if (Serial.available() >= (N_CTRL_CHARS - nCtrlCharFound))
     {
-        if (mode64==true) updateColorRotations();
+      charReceived = Serial.read();
+      // Ignore leading "0". It might be that DmdDevice.dll on Windows terminates some data with "0".
+      if (charReceived && charReceived != CtrlCharacters[nCtrlCharFound++])
+      {
+        if (handshakeSucceeded)
+        {
+          // Error in between the control chars.
+          if (DEBUG_FRAMES) Say(5, ++errorCount);
+
+          // Flush the read buffer.
+          delay(10);
+          while (Serial.available())
+          {
+            Serial.read();
+          }
+          // Send an (E)rror signal.
+          Serial.write('E');
+          delay(10);
+          // Send a (R)eady signal to tell the client to send the next command.
+          Serial.write('R');
+        }
+
+        nCtrlCharFound = 0;
+      }
     }
-    if (Serial.read()==CtrlCharacters[nCtrlCharFound]) nCtrlCharFound++; else nCtrlCharFound=0;
+    else if (handshakeSucceeded)
+    {
+      if ((millis() - ms) > FRAME_TIMEOUT)
+      {
+        if (DEBUG_FRAMES) Say(5, ++errorCount);
+
+        nCtrlCharFound = 0;
+        // Send an (E)rror signal.
+        Serial.write('E');
+        delay(10);
+        // Send a (R)eady signal to tell the client to send the next command.
+        Serial.write('R');
+      }
+      else if (mode64)
+      {
+        // While waiting for the next frame, perform in-frame color rotations.
+        updateColorRotations();
+      }
+    }
   }
 }
 
 void loop()
 {
-  while (MireActive == true)
+  while (MireActive)
   {
     if (CheckButton(ORDRE_BUTTON_PIN, &OrdreBtnRel, &OrdreBtnPos, &OrdreBtnDebounceTime) == 2)
     {
@@ -437,8 +495,11 @@ void loop()
 
   // After handshake, send a (R)eady signal to indicate that a new command could be sent.
   // The client has to wait for it to avoid buffer issues. The handshake it self works without it.
-  if (handshake) Serial.write('R');
+  if (handshakeSucceeded) Serial.write('R');
   wait_for_ctrl_chars();
+
+  // Updates to mode64 color rotations have been handled within wait_for_ctrl_chars(), now reset it to false.
+  mode64 = false;
 
   // Commands:
   //  3: render raw data
@@ -452,7 +513,6 @@ void loop()
   // 13: set serial transfer chunk size
   // 99: display number
   unsigned char c4;
-  mode64=false;
   while (Serial.available()==0);
   c4=Serial.read();
   if (c4 == 12) // ask for resolution (and shake hands)
@@ -462,21 +522,21 @@ void loop()
     Serial.write((PANE_WIDTH>>8)&0xff);
     Serial.write(PANE_HEIGHT&0xff);
     Serial.write((PANE_HEIGHT>>8)&0xff);
-    handshake=true;
+    handshakeSucceeded=true;
   }
   else if (c4 == 13) // set serial transfer chunk size
   {
     int serialTransferChunkSize = Serial.read();
+    Serial.setRxBufferSize(serialTransferChunkSize);
     // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
     Serial.write('A');
-    Serial.setRxBufferSize(serialTransferChunkSize);
   }
   if (c4 == 99) // communication debug
   {
     unsigned int number = Serial.read();
     // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
     Serial.write('A');
-    Say(0, number);
+    Say(2, number);
   }
   else if (c4 == 6) // reinit palettes
   {
@@ -668,7 +728,14 @@ void loop()
         if (timeSpan[ti]<MIN_SPAN_ROT) timeSpan[ti]=MIN_SPAN_ROT;
         nextTime[ti]=actime+timeSpan[ti];
       }
-      fillpannel2();
+      fillpannelMode64();
     }
+  }
+
+  if (DEBUG_FRAMES)
+  {
+    // An overflow of the unsigned int counters should not be an issue, they just reset to 0.
+    Say(0, ++frameCount);
+    Say(5, errorCount);
   }
 }
