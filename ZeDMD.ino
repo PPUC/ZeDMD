@@ -6,7 +6,7 @@
 // - Install SPIFFS file system as explained here https://randomnerdtutorials.com/install-esp32-filesystem-uploader-arduino-ide/
 // - Install "ESP32 HUB75 LED MATRIX PANNEL DMA" Display library via the library manager
 // - Go to menu "Tools" then click on "ESP32 Sketch Data Upload"
-// - Change the values in the 3 first lines above (PANEL_WIDTH, PANEL_HEIGHT, PANELS_NUMBER) according the pannels
+// - Change the values in the 3 first lines above (PANEL_WIDTH, PANEL_HEIGHT, PANELS_NUMBER) according to your pannels
 // - Inject this code in the board
 // - If you have blurry pictures, the display is not clean, try to reduce the input voltage of your LED matrix pannels, often, 5V pannels need
 // between 4V and 4.5V to display clean pictures, you often have a screw in switch-mode power supplies to change the output voltage a little bit
@@ -18,6 +18,8 @@
 #define PANE_WIDTH (PANEL_WIDTH*PANELS_NUMBER)
 #define PANE_WIDTH_PLANE (PANE_WIDTH>>3)
 #define PANE_HEIGHT PANEL_HEIGHT
+#define MAX_COLOR_ROTATIONS 8
+#define MIN_SPAN_ROT 50
 
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include <SPIFFS.h>
@@ -99,6 +101,7 @@ unsigned char Palette64[3*64];
 static const float levels64[64]  = {0, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 90, 100}; // SAM brightness seems okay
 
 unsigned char pannel[PANE_WIDTH*PANE_HEIGHT*3];
+unsigned char pannel2[PANE_WIDTH*PANE_HEIGHT];
 
 #define ORDRE_BUTTON_PIN 21
 bool OrdreBtnRel=false;
@@ -109,6 +112,17 @@ unsigned long OrdreBtnDebounceTime;
 bool LuminositeBtnRel=false;
 int LuminositeBtnPos;
 unsigned long LuminositeBtnDebounceTime;
+
+// for color rotation
+unsigned char rotCols[64];
+unsigned long nextTime[MAX_COLOR_ROTATIONS];
+unsigned char firstCol[MAX_COLOR_ROTATIONS];
+unsigned char nCol[MAX_COLOR_ROTATIONS];
+unsigned char acFirst[MAX_COLOR_ROTATIONS];
+unsigned long timeSpan[MAX_COLOR_ROTATIONS];
+
+bool mode64=false;;
+
 
 #define DEBOUNCE_DELAY 100 // in ms, to avoid buttons pushes to be counted several times https://www.arduino.cc/en/Tutorial/BuiltInExamples/Debounce
 unsigned char CheckButton(int btnpin,bool *pbtnrel,int *pbtpos,unsigned long *pbtdebouncetime)
@@ -201,6 +215,19 @@ void fillpannel()
     }
   }
   //delayMicroseconds(6060);
+}
+
+void fillpannel2()
+{
+  for (int tj = 0; tj < PANE_HEIGHT; tj++)
+  {
+    for (int ti = 0; ti < PANE_WIDTH; ti++)
+    {
+      dma_display->drawPixelRGB888(ti, tj, Palette64[rotCols[pannel2[ti+tj*PANE_WIDTH]]*3+ordreRGB[acordreRGB * 3]], 
+      Palette64[rotCols[pannel2[ti+tj*PANE_WIDTH]]*3+ordreRGB[acordreRGB * 3+1]],Palette64[rotCols[pannel2[ti+tj*PANE_WIDTH]]*3+ordreRGB[acordreRGB * 3+2]]);
+    }
+  }
+  mode64=true;
 }
 
 File fordre;
@@ -344,12 +371,38 @@ void Say(unsigned char where,unsigned int what)
   delay(1000);
 }
 
+void updateColorRotations(void)
+{
+  unsigned long actime=millis();
+  bool rotfound=false;
+  for (int ti=0;ti<MAX_COLOR_ROTATIONS;ti++)
+  {
+    if (firstCol[ti]==255) continue;
+    if (actime >= nextTime[ti])
+    {
+        nextTime[ti] = actime + timeSpan[ti];
+        acFirst[ti]++;
+        if (acFirst[ti] == nCol[ti]) acFirst[ti] = 0;
+        rotfound=true;
+        for (unsigned char tj = 0; tj < nCol[ti]; tj++)
+        {
+            rotCols[tj + firstCol[ti]] = tj + firstCol[ti] + acFirst[ti];
+            if (rotCols[tj + firstCol[ti]] >= firstCol[ti] + nCol[ti]) rotCols[tj + firstCol[ti]] -= nCol[ti];
+        }
+    }
+  }
+  if (rotfound==true) fillpannel2();
+}
+
 void wait_for_ctrl_chars(void)
 {
   unsigned char nCtrlCharFound=0;
   while (nCtrlCharFound<N_CTRL_CHARS)
   {
-    while (Serial.available()==0);
+    while (Serial.available()==0)
+    {
+        if (mode64==true) updateColorRotations();
+    }
     if (Serial.read()==CtrlCharacters[nCtrlCharFound]) nCtrlCharFound++; else nCtrlCharFound=0;
   }
 }
@@ -399,6 +452,7 @@ void loop()
   // 13: set serial transfer chunk size
   // 99: display number
   unsigned char c4;
+  mode64=false;
   while (Serial.available()==0);
   c4=Serial.read();
   if (c4 == 12) // ask for resolution (and shake hands)
@@ -561,9 +615,9 @@ void loop()
       fillpannel();
     }
   }
-  else if (c4 == 11) // mode 64 couleurs avec 1 palette 64 couleurs (64*3 bytes) suivis de 6 bytes par groupe de 8 points (séparés en plans de bits 6*512 bytes)
+  else if (c4 == 11) // mode 64 couleurs avec 1 palette 64 couleurs (64*3 bytes) suivis de 6 bytes par groupe de 8 points (séparés en plans de bits 6*512 bytes) suivis de 3*8 bytes de rotations de couleurs
   {
-    if (SerialReadBuffer(img2,3*64+6*PANE_WIDTH/8*PANE_HEIGHT))
+    if (SerialReadBuffer(img2,3*64+6*PANE_WIDTH/8*PANE_HEIGHT+3*MAX_COLOR_ROTATIONS))
     {
       for (int ti = 63; ti >= 0; ti--)
       {
@@ -594,14 +648,27 @@ void loop()
             if ((planes[3] & mask) > 0) idx |= 8;
             if ((planes[4] & mask) > 0) idx |= 0x10;
             if ((planes[5] & mask) > 0) idx |= 0x20;
-            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3] = Palette64[idx * 3];
+            /*pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3] = Palette64[idx * 3];
             pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 1] = Palette64[idx * 3 + 1];
-            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 2] = Palette64[idx * 3 + 2];
+            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 2] = Palette64[idx * 3 + 2];*/
+            pannel2[(ti * 8 + tk)+tj * PANE_WIDTH]=idx;
             mask <<= 1;
           }
         }
       }
-      fillpannel();
+      img=&img2[3*64+6*PANE_WIDTH/8*PANE_HEIGHT];
+      unsigned long actime=millis();
+      for (int ti=0;ti<64;ti++) rotCols[ti]=ti;
+      for (int ti=0;ti<MAX_COLOR_ROTATIONS;ti++)
+      {
+        firstCol[ti]=img[ti*3];
+        nCol[ti]=img[ti*3+1];
+        // acFirst[ti]=0;
+        timeSpan[ti]=10*img[ti*3+2];
+        if (timeSpan[ti]<MIN_SPAN_ROT) timeSpan[ti]=MIN_SPAN_ROT;
+        nextTime[ti]=actime+timeSpan[ti];
+      }
+      fillpannel2();
     }
   }
 }
