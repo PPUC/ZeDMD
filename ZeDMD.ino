@@ -309,9 +309,10 @@ bool MireActive = true;
 bool handshakeSucceeded = false;
 // 256 is the default buffer size of the CP210x linux kernel driver, we should not exceed it as default.
 int serialTransferChunkSize = 256;
-unsigned char img2[3*64+6 * PANE_WIDTH/8*PANE_HEIGHT];
+unsigned char img2[3*64+6*PANE_WIDTH/8*PANE_HEIGHT+3*MAX_COLOR_ROTATIONS];
 unsigned int frameCount = 0;
 unsigned int errorCount = 0;
+unsigned int watchdogCount = 0;
 
 void setup()
 {
@@ -355,16 +356,13 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
     int receivedBytes = Serial.readBytes(pBuffer + BufferSize - remainingBytes, (remainingBytes > chunkSize) ? chunkSize : remainingBytes);
     if (receivedBytes != remainingBytes && receivedBytes != chunkSize)
     {
-      if (DEBUG_FRAMES) Say(5, ++errorCount);
+      if (DEBUG_FRAMES) Say(4, ++errorCount);
 
-      // Flush the read buffer.
-      delay(10);
-      while (Serial.available())
-      {
-        Serial.read();
-      }
       // Send an (E)rror signal to tell the client that no more chunks should be send or to repeat the entire frame from the beginning.
       Serial.write('E');
+      // Flush the buffer.
+      Serial.readBytes(img2, sizeof(img2));
+      memset(img2, 0, sizeof(img2));
 
       return false;
     }
@@ -412,55 +410,35 @@ void wait_for_ctrl_chars(void)
 {
   unsigned long ms = millis();
   unsigned char nCtrlCharFound = 0;
-  unsigned char charReceived;
 
   while (nCtrlCharFound < N_CTRL_CHARS)
   {
-    if (Serial.available() >= (N_CTRL_CHARS - nCtrlCharFound))
+    if (Serial.available())
     {
-      charReceived = Serial.read();
-      // Ignore leading "0". It might be that DmdDevice.dll on Windows terminates some data with "0".
-      if (charReceived && charReceived != CtrlCharacters[nCtrlCharFound++])
-      {
-        if (handshakeSucceeded)
-        {
-          // Error in between the control chars.
-          if (DEBUG_FRAMES) Say(5, ++errorCount);
-
-          // Flush the read buffer.
-          delay(10);
-          while (Serial.available())
-          {
-            Serial.read();
-          }
-          // Send an (E)rror signal.
-          Serial.write('E');
-          delay(10);
-          // Send a (R)eady signal to tell the client to send the next command.
-          Serial.write('R');
-        }
-
-        nCtrlCharFound = 0;
-      }
+      if (Serial.read() != CtrlCharacters[nCtrlCharFound++]) nCtrlCharFound = 0;
     }
-    else if (handshakeSucceeded)
-    {
-      if ((millis() - ms) > FRAME_TIMEOUT)
-      {
-        if (DEBUG_FRAMES) Say(5, ++errorCount);
 
-        nCtrlCharFound = 0;
-        // Send an (E)rror signal.
-        Serial.write('E');
-        delay(10);
-        // Send a (R)eady signal to tell the client to send the next command.
-        Serial.write('R');
-      }
-      else if (mode64)
-      {
-        // While waiting for the next frame, perform in-frame color rotations.
-        updateColorRotations();
-      }
+    if (mode64 && nCtrlCharFound == 0)
+    {
+      // While waiting for the next frame, perform in-frame color rotations.
+      updateColorRotations();
+    }
+
+    // Watchdog: "reset" the communictaion if it took too long between two frames. 
+    if (handshakeSucceeded && ((millis() - ms) > FRAME_TIMEOUT))
+    {
+      if (DEBUG_FRAMES) Say(5, ++watchdogCount);
+
+      // Send an (E)rror signal.
+      Serial.write('E');
+      // Flush the buffer.
+      Serial.readBytes(img2, sizeof(img2));
+      memset(img2, 0, sizeof(img2));
+      // Send a (R)eady signal to tell the client to send the next command.
+      Serial.write('R');
+
+      ms = millis();
+      nCtrlCharFound = 0;
     }
   }
 }
@@ -736,6 +714,7 @@ void loop()
   {
     // An overflow of the unsigned int counters should not be an issue, they just reset to 0.
     Say(0, ++frameCount);
-    Say(5, errorCount);
+    Say(4, errorCount);
+    Say(5, watchdogCount);
   }
 }
