@@ -22,7 +22,7 @@
 #define PANE_WIDTH_PLANE (PANE_WIDTH>>3)
 #define PANE_HEIGHT PANEL_HEIGHT
 #define MAX_COLOR_ROTATIONS 8
-#define MIN_SPAN_ROT 50
+#define MIN_SPAN_ROT 60
 
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include <SPIFFS.h>
