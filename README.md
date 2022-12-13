@@ -21,4 +21,4 @@ Thanks, David aka "Zed"
 I DON'T EARN a thing from them (except perhaps some kind feedbacks and a place in the vpin world), not even a single Euro!
 My ZeDMD may be sold by any reseller who wants to but I don't want to get anything AT ALL from that!
 
-2/ It is important to me that all the things I code or create remain in the open-source DIY side, so any concept from my code (like colour rotations or sprites) CAN NOT be used in encrypted/protected/closed-source code/file format but freely for any open-source project!
+2/ It is important to me that all the things I code or create remain in the open-source DIY side, so any concept from my code (like colour rotations or sprites) CAN NOT be used in encrypted/protected/closed-source code/file format but freely for any open-source project as long as you credit me!
