@@ -17,7 +17,7 @@ Thanks, Zed and Markus Kalkbrenner
 
 ### IMPORTANT LEGAL NOTICE:
 
-1/ Everything from my cheap real DMD "ZeDMD" to my "Serum" (aka "cRom") file format and its editor "ColorizingDMD" is open-source and subject to the **GPLv2 (or later)** licence with only a restriction (see 3/).
+1/ Everything from my cheap real DMD "ZeDMD" to my "Serum" (aka "cRom") file format and its editor "ColorizingDMD" is open-source and subject to the **GPLv2+ (or later)** licence with only a restriction (see 3/).
 WE DON'T EARN a thing from them (except perhaps some kind feedbacks and a place in the vpin world), not even a single Euro!
 Our ZeDMD may be sold by any reseller who wants to (see 3/) but we don't want to get any money AT ALL from that!
 
