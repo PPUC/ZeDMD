@@ -17,10 +17,10 @@ Thanks, David aka "Zed"
 
 ### IMPORTANT LEGAL NOTICE:
 
-1/ Everything from my cheap real DMD "ZeDMD" to my "Serum" (aka "cRom") file format and its editor "ColorizingDMD" are linked to freezy DMD-extensions, they are open-source and subjects to the same license, GPLv2.
+1/ Everything from my cheap real DMD "ZeDMD" to my "Serum" (aka "cRom") file format and its editor "ColorizingDMD" are linked to freezy DMD-extensions, they are open-source and subjects to the same license, **GPLv2**.
 I DON'T EARN a thing from them (except perhaps some kind feedbacks and a place in the vpin world), not even a single Euro!
-My ZeDMD may be sold by any reseller who wants to but I don't want to get anything AT ALL from that (see 3/)!
+My ZeDMD may be sold by any reseller who wants (see 3/) to but I don't want to get anything AT ALL from that!
 
-2/ It is important to me that all the things I code or create remain in the open-source DIY side, so any concept from my code (like colour rotations or sprites) CAN NOT be used in encrypted/protected/closed-source code/file format but freely for any open-source project as long as you credit me!
+2/ It is important to me that all the things I code or create **remain in the open-source DIY side**, so any concept from my code (like colour rotations or sprites) **CAN NOT be used in encrypted/protected/closed-source code/file format** but freely for any open-source project as long as you credit me!
 
-3/ For manufacturers or resellers of any shield, frame or whatever linked to the ZeDMD, my only request is that the device is **ostensibly** called as "ZeDMD something". "ZeDMD" should be what you see first when you look at the device. Also, a link to this Github should be provided with the device.
+3/ For manufacturers or resellers of any shield, frame or whatever linked to the ZeDMD, my only request is that the device is **ostensibly** called as "ZeDMD something". "ZeDMD" should be what you see first when you look at the device. Also, **a link to this Github** should be provided with the device.
