@@ -1,7 +1,7 @@
 # ZeDMD_ESP32
 Arduino code for the ZeDMD ESP32.
 
-The code is now half my credit and half the credit of Markus Kalkbrenner as he made so many outstanding improvements in the serial communication code that the display on the device is way more smooth and stable than before. Thanks Markus.
+The code is now half the credit of David Lafarge (aka "Zed")and half the credit of Markus Kalkbrenner as he made so many outstanding improvements in the serial communication code that the display on the device is way more smooth and stable than before. Thanks Markus.
 
 This is the specific repo for the Arduino code of the ESP32 for the ZeDMD.
 
@@ -13,7 +13,7 @@ Any other language translation is welcome and will be added to the tuto if sent.
 
 Download the files on the release page here https://github.com/zesinger/ZeDMD_ESP32/releases/tag/ZeDMD
 
-Thanks, David aka "Zed" and Markus Kalkbrenner
+Thanks, Zed and Markus Kalkbrenner
 
 ### IMPORTANT LEGAL NOTICE:
 
