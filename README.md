@@ -23,4 +23,4 @@ My ZeDMD may be sold by any reseller who wants (see 3/) to but I don't want to g
 
 2/ It is important to me that all the things I code or create **remain in the open-source DIY side**, so any concept from my code (like colour rotations or sprites) **CAN NOT be used in encrypted/protected/closed-source code/file format** but freely for any open-source project as long as you credit me!
 
-3/ For manufacturers or resellers of any shield, frame or whatever linked to the ZeDMD, my only request is that the device is **ostensibly** called as "ZeDMD something". "ZeDMD" should be what you see first when you look at the device. Also, **a link to this Github** should be provided with the device.
+3/ For manufacturers or resellers of any shield, frame or whatever linked to the ZeDMD, my only request is that the device is **ostensibly called as "ZeDMD something"**. "ZeDMD" should be what you see first when you look at the device. Also, **a link to this Github** should be provided with the device.
