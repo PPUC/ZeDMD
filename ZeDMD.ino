@@ -1,4 +1,4 @@
-#define PANEL_WIDTH    64    // Width: number of LEDs for 1 pannel.
+#define PANEL_WIDTH    64    // Width: number of LEDs for 1 panel.
 #define PANEL_HEIGHT   32    // Height: number of LEDs.
 #define PANELS_NUMBER  2     // Number of horizontally chained panels.
 #define SERIAL_TIMEOUT 100   // Time in milliseconds to wait for the next data chunk.
@@ -7,11 +7,11 @@
 // ------------------------------------------ ZeDMD by Zedrummer (http://pincabpassion.net)---------------------------------------------
 // - Install the ESP32 board in Arduino IDE as explained here https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/
 // - Install SPIFFS file system as explained here https://randomnerdtutorials.com/install-esp32-filesystem-uploader-arduino-ide/
-// - Install "ESP32 HUB75 LED MATRIX PANNEL DMA" Display library via the library manager
+// - Install "ESP32 HUB75 LED MATRIX panel DMA" Display library via the library manager
 // - Go to menu "Tools" then click on "ESP32 Sketch Data Upload"
-// - Change the values in the 3 first lines above (PANEL_WIDTH, PANEL_HEIGHT, PANELS_NUMBER) according to your pannels
+// - Change the values in the 3 first lines above (PANEL_WIDTH, PANEL_HEIGHT, PANELS_NUMBER) according to your panels
 // - Inject this code in the board
-// - If you have blurry pictures, the display is not clean, try to reduce the input voltage of your LED matrix pannels, often, 5V pannels need
+// - If you have blurry pictures, the display is not clean, try to reduce the input voltage of your LED matrix panels, often, 5V panels need
 // between 4V and 4.5V to display clean pictures, you often have a screw in switch-mode power supplies to change the output voltage a little bit
 // - While the initial pattern logo is displayed, check you have red in the upper left, green in the lower left and blue in the upper right,
 // if not, make contact between the ORDRE_BUTTON_PIN (default 21, but you can change below) pin and a ground pin several times
@@ -103,8 +103,8 @@ static const float levels16[16]  = {0, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 7
 unsigned char Palette64[3*64];
 static const float levels64[64]  = {0, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 90, 100}; // SAM brightness seems okay
 
-unsigned char pannel[PANE_WIDTH*PANE_HEIGHT*3];
-unsigned char pannel2[PANE_WIDTH*PANE_HEIGHT];
+unsigned char panel[256*64*3];
+unsigned char panel2[256*64];
 
 #define ORDRE_BUTTON_PIN 21
 bool OrdreBtnRel=false;
@@ -125,6 +125,9 @@ unsigned char acFirst[MAX_COLOR_ROTATIONS];
 unsigned long timeSpan[MAX_COLOR_ROTATIONS];
 
 bool mode64=false;
+
+int RomWidth=128, RomHeight=32;
+int RomWidthPlane=128>>3;
 
 #define DEBOUNCE_DELAY 100 // in ms, to avoid buttons pushes to be counted several times https://www.arduino.cc/en/Tutorial/BuiltInExamples/Debounce
 unsigned char CheckButton(int btnpin,bool *pbtnrel,int *pbtpos,unsigned long *pbtdebouncetime)
@@ -176,8 +179,8 @@ void DisplayChiffre(unsigned int chf, int x,int y,int R, int G, int B)
 void DisplayNombre(unsigned int chf,unsigned char nc,int x,int y,int R,int G,int B)
 {
   // affiche un nombre verticalement
-  unsigned int acc=chf,acd=10;
-  if (nc>2) {for (int ti=0;ti<(nc-1);ti++) acd*=10;}
+  unsigned int acc=chf,acd=1;
+  for (int ti=0;ti<(nc-1);ti++) acd*=10;
   for (int ti=0;ti<nc;ti++)
   {
     unsigned int val;
@@ -207,29 +210,315 @@ void DisplayText(bool* text, int width, int x, int y, int R, int G, int B)
   }
 }
 
-void fillpannel()
+bool CmpColor(unsigned char* px1,unsigned char* px2)
 {
-  for (int tj = 0; tj < PANE_HEIGHT; tj++)
-  {
-    for (int ti = 0; ti < PANE_WIDTH; ti++)
-    {
-      dma_display->drawPixelRGB888(ti, tj, pannel[ti * 3 + tj * 3 * PANE_WIDTH + ordreRGB[acordreRGB * 3]], pannel[ti * 3 + tj * 3 * PANE_WIDTH + ordreRGB[acordreRGB * 3 + 1]], pannel[ti * 3 + tj * 3 * PANE_WIDTH + ordreRGB[acordreRGB * 3 + 2]]);
-    }
-  }
-  //delayMicroseconds(6060);
+  if ((px1[0]==px2[0])&&(px1[1]==px2[1])&&(px1[2]==px2[2])) return true;
+  return false;
 }
 
-void fillpannelMode64()
+void SetColor(unsigned char* px1,unsigned char* px2)
+{
+  px1[0]=px2[0];
+  px1[1]=px2[1];
+  px1[2]=px2[2];
+}
+
+void ScaleImage() // scale for non indexed image (RGB24)
+{
+  int xoffset=0;
+  memcpy(panel2,panel,RomWidth*RomHeight*3);
+  memset(panel,0,PANE_WIDTH*PANE_HEIGHT*3);
+  int scale=0; // 0 - no scale, 1 - half scale, 2 - twice scale
+  if ((RomWidth==192)&&(PANE_WIDTH==256)) xoffset=32*3;
+  else if (RomWidth==192)
+  {
+    xoffset=16*3;
+    scale=1;
+  }
+  else if ((RomWidth==256)&&(PANE_WIDTH==128)) scale=1;
+  else if ((RomWidth==128)&&(PANE_WIDTH==256)) scale=2;
+  else return;
+
+  if (scale==1)
+  {
+    // for half scaling we take the 4 points and look if there is one colour repeated
+    for (int ti=0;ti<RomHeight;ti+=2)
+    {
+      for (int tj=0;tj<RomWidth;tj+=2)
+      {
+        unsigned char* pp=&panel2[ti*RomWidth*3+tj*3];
+        if (CmpColor(pp,&pp[3])||CmpColor(pp,&pp[3*RomWidth])||CmpColor(pp,&pp[3*RomWidth+3])) SetColor(&panel[xoffset+3*(tj>>1+(ti>>1)*PANE_WIDTH)],pp);
+        else if (CmpColor(&pp[3],&pp[3*RomWidth])||CmpColor(&pp[3],&pp[3*RomWidth+3])) SetColor(&panel[xoffset+3*(tj>>1+(ti>>1)*PANE_WIDTH)],&pp[3]);
+        else if (CmpColor(&pp[3*RomWidth],&pp[3*RomWidth+3])) SetColor(&panel[xoffset+3*(tj>>1+(ti>>1)*PANE_WIDTH)],&pp[3*RomWidth]);
+        else SetColor(&panel[xoffset+3*(tj>>1+(ti>>1)*PANE_WIDTH)],pp);
+      }
+    }
+  }
+  else if (scale==2)
+  {
+    // we implement scale2x http://www.scale2x.it/algorithm
+    for (int tj=0;tj<RomHeight;tj++)
+    {
+      for (int ti=0;ti<RomWidth;ti++)
+      {
+        unsigned char *a, *b, *c, *d, *e, *f, *g, *h, *i;
+        if ((ti==0)&&(tj==0))
+        {
+          a=b=d=e=panel2;
+          c=f=&panel2[3];
+          g=h=&panel2[3*RomWidth];
+          i=&panel2[3*(RomWidth+1)];
+        }
+        else if ((ti==0)&&(tj==RomHeight-1))
+        {
+          a=b=&panel2[3*(tj-1)*RomWidth];
+          c=&panel2[3*((tj-1)*RomWidth+1)];
+          d=g=h=e=&panel2[3*tj*RomWidth];
+          f=i=&panel2[3*(tj*RomWidth+1)];
+        }
+        else if ((ti==RomWidth-1)&&(tj==0))
+        {
+          a=d=&panel2[3*(ti-1)];
+          b=c=f=e=&panel2[3*ti];
+          g=&panel2[3*(RomWidth+ti-1)];
+          h=i=&panel2[3*(RomWidth+ti)];
+        }
+        else if ((ti==RomWidth-1)&&(tj==RomHeight-1))
+        {
+          a=&panel2[3*(tj*RomWidth-2)];
+          b=c=&panel2[3*(tj*RomWidth-1)];
+          d=g=&panel2[3*(RomHeight*RomWidth-2)];
+          e=f=h=i=&panel2[3*(RomHeight*RomWidth-1)];
+        }
+        else if (ti==0)
+        {
+          a=b=&panel2[3*((tj-1)*RomWidth)];
+          c=&panel2[3*((tj-1)*RomWidth+1)];
+          d=e=&panel2[3*(tj*RomWidth)];
+          f=&panel2[3*(tj*RomWidth+1)];
+          g=h=&panel2[3*((tj+1)*RomWidth)];
+          i=&panel2[3*((tj+1)*RomWidth+1)];
+        }
+        else if (ti==RomWidth-1)
+        {
+          a=&panel2[3*(tj*RomWidth-2)];
+          b=c=&panel2[3*(tj*RomWidth-1)];
+          d=&panel2[3*((tj+1)*RomWidth-2)];
+          e=f=&panel2[3*((tj+1)*RomWidth-1)];
+          g=&panel2[3*((tj+2)*RomWidth-2)];
+          h=i=&panel2[3*((tj+2)*RomWidth-1)];
+        }
+        else if (tj==0)
+        {
+          a=d=&panel2[3*(ti-1)];
+          b=e=&panel2[3*ti];
+          c=f=&panel2[3*(ti+1)];
+          g=&panel2[3*(RomWidth+ti-1)];
+          h=&panel2[3*(RomWidth+ti)];
+          i=&panel2[3*(RomWidth+ti+1)];
+        }
+        else if (tj==RomHeight-1)
+        {
+          a=&panel2[3*((tj-1)*RomWidth+ti-1)];
+          b=&panel2[3*((tj-1)*RomWidth+ti)];
+          c=&panel2[3*((tj-1)*RomWidth+ti+1)];
+          d=g=&panel2[3*(tj*RomWidth+ti-1)];
+          e=h=&panel2[3*(tj*RomWidth+ti)];
+          f=i=&panel2[3*(tj*RomWidth+ti+1)];
+        }
+        else
+        {
+          a=&panel2[3*((tj-1)*RomWidth+ti-1)];
+          b=&panel2[3*((tj-1)*RomWidth+ti)];
+          c=&panel2[3*((tj-1)*RomWidth+ti+1)];
+          d=&panel2[3*(tj*RomWidth+ti-1)];
+          e=&panel2[3*(tj*RomWidth+ti)];
+          f=&panel2[3*(tj*RomWidth+ti+1)];
+          g=&panel2[3*((tj+1)*RomWidth+ti-1)];
+          h=&panel2[3*((tj+1)*RomWidth+ti)];
+          i=&panel2[3*((tj+1)*RomWidth+ti+1)];
+        }
+        if (b != h && d != f) {
+          if (CmpColor(d,b)) SetColor(&panel[3*(tj*2*PANE_WIDTH+ti*2)+xoffset],d); else SetColor(&panel[3*(tj*2*PANE_WIDTH+ti*2)+xoffset],e); 
+          if (CmpColor(b,f)) SetColor(&panel[3*(tj*2*PANE_WIDTH+ti*2+1)+xoffset], f); else SetColor(&panel[3*(tj*2*PANE_WIDTH+ti*2+1)+xoffset], e); 
+          if (CmpColor(b,h)) SetColor(&panel[3*((tj*2+1)*PANE_WIDTH+ti*2)+xoffset],d); else SetColor(&panel[3*((tj*2+1)*PANE_WIDTH+ti*2)+xoffset],e); 
+          if (CmpColor(h,f)) SetColor(&panel[3*((tj*2+1)*PANE_WIDTH+ti*2+1)+xoffset],f); else SetColor(&panel[3*((tj*2+1)*PANE_WIDTH+ti*2+1)+xoffset],e);
+        } else {
+          SetColor(&panel[3*(tj*2*PANE_WIDTH+ti*2)+xoffset],e);
+          SetColor(&panel[3*(tj*2*PANE_WIDTH+ti*2+1)+xoffset], e);
+          SetColor(&panel[3*((tj*2+1)*PANE_WIDTH+ti*2)+xoffset],e); 
+          SetColor(&panel[3*((tj*2+1)*PANE_WIDTH+ti*2+1)+xoffset],e);
+        }
+       }
+    }
+  }
+  else //offset!=0
+  {
+    for (int tj=0;tj<RomHeight;tj++)
+    {
+      for (int ti=0;ti<RomWidth;ti++) panel[3*(tj*PANE_WIDTH+ti)+xoffset]=panel2[3*(tj*RomWidth+ti)];
+    }
+  }
+}
+
+void ScaleImage64() // scale for indexed image (all except RGB24)
+{
+  int xoffset=0;
+  memcpy(panel2,panel,RomWidth*RomHeight);
+  memset(panel,0,PANE_WIDTH*PANE_HEIGHT);
+  int scale=0; // 0 - no scale, 1 - half scale, 2 - twice scale
+  if ((RomWidth==192)&&(PANE_WIDTH==256)) xoffset=32;
+  else if (RomWidth==192)
+  {
+    xoffset=16;
+    scale=1;
+  }
+  else if ((RomWidth==256)&&(PANE_WIDTH==128)) scale=1;
+  else if ((RomWidth==128)&&(PANE_WIDTH==256)) scale=2;
+  else return;
+  if (scale==1)
+  {
+    // for half scaling we take the 4 points and look if there is one colour repeated
+    for (int ti=0;ti<RomHeight;ti+=2)
+    {
+      for (int tj=0;tj<RomWidth;tj+=2)
+      {
+        unsigned char* pp=&panel2[ti*RomWidth+tj];
+        if ((pp[0]==pp[1])||(pp[0]==pp[RomWidth])||(pp[0]==pp[RomWidth+1])) panel[xoffset+(tj/2)+(ti/2)*PANE_WIDTH]=pp[0];
+        else if ((pp[1]==pp[RomWidth])||(pp[1]==pp[RomWidth+1])) panel[xoffset+(tj/2)+(ti/2)*PANE_WIDTH]=pp[1];
+        else if ((pp[RomWidth]==pp[RomWidth+1])) panel[xoffset+(tj/2)+(ti/2)*PANE_WIDTH]=pp[RomWidth];
+        else panel[xoffset+(tj/2)+(ti/2)*PANE_WIDTH]=pp[0];
+      }
+    }
+  }
+  else if (scale==2)
+  {
+    // we implement scale2x http://www.scale2x.it/algorithm
+    for (int tj=0;tj<RomHeight;tj++)
+    {
+      for (int ti=0;ti<RomWidth;ti++)
+      {
+        unsigned int a, b, c, d, e, f, g, h, i;
+        if ((ti==0)&&(tj==0))
+        {
+          a=b=d=e=panel2[0];
+          c=f=panel2[1];
+          g=h=panel2[RomWidth];
+          i=panel2[RomWidth+1];
+        }
+        else if ((ti==0)&&(tj==RomHeight-1))
+        {
+          a=b=panel2[(tj-1)*RomWidth];
+          c=panel2[(tj-1)*RomWidth+1];
+          d=g=h=e=panel2[tj*RomWidth];
+          f=i=panel2[tj*RomWidth+1];
+        }
+        else if ((ti==RomWidth-1)&&(tj==0))
+        {
+          a=d=panel2[ti-1];
+          b=c=f=e=panel2[ti];
+          g=panel2[RomWidth+ti-1];
+          h=i=panel2[RomWidth+ti];
+        }
+        else if ((ti==RomWidth-1)&&(tj==RomHeight-1))
+        {
+          a=panel2[tj*RomWidth-2];
+          b=c=panel2[tj*RomWidth-1];
+          d=g=panel2[RomHeight*RomWidth-2];
+          e=f=h=i=panel2[RomHeight*RomWidth-1];
+        }
+        else if (ti==0)
+        {
+          a=b=panel2[(tj-1)*RomWidth];
+          c=panel2[(tj-1)*RomWidth+1];
+          d=e=panel2[tj*RomWidth];
+          f=panel2[tj*RomWidth+1];
+          g=h=panel2[(tj+1)*RomWidth];
+          i=panel2[(tj+1)*RomWidth+1];
+        }
+        else if (ti==RomWidth-1)
+        {
+          a=panel2[tj*RomWidth-2];
+          b=c=panel2[tj*RomWidth-1];
+          d=panel2[(tj+1)*RomWidth-2];
+          e=f=panel2[(tj+1)*RomWidth-1];
+          g=panel2[(tj+2)*RomWidth-2];
+          h=i=panel2[(tj+2)*RomWidth-1];
+        }
+        else if (tj==0)
+        {
+          a=d=panel2[ti-1];
+          b=e=panel2[ti];
+          c=f=panel2[ti+1];
+          g=panel2[RomWidth+ti-1];
+          h=panel2[RomWidth+ti];
+          i=panel2[RomWidth+ti+1];
+        }
+        else if (tj==RomHeight-1)
+        {
+          a=panel2[(tj-1)*RomWidth+ti-1];
+          b=panel2[(tj-1)*RomWidth+ti];
+          c=panel2[(tj-1)*RomWidth+ti+1];
+          d=g=panel2[tj*RomWidth+ti-1];
+          e=h=panel2[tj*RomWidth+ti];
+          f=i=panel2[tj*RomWidth+ti+1];
+        }
+        else
+        {
+          a=panel2[(tj-1)*RomWidth+ti-1];
+          b=panel2[(tj-1)*RomWidth+ti];
+          c=panel2[(tj-1)*RomWidth+ti+1];
+          d=panel2[tj*RomWidth+ti-1];
+          e=panel2[tj*RomWidth+ti];
+          f=panel2[tj*RomWidth+ti+1];
+          g=panel2[(tj+1)*RomWidth+ti-1];
+          h=panel2[(tj+1)*RomWidth+ti];
+          i=panel2[(tj+1)*RomWidth+ti+1];
+        }
+        if (b != h && d != f) {
+          panel[tj*2*PANE_WIDTH+ti*2+xoffset] = d == b ? d : e;
+          panel[tj*2*PANE_WIDTH+ti*2+1+xoffset] = b == f ? f : e;
+          panel[(tj*2+1)*PANE_WIDTH+ti*2+xoffset] = d == h ? d : e;
+          panel[(tj*2+1)*PANE_WIDTH+ti*2+1+xoffset] = h == f ? f : e;
+        } else {
+          panel[tj*2*PANE_WIDTH+ti*2+xoffset] = e;
+          panel[tj*2*PANE_WIDTH+ti*2+1+xoffset] = e;
+          panel[(tj*2+1)*PANE_WIDTH+ti*2+xoffset] = e;
+          panel[(tj*2+1)*PANE_WIDTH+ti*2+1+xoffset] = e;
+        }
+      }
+    }
+  }
+  else //offset!=0
+  {
+    for (int tj=0;tj<RomHeight;tj++)
+    {
+      for (int ti=0;ti<RomWidth;ti++) panel[tj*PANE_WIDTH+xoffset+ti]=panel2[tj*RomWidth+ti];
+    }
+  }
+}
+
+void fillpanel()
 {
   for (int tj = 0; tj < PANE_HEIGHT; tj++)
   {
     for (int ti = 0; ti < PANE_WIDTH; ti++)
     {
-      dma_display->drawPixelRGB888(ti, tj, Palette64[rotCols[pannel2[ti+tj*PANE_WIDTH]]*3+ordreRGB[acordreRGB * 3]], 
-      Palette64[rotCols[pannel2[ti+tj*PANE_WIDTH]]*3+ordreRGB[acordreRGB * 3+1]],Palette64[rotCols[pannel2[ti+tj*PANE_WIDTH]]*3+ordreRGB[acordreRGB * 3+2]]);
+      dma_display->drawPixelRGB888(ti, tj, panel[ti * 3 + tj * 3 * PANE_WIDTH + ordreRGB[acordreRGB * 3]], panel[ti * 3 + tj * 3 * PANE_WIDTH + ordreRGB[acordreRGB * 3 + 1]], panel[ti * 3 + tj * 3 * PANE_WIDTH + ordreRGB[acordreRGB * 3 + 2]]);
     }
   }
-  mode64=true;
+}
+
+void fillpanelMode64()
+{
+  for (int tj = 0; tj < PANE_HEIGHT; tj++)
+  {
+    for (int ti = 0; ti < PANE_WIDTH; ti++)
+    {
+      dma_display->drawPixelRGB888(ti, tj, Palette64[rotCols[panel[ti+tj*PANE_WIDTH]]*3+ordreRGB[acordreRGB * 3]], 
+        Palette64[rotCols[panel[ti+tj*PANE_WIDTH]]*3+ordreRGB[acordreRGB * 3+1]],Palette64[rotCols[panel[ti+tj*PANE_WIDTH]]*3+ordreRGB[acordreRGB * 3+2]]);
+    }
+  }
 }
 
 File fordre;
@@ -269,17 +558,17 @@ void SaveLum()
 void DisplayLogo(void)
 {
   File flogo;
-  if (PANEL_HEIGHT==64) flogo=SPIFFS.open("/logoHD.raw"); else flogo=SPIFFS.open("/logo.raw");
+  if (PANE_HEIGHT==64) flogo=SPIFFS.open("/logoHD.raw"); else flogo=SPIFFS.open("/logo.raw");
   if (!flogo) {
     //Serial.println("Failed to open file for reading");
     return;
   }
   for (unsigned int tj = 0; tj < PANE_HEIGHT*PANE_WIDTH*3; tj++)
   {
-    pannel[tj]=flogo.read();
+    panel[tj]=flogo.read();
   }
   flogo.close();
-  fillpannel();
+  fillpanel();
 }
 
 void InitPalettes(int R, int G, int B)
@@ -309,7 +598,7 @@ bool MireActive = true;
 bool handshakeSucceeded = false;
 // 256 is the default buffer size of the CP210x linux kernel driver, we should not exceed it as default.
 int serialTransferChunkSize = 256;
-unsigned char img2[3*64+6*PANE_WIDTH/8*PANE_HEIGHT+3*MAX_COLOR_ROTATIONS];
+unsigned char img2[3*64+6*256/8*64+3*MAX_COLOR_ROTATIONS];
 unsigned int frameCount = 0;
 unsigned int errorCount = 0;
 unsigned int watchdogCount = 0;
@@ -326,7 +615,7 @@ void setup()
   pinMode(ORDRE_BUTTON_PIN, INPUT_PULLUP);
   pinMode(LUMINOSITE_BUTTON_PIN, INPUT_PULLUP);
     
-  mxconfig.clkphase = false; // change if you have some parts of the pannel with a shift
+  mxconfig.clkphase = false; // change if you have some parts of the panel with a shift
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   dma_display->begin();
   LoadLum();
@@ -373,7 +662,6 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
     // From now on read full amount of byte chunks.
     chunkSize = serialTransferChunkSize;
   }
-
   return true;
 }
 
@@ -403,7 +691,7 @@ void updateColorRotations(void)
         }
     }
   }
-  if (rotfound==true) fillpannelMode64();
+  if (rotfound==true) fillpanelMode64();
 }
 
 void wait_for_ctrl_chars(void)
@@ -452,7 +740,7 @@ void loop()
       acordreRGB++;
       if (acordreRGB >= 6) acordreRGB = 0;
       SaveOrdreRGB();
-      fillpannel();
+      fillpanel();
       DisplayText(lumtxt,16,PANE_WIDTH/2-16/2-2*4/2,PANE_HEIGHT-5,255,255,255);
       DisplayLum();
     }
@@ -480,6 +768,7 @@ void loop()
   mode64 = false;
 
   // Commands:
+  //  2: receive rom frame size 
   //  3: render raw data
   //  6: init palettes
   //  7: render 16 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 2 pixels par byte
@@ -493,6 +782,7 @@ void loop()
   unsigned char c4;
   while (Serial.available()==0);
   c4=Serial.read();
+  
   if (c4 == 12) // ask for resolution (and shake hands)
   {
     for (int ti=0;ti<N_INTERMEDIATE_CTR_CHARS;ti++) Serial.write(CtrlCharacters[ti]);
@@ -501,6 +791,16 @@ void loop()
     Serial.write(PANE_HEIGHT&0xff);
     Serial.write((PANE_HEIGHT>>8)&0xff);
     handshakeSucceeded=true;
+  }
+  else if (c4 == 2) // get rom frame dimension
+  {
+    unsigned char tbuf[4];
+    if (SerialReadBuffer(tbuf,4))
+    {
+      RomWidth=(int)(tbuf[0])+(int)(tbuf[1]<<8);
+      RomHeight=(int)(tbuf[2])+(int)(tbuf[3]<<8);
+    }
+    RomWidthPlane=RomWidth>>3;
   }
   else if (c4 == 13) // set serial transfer chunk size
   {
@@ -528,68 +828,109 @@ void loop()
     Serial.write('A');
     dma_display->clearScreen();
   }
-  else if (c4 == 3)
+  else if (c4 == 3) // mode RGB24
   {
-    if (SerialReadBuffer(pannel,PANE_WIDTH*PANE_HEIGHT*3))
+    if (SerialReadBuffer(panel,RomHeight*RomWidth*3))
     {
-      fillpannel();
+      mode64=false;
+      if ((RomHeight!=PANE_HEIGHT)||(RomWidth!=PANE_WIDTH)) ScaleImage();
+      fillpanel();
     }
   }
   else if (c4 == 8) // mode 4 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 4 pixels par byte
   {
-    if (SerialReadBuffer(img2,3*4+2*PANE_WIDTH/8*PANE_HEIGHT))
+    if (SerialReadBuffer(img2,3*4+2*RomWidthPlane*RomHeight))
     {
       for (int ti = 3; ti >= 0; ti--)
       {
-        Palette4[ti * 3] = img2[ti*3];
-        Palette4[ti * 3 + 1] = img2[ti*3+1];
-        Palette4[ti * 3 + 2] = img2[ti*3+2];
+        Palette64[ti * 3] = img2[ti*3];
+        Palette64[ti * 3 + 1] = img2[ti*3+1];
+        Palette64[ti * 3 + 2] = img2[ti*3+2];
       }
       unsigned char* img=&img2[3*4];
-      for (int tj = 0; tj < PANE_HEIGHT; tj++)
+      for (int tj = 0; tj < RomHeight; tj++)
       {
-        for (int ti = 0; ti < PANE_WIDTH / 8; ti++)
+        for (int ti = 0; ti < RomWidthPlane; ti++)
         {
           unsigned char mask = 1;
           unsigned char planes[2];
-          planes[0] = img[ti + tj * PANE_WIDTH/8];
-          planes[1] = img[PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
+          planes[0] = img[ti + tj * RomWidthPlane];
+          planes[1] = img[RomWidthPlane*RomHeight + ti + tj * RomWidthPlane];
           for (int tk = 0; tk < 8; tk++)
           {
             unsigned char idx = 0;
             if ((planes[0] & mask) > 0) idx |= 1;
             if ((planes[1] & mask) > 0) idx |= 2;
-            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3] = Palette4[idx * 3];
-            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 1] = Palette4[idx * 3 + 1];
-            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 2] = Palette4[idx * 3 + 2];
+            panel[(ti * 8 + tk)+tj * RomWidth]=idx;
             mask <<= 1;
           }
         }
       }
-      fillpannel();
+      mode64=false;
+      for (int ti=0;ti<64;ti++) rotCols[ti]=ti;
+      if ((RomHeight!=PANE_HEIGHT)||(RomWidth!=PANE_WIDTH)) ScaleImage64();
+      fillpanelMode64();
     }
   }
   else if (c4 == 7) // mode 16 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 2 pixels par byte
   {
-    if (SerialReadBuffer(img2,3*4+4*PANE_WIDTH/8*PANE_HEIGHT))
+    if (SerialReadBuffer(img2,3*4+4*RomWidthPlane*RomHeight))
     {
       for (int ti = 3; ti >= 0; ti--)
       {
-        Palette16[ti * 3] = img2[ti*3];
-        Palette16[ti * 3 + 1] = img2[ti*3+1];
-        Palette16[ti * 3 + 2] = img2[ti*3+2];
+        Palette64[(4 * ti + 3)* 3] = img2[ti*3];
+        Palette64[(4 * ti + 3) * 3 + 1] = img2[ti*3+1];
+        Palette64[(4 * ti + 3) * 3 + 2] = img2[ti*3+2];
       }
+      Palette64[0]=Palette64[1]=Palette64[2]=0;
+      Palette64[3]=Palette64[3*3]/3;
+      Palette64[4]=Palette64[3*3+1]/3;
+      Palette64[5]=Palette64[3*3+2]/3;
+      Palette64[6]=2*(Palette64[3*3]/3);
+      Palette64[7]=2*(Palette64[3*3+1]/3);
+      Palette64[8]=2*(Palette64[3*3+2]/3);
+      
+      Palette64[12]=Palette64[3*3]+(Palette64[7*3]-Palette64[3*3])/4;
+      Palette64[13]=Palette64[3*3+1]+(Palette64[7*3+1]-Palette64[3*3+1])/4;
+      Palette64[14]=Palette64[3*3+2]+(Palette64[7*3+2]-Palette64[3*3+2])/4;
+      Palette64[15]=Palette64[3*3]+2*((Palette64[7*3]-Palette64[3*3])/4);
+      Palette64[16]=Palette64[3*3+1]+2*((Palette64[7*3+1]-Palette64[3*3+1])/4);
+      Palette64[17]=Palette64[3*3+2]+2*((Palette64[7*3+2]-Palette64[3*3+2])/4);
+      Palette64[18]=Palette64[3*3]+3*((Palette64[7*3]-Palette64[3*3])/4);
+      Palette64[19]=Palette64[3*3+1]+3*((Palette64[7*3+1]-Palette64[3*3+1])/4);
+      Palette64[20]=Palette64[3*3+2]+3*((Palette64[7*3+2]-Palette64[3*3+2])/4);
+      
+      Palette64[24]=Palette64[7*3]+(Palette64[11*3]-Palette64[7*3])/4;
+      Palette64[25]=Palette64[7*3+1]+(Palette64[11*3+1]-Palette64[7*3+1])/4;
+      Palette64[26]=Palette64[7*3+2]+(Palette64[11*3+2]-Palette64[7*3+2])/4;
+      Palette64[27]=Palette64[7*3]+2*((Palette64[11*3]-Palette64[7*3])/4);
+      Palette64[28]=Palette64[7*3+1]+2*((Palette64[11*3+1]-Palette64[7*3+1])/4);
+      Palette64[29]=Palette64[7*3+2]+2*((Palette64[11*3+2]-Palette64[7*3+2])/4);
+      Palette64[30]=Palette64[7*3]+3*((Palette64[11*3]-Palette64[7*3])/4);
+      Palette64[31]=Palette64[7*3+1]+3*((Palette64[11*3+1]-Palette64[7*3+1])/4);
+      Palette64[32]=Palette64[7*3+2]+3*((Palette64[11*3+2]-Palette64[7*3+2])/4);
+      
+      Palette64[36]=Palette64[11*3]+(Palette64[15*3]-Palette64[11*3])/4;
+      Palette64[37]=Palette64[11*3+1]+(Palette64[15*3+1]-Palette64[11*3+1])/4;
+      Palette64[38]=Palette64[11*3+2]+(Palette64[15*3+2]-Palette64[11*3+2])/4;
+      Palette64[39]=Palette64[11*3]+2*((Palette64[15*3]-Palette64[11*3])/4);
+      Palette64[40]=Palette64[11*3+1]+2*((Palette64[15*3+1]-Palette64[11*3+1])/4);
+      Palette64[41]=Palette64[11*3+2]+2*((Palette64[15*3+2]-Palette64[11*3+2])/4);
+      Palette64[42]=Palette64[11*3]+3*((Palette64[15*3]-Palette64[11*3])/4);
+      Palette64[43]=Palette64[11*3+1]+3*((Palette64[15*3+1]-Palette64[11*3+1])/4);
+      Palette64[44]=Palette64[11*3+2]+3*((Palette64[15*3+2]-Palette64[11*3+2])/4);
+      
       unsigned char* img=&img2[3*4];
-      for (int tj = 0; tj < PANE_HEIGHT; tj++)
+      for (int tj = 0; tj < RomHeight; tj++)
       {
-        for (int ti = 0; ti < PANE_WIDTH / 8; ti++)
+        for (int ti = 0; ti < RomWidthPlane; ti++)
         {
           unsigned char mask = 1;
           unsigned char planes[4];
-          planes[0] = img[ti + tj * PANE_WIDTH/8];
-          planes[1] = img[PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
-          planes[2] = img[2*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
-          planes[3] = img[3*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
+          planes[0] = img[ti + tj * RomWidthPlane];
+          planes[1] = img[RomWidthPlane*RomHeight + ti + tj * RomWidthPlane];
+          planes[2] = img[2*RomWidthPlane*RomHeight + ti + tj * RomWidthPlane];
+          planes[3] = img[3*RomWidthPlane*RomHeight + ti + tj * RomWidthPlane];
           for (int tk = 0; tk < 8; tk++)
           {
             unsigned char idx = 0;
@@ -597,45 +938,39 @@ void loop()
             if ((planes[1] & mask) > 0) idx |= 2;
             if ((planes[2] & mask) > 0) idx |= 4;
             if ((planes[3] & mask) > 0) idx |= 8;
-            float fvalue = (float)idx / 4.0f;
-            float fvalueR = (float)Palette16[((int)fvalue + 1) * 3] * (fvalue - (int)fvalue) + (float)Palette16[((int)fvalue) * 3] * (1.0f - (fvalue - (int)fvalue));
-            if (fvalueR>255) fvalueR=255.0f; else if (fvalueR<0) fvalueR=0.0f;
-            float fvalueG = (float)Palette16[((int)fvalue + 1) * 3 + 1] * (fvalue - (int)fvalue) + (float)Palette16[((int)fvalue) * 3 + 1] * (1.0f - (fvalue - (int)fvalue));
-            if (fvalueG>255) fvalueG=255.0f; else if (fvalueG<0) fvalueG=0.0f;
-            float fvalueB = (float)Palette16[((int)fvalue + 1) * 3 + 2] * (fvalue - (int)fvalue) + (float)Palette16[((int)fvalue) * 3 + 2] * (1.0f - (fvalue - (int)fvalue));
-            if (fvalueB>255) fvalueB=255.0f; else if (fvalueB<0) fvalueB=0.0f;
-            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3] = (int)fvalueR;
-            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 1] = (int)fvalueG;
-            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 2] = (int)fvalueB;
+            panel[(ti * 8 + tk)+tj * RomWidth]=idx;
             mask <<= 1;
           }
         }
       }
-      fillpannel();
+      mode64=false;
+      for (int ti=0;ti<64;ti++) rotCols[ti]=ti;
+      if ((RomHeight!=PANE_HEIGHT)||(RomWidth!=PANE_WIDTH)) ScaleImage64();
+      fillpanelMode64();
     }
   }
   else if (c4 == 9) // mode 16 couleurs avec 1 palette 16 couleurs (16*3 bytes) suivis de 4 bytes par groupe de 8 points (séparés en plans de bits 4*512 bytes)
   {
-    if (SerialReadBuffer(img2,3*16+4*PANE_WIDTH/8*PANE_HEIGHT))
+    if (SerialReadBuffer(img2,3*16+4*RomWidthPlane*RomHeight))
     {
       for (int ti = 15; ti >= 0; ti--)
       {
-        Palette16[ti * 3] = img2[ti*3];
-        Palette16[ti * 3 + 1] = img2[ti*3+1];
-        Palette16[ti * 3 + 2] = img2[ti*3+2];
+        Palette64[ti * 3] = img2[ti*3];
+        Palette64[ti * 3 + 1] = img2[ti*3+1];
+        Palette64[ti * 3 + 2] = img2[ti*3+2];
       }
       unsigned char* img=&img2[3*16];
-      for (int tj = 0; tj < PANE_HEIGHT; tj++)
+      for (int tj = 0; tj < RomHeight; tj++)
       {
-        for (int ti = 0; ti < PANE_WIDTH / 8; ti++)
+        for (int ti = 0; ti < RomWidthPlane; ti++)
         {
           // on reconstitue un indice à partir des plans puis une couleur à partir de la palette
           unsigned char mask = 1;
           unsigned char planes[4];
-          planes[0] = img[ti + tj * PANE_WIDTH/8];
-          planes[1] = img[PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
-          planes[2] = img[2*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
-          planes[3] = img[3*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
+          planes[0] = img[ti + tj * RomWidthPlane];
+          planes[1] = img[RomWidthPlane*RomHeight + ti + tj * RomWidthPlane];
+          planes[2] = img[2*RomWidthPlane*RomHeight + ti + tj * RomWidthPlane];
+          planes[3] = img[3*RomWidthPlane*RomHeight + ti + tj * RomWidthPlane];
           for (int tk = 0; tk < 8; tk++)
           {
             unsigned char idx = 0;
@@ -643,19 +978,20 @@ void loop()
             if ((planes[1] & mask) > 0) idx |= 2;
             if ((planes[2] & mask) > 0) idx |= 4;
             if ((planes[3] & mask) > 0) idx |= 8;
-            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3] = Palette16[idx * 3];
-            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 1] = Palette16[idx * 3 + 1];
-            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 2] = Palette16[idx * 3 + 2];
+            panel[(ti * 8 + tk)+tj * RomWidth]=idx;
             mask <<= 1;
           }
         }
       }
-      fillpannel();
+      mode64=false;
+      for (int ti=0;ti<64;ti++) rotCols[ti]=ti;
+      if ((RomHeight!=PANE_HEIGHT)||(RomWidth!=PANE_WIDTH)) ScaleImage64();
+      fillpanelMode64();
     }
   }
   else if (c4 == 11) // mode 64 couleurs avec 1 palette 64 couleurs (64*3 bytes) suivis de 6 bytes par groupe de 8 points (séparés en plans de bits 6*512 bytes) suivis de 3*8 bytes de rotations de couleurs
   {
-    if (SerialReadBuffer(img2,3*64+6*PANE_WIDTH/8*PANE_HEIGHT+3*MAX_COLOR_ROTATIONS))
+    if (SerialReadBuffer(img2,3*64+6*RomWidthPlane*RomHeight+3*MAX_COLOR_ROTATIONS))
     {
       for (int ti = 63; ti >= 0; ti--)
       {
@@ -664,19 +1000,19 @@ void loop()
         Palette64[ti * 3 + 2] = img2[ti*3+2];
       }
       unsigned char* img=&img2[3*64];
-      for (int tj = 0; tj < PANE_HEIGHT; tj++)
+      for (int tj = 0; tj < RomHeight; tj++)
       {
-        for (int ti = 0; ti < PANE_WIDTH / 8; ti++)
+        for (int ti = 0; ti < RomWidthPlane; ti++)
         {
           // on reconstitue un indice à partir des plans puis une couleur à partir de la palette
           unsigned char mask = 1;
           unsigned char planes[6];
-          planes[0] = img[ti + tj * PANE_WIDTH/8];
-          planes[1] = img[PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
-          planes[2] = img[2*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
-          planes[3] = img[3*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
-          planes[4] = img[4*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
-          planes[5] = img[5*PANE_WIDTH_PLANE*PANE_HEIGHT + ti + tj * PANE_WIDTH_PLANE];
+          planes[0] = img[ti + tj * RomWidthPlane];
+          planes[1] = img[RomWidthPlane*RomHeight + ti + tj * RomWidthPlane];
+          planes[2] = img[2*RomWidthPlane*RomHeight + ti + tj * RomWidthPlane];
+          planes[3] = img[3*RomWidthPlane*RomHeight + ti + tj * RomWidthPlane];
+          planes[4] = img[4*RomWidthPlane*RomHeight + ti + tj * RomWidthPlane];
+          planes[5] = img[5*RomWidthPlane*RomHeight + ti + tj * RomWidthPlane];
           for (int tk = 0; tk < 8; tk++)
           {
             unsigned char idx = 0;
@@ -686,15 +1022,12 @@ void loop()
             if ((planes[3] & mask) > 0) idx |= 8;
             if ((planes[4] & mask) > 0) idx |= 0x10;
             if ((planes[5] & mask) > 0) idx |= 0x20;
-            /*pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3] = Palette64[idx * 3];
-            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 1] = Palette64[idx * 3 + 1];
-            pannel[(ti * 8 + tk) * 3 + tj * PANE_WIDTH * 3 + 2] = Palette64[idx * 3 + 2];*/
-            pannel2[(ti * 8 + tk)+tj * PANE_WIDTH]=idx;
+            panel[(ti * 8 + tk)+tj * RomWidth]=idx;
             mask <<= 1;
           }
         }
       }
-      img=&img2[3*64+6*PANE_WIDTH/8*PANE_HEIGHT];
+      img=&img2[3*64+6*RomWidthPlane*RomHeight];
       unsigned long actime=millis();
       for (int ti=0;ti<64;ti++) rotCols[ti]=ti;
       for (int ti=0;ti<MAX_COLOR_ROTATIONS;ti++)
@@ -706,10 +1039,11 @@ void loop()
         if (timeSpan[ti]<MIN_SPAN_ROT) timeSpan[ti]=MIN_SPAN_ROT;
         nextTime[ti]=actime+timeSpan[ti];
       }
-      fillpannelMode64();
+      mode64=true;
+      if ((RomHeight!=PANE_HEIGHT)||(RomWidth!=PANE_WIDTH)) ScaleImage64();
+      fillpanelMode64();
     }
   }
-
   if (DEBUG_FRAMES)
   {
     // An overflow of the unsigned int counters should not be an issue, they just reset to 0.
