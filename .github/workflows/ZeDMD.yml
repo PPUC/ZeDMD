@@ -42,6 +42,7 @@ jobs:
 
             - name: Build ZeDMD
               run: |
+                pio run -e ${{ matrix.panels }}
                 pio run -e ${{ matrix.panels }} -t buildfs
 
             - uses: actions/upload-artifact@v3
