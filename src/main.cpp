@@ -1,6 +1,19 @@
-#define PANEL_WIDTH    64    // Width: number of LEDs for 1 panel.
-#define PANEL_HEIGHT   32    // Height: number of LEDs.
-#define PANELS_NUMBER  2     // Number of horizontally chained panels.
+#ifdef ZEDMD_64_64_4
+    #define PANEL_WIDTH    64    // Width: number of LEDs for 1 panel.
+    #define PANEL_HEIGHT   64    // Height: number of LEDs.
+    #define PANELS_NUMBER  4     // Number of horizontally chained panels.
+#endif
+#ifdef ZEDMD_128_64_2
+    #define PANEL_WIDTH    128   // Width: number of LEDs for 1 panel.
+    #define PANEL_HEIGHT   32    // Height: number of LEDs.
+    #define PANELS_NUMBER  2     // Number of horizontally chained panels.
+#endif
+#ifndef PANEL_WIDTH
+    #define PANEL_WIDTH    64    // Width: number of LEDs for 1 panel.
+    #define PANEL_HEIGHT   32    // Height: number of LEDs.
+    #define PANELS_NUMBER  2     // Number of horizontally chained panels.
+#endif
+
 #define SERIAL_TIMEOUT 100   // Time in milliseconds to wait for the next data chunk.
 #define FRAME_TIMEOUT  10000 // Time in milliseconds to wait for a new frame.
 #define DEBUG_FRAMES   0     // Set to 1 to output number of rendered frames on top and number of error at the bottom.
@@ -24,6 +37,7 @@
 #define MAX_COLOR_ROTATIONS 8
 #define MIN_SPAN_ROT 60
 
+#include <Arduino.h>
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include <SPIFFS.h>
 
@@ -593,6 +607,11 @@ void InitPalettes(int R, int G, int B)
     Palette64[ti * 3 + 2] = (unsigned char)((float)B*levels64[ti] / 100.0f);
   }
 }
+void Say(unsigned char where,unsigned int what)
+{
+    DisplayNombre(where,3,0,where*5,255,255,255);
+    if (what!=(unsigned int)-1) DisplayNombre(what,10,15,where*5,255,255,255);
+}
 
 bool MireActive = true;
 bool handshakeSucceeded = false;
@@ -663,12 +682,6 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
     chunkSize = serialTransferChunkSize;
   }
   return true;
-}
-
-void Say(unsigned char where,unsigned int what)
-{
-  DisplayNombre(where,3,0,where*5,255,255,255);
-  if (what!=(unsigned int)-1) DisplayNombre(what,10,15,where*5,255,255,255);
 }
 
 void updateColorRotations(void)
