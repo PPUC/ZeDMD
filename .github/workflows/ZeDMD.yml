@@ -1,0 +1,51 @@
+name: ZeDMD
+
+on:
+    push:
+
+    pull_request:
+
+jobs:
+    pio-run:
+        runs-on: ubuntu-latest
+
+        strategy:
+            matrix:
+                panels: ['64x32x2', '64x64x4', '128x64x2']
+
+        name: ZeDMD ${{ matrix.panels }}
+
+        steps:
+            - uses: actions/checkout@v3
+
+            - name: Cache pip
+              uses: actions/cache@v3
+              with:
+                path: ~/.cache/pip
+                key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+                restore-keys: |
+                  ${{ runner.os }}-pip-
+
+            - name: Cache PlatformIO
+              uses: actions/cache@v3
+              with:
+                path: ~/.platformio
+                key: ${{ runner.os }}-${{ hashFiles('**/lockfiles') }}
+
+            - name: Set up Python
+              uses: actions/setup-python@v3
+
+            - name: Install PlatformIO
+              run: |
+                python -m pip install --upgrade pip
+                pip install --upgrade platformio
+
+            - name: Build ZeDMD
+              run: |
+                pio run -e ${{ matrix.panels }}
+                pio run -e ${{ matrix.panels }} -t buildfs
+
+            - uses: actions/upload-artifact@v3
+              with:
+                name: ZeDMD-${{ matrix.panels }}
+                path: .pio/build/${{ matrix.panels }}
