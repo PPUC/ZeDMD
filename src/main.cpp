@@ -5,7 +5,7 @@
 #endif
 #ifdef ZEDMD_128_64_2
     #define PANEL_WIDTH    128   // Width: number of LEDs for 1 panel.
-    #define PANEL_HEIGHT   32    // Height: number of LEDs.
+    #define PANEL_HEIGHT   64    // Height: number of LEDs.
     #define PANELS_NUMBER  2     // Number of horizontally chained panels.
 #endif
 #ifndef PANEL_WIDTH
