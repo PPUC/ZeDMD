@@ -636,10 +636,6 @@ void setup()
   Serial.setRxBufferSize(serialTransferChunkSize);
   Serial.setTimeout(SERIAL_TIMEOUT);
 
-  dma_display->drawChar((uint16_t) 0, (uint16_t) 0, (unsigned char) 'S', (uint16_t) 255, (uint16_t) 0, (uint8_t) 8);
-  delay(4000);
-  dma_display->clearScreen();
-
   LoadLum();
 
   dma_display->setBrightness8(lumval[lumstep]);    // range is 0-255, 0 - 0%, 255 - 100%
