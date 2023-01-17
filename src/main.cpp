@@ -5,7 +5,7 @@
 #endif
 #ifdef ZEDMD_128_64_2
     #define PANEL_WIDTH    128   // Width: number of LEDs for 1 panel.
-    #define PANEL_HEIGHT   32    // Height: number of LEDs.
+    #define PANEL_HEIGHT   64    // Height: number of LEDs.
     #define PANELS_NUMBER  2     // Number of horizontally chained panels.
 #endif
 #ifndef PANEL_WIDTH
@@ -19,7 +19,6 @@
 #define DEBUG_FRAMES   0     // Set to 1 to output number of rendered frames on top and number of error at the bottom.
 // ------------------------------------------ ZeDMD by Zedrummer (http://pincabpassion.net)---------------------------------------------
 // - Install the ESP32 board in Arduino IDE as explained here https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/
-// - Install SPIFFS file system as explained here https://randomnerdtutorials.com/install-esp32-filesystem-uploader-arduino-ide/
 // - Install "ESP32 HUB75 LED MATRIX panel DMA" Display library via the library manager
 // - Go to menu "Tools" then click on "ESP32 Sketch Data Upload"
 // - Change the values in the 3 first lines above (PANEL_WIDTH, PANEL_HEIGHT, PANELS_NUMBER) according to your panels
@@ -39,7 +38,7 @@
 
 #include <Arduino.h>
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
-#include <SPIFFS.h>
+#include <LittleFS.h>
 
 /* Pinout from ESP32-HUB75-MatrixPanel-I2S-DMA.h
     #define R1_PIN_DEFAULT  25
@@ -212,7 +211,7 @@ void DisplayLum(void)
   DisplayNombre(lumstep,2,PANE_WIDTH/2-16/2-2*4/2+16,PANE_HEIGHT-5,255,255,255);
 }
 
-void DisplayText(bool* text, int width, int x, int y, int R, int G, int B)
+void  DisplayText(bool* text, int width, int x, int y, int R, int G, int B)
 {
   // affiche le texte "SCORE" en (x, y)
   for (unsigned int ti=0;ti<width;ti++)
@@ -535,11 +534,9 @@ void fillpanelMode64()
   }
 }
 
-File fordre;
-
 void LoadOrdreRGB()
 {
-  fordre=SPIFFS.open("/ordrergb.val");
+  File fordre=LittleFS.open("/ordrergb.val", "r");
   if (!fordre) return;
   acordreRGB=fordre.read();
   fordre.close();
@@ -547,16 +544,14 @@ void LoadOrdreRGB()
 
 void SaveOrdreRGB()
 {
-  fordre=SPIFFS.open("/ordrergb.val","w");
+  File fordre=LittleFS.open("/ordrergb.val", "w");
   fordre.write(acordreRGB);
   fordre.close();
 }
 
-File flum;
-
 void LoadLum()
 {
-  flum=SPIFFS.open("/lum.val");
+  File flum=LittleFS.open("/lum.val", "r");
   if (!flum) return;
   lumstep=flum.read();
   flum.close();
@@ -564,7 +559,7 @@ void LoadLum()
 
 void SaveLum()
 {
-  flum=SPIFFS.open("/lum.val","w");
+  File flum=LittleFS.open("/lum.val", "w");
   flum.write(lumstep);
   flum.close();
 }
@@ -572,7 +567,7 @@ void SaveLum()
 void DisplayLogo(void)
 {
   File flogo;
-  if (PANE_HEIGHT==64) flogo=SPIFFS.open("/logoHD.raw"); else flogo=SPIFFS.open("/logo.raw");
+  if (PANE_HEIGHT==64) flogo=LittleFS.open("/logoHD.raw", "r"); else flogo=LittleFS.open("/logo.raw", "r");
   if (!flogo) {
     //Serial.println("Failed to open file for reading");
     return;
@@ -624,20 +619,25 @@ unsigned int watchdogCount = 0;
 
 void setup()
 {
-  Serial.begin(921600);
-  while (!Serial);
-  Serial.setRxBufferSize(serialTransferChunkSize);
-  Serial.setTimeout(SERIAL_TIMEOUT);
-
-  if (!SPIFFS.begin(true)) return;
-
   pinMode(ORDRE_BUTTON_PIN, INPUT_PULLUP);
   pinMode(LUMINOSITE_BUTTON_PIN, INPUT_PULLUP);
     
   mxconfig.clkphase = false; // change if you have some parts of the panel with a shift
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   dma_display->begin();
+
+  if (!LittleFS.begin()) {
+    dma_display->drawChar((uint16_t) 0, (uint16_t) 0, (unsigned char) 'E', (uint16_t) 255, (uint16_t) 0, (uint8_t) 8);
+    delay(4000);
+  }
+
+  Serial.begin(921600);
+  while (!Serial);
+  Serial.setRxBufferSize(serialTransferChunkSize);
+  Serial.setTimeout(SERIAL_TIMEOUT);
+
   LoadLum();
+
   dma_display->setBrightness8(lumval[lumstep]);    // range is 0-255, 0 - 0%, 255 - 100%
   dma_display->clearScreen();
 
