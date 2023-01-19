@@ -44,9 +44,14 @@ jobs:
               run: |
                 pio run -e ${{ matrix.panels }}
                 pio run -e ${{ matrix.panels }} -t buildfs
-                python ~/.platformio/packages/tool-esptoolpy/esptool.py --chip esp32 merge_bin -o ZeDMD-${{ matrix.panels }}.bin --flash_mode dio --flash_size 4MB 0x1000 .pio/build/${{ matrix.panels }}/bootloader.bin 0x8000 .pio/build/${{ matrix.panels }}/partitions.bin 0xe000 ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin 0x10000 .pio/build/${{ matrix.panels }}/firmware.bin 2686976 .pio/build/${{ matrix.panels }}/spiffs.bin
+                python ~/.platformio/packages/tool-esptoolpy/esptool.py --chip esp32 merge_bin -o ZeDMD.bin --flash_mode qio --flash_size 4MB \
+                  0x1000 .pio/build/${{ matrix.panels }}/bootloader.bin \
+                  0x8000 .pio/build/${{ matrix.panels }}/partitions.bin \
+                  0xe000 ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin \
+                  0x10000 .pio/build/${{ matrix.panels }}/firmware.bin \
+                  0x210000 .pio/build/${{ matrix.panels }}/littlefs.bin
 
             - uses: actions/upload-artifact@v3
               with:
-                name: ZeDMD-${{ matrix.panels }}.bin
-                path: ZeDMD-${{ matrix.panels }}.bin
+                name: ZeDMD-${{ matrix.panels }}
+                path: ZeDMD.bin
