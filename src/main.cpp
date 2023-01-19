@@ -41,40 +41,43 @@
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include <SPIFFS.h>
 
-/* Pinout from ESP32-HUB75-MatrixPanel-I2S-DMA.h
-    #define R1_PIN_DEFAULT  25
-    #define G1_PIN_DEFAULT  26
-    #define B1_PIN_DEFAULT  27
-    #define R2_PIN_DEFAULT  14
-    #define G2_PIN_DEFAULT  12
-    #define B2_PIN_DEFAULT  13
-
-    #define A_PIN_DEFAULT   23
-    #define B_PIN_DEFAULT   19
-    #define C_PIN_DEFAULT   5
-    #define D_PIN_DEFAULT   17
-    #define E_PIN_DEFAULT   -1 // IMPORTANT: Change to a valid pin if using a 64x64px panel.
-              
-    #define LAT_PIN_DEFAULT 4
-    #define OE_PIN_DEFAULT  15
-    #define CLK_PIN_DEFAULT 16
- */
-
-// Change these to whatever suits
-#define R1_PIN 25
-#define G1_PIN 26
-#define B1_PIN 27
-#define R2_PIN 14
-#define G2_PIN 12
-#define B2_PIN 13
-#define A_PIN 23
-#define B_PIN 19
-#define C_PIN 5
-#define D_PIN 17
-#define E_PIN 22 // required for 1/32 scan panels, like 64x64. Any available pin would do, i.e. IO32. If 1/16 scan panels, no connection to this pin needed
-#define LAT_PIN 4
-#define OE_PIN 15
-#define CLK_PIN 16
+#ifdef ZEDMD_SPI
+  #define R1_PIN 25
+  #define G1_PIN 26
+  #define B1_PIN 27
+  #define R2_PIN 14
+  #define G2_PIN 12
+  #define B2_PIN 13
+  // MOSI 23: move A_PIN to 33
+  #define A_PIN 33
+  // MISO	19: move B_PIN to 32
+  #define B_PIN 32
+  // CS 5: move C_PIN to 2
+  #define C_PIN 2
+  #define D_PIN 17
+  #define E_PIN 22 // required for 1/32 scan panels, like 64x64. Any available pin would do, i.e. IO32. If 1/16 scan panels, no connection to this pin needed
+  #define LAT_PIN 4
+  #define OE_PIN 15
+  #define CLK_PIN 16
+  #define NEW_FRAME_PIN 21
+  // SCLK	18
+#endif
+#ifndef R1_PIN
+  #define R1_PIN 25
+  #define G1_PIN 26
+  #define B1_PIN 27
+  #define R2_PIN 14
+  #define G2_PIN 12
+  #define B2_PIN 13
+  #define A_PIN 23
+  #define B_PIN 19
+  #define C_PIN 5
+  #define D_PIN 17
+  #define E_PIN 22 // required for 1/32 scan panels, like 64x64. Any available pin would do, i.e. IO32. If 1/16 scan panels, no connection to this pin needed
+  #define LAT_PIN 4
+  #define OE_PIN 15
+  #define CLK_PIN 16
+#endif
 
 #define N_CTRL_CHARS 6
 #define N_INTERMEDIATE_CTR_CHARS 4
