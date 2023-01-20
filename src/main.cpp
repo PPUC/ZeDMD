@@ -17,12 +17,8 @@
 #define SERIAL_TIMEOUT 100   // Time in milliseconds to wait for the next data chunk.
 #define FRAME_TIMEOUT  10000 // Time in milliseconds to wait for a new frame.
 #define DEBUG_FRAMES   0     // Set to 1 to output number of rendered frames on top and number of error at the bottom.
+
 // ------------------------------------------ ZeDMD by Zedrummer (http://pincabpassion.net)---------------------------------------------
-// - Install the ESP32 board in Arduino IDE as explained here https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/
-// - Install "ESP32 HUB75 LED MATRIX panel DMA" Display library via the library manager
-// - Go to menu "Tools" then click on "ESP32 Sketch Data Upload"
-// - Change the values in the 3 first lines above (PANEL_WIDTH, PANEL_HEIGHT, PANELS_NUMBER) according to your panels
-// - Inject this code in the board
 // - If you have blurry pictures, the display is not clean, try to reduce the input voltage of your LED matrix panels, often, 5V panels need
 // between 4V and 4.5V to display clean pictures, you often have a screw in switch-mode power supplies to change the output voltage a little bit
 // - While the initial pattern logo is displayed, check you have red in the upper left, green in the lower left and blue in the upper right,
@@ -41,6 +37,11 @@
 #include <LittleFS.h>
 
 #ifdef ZEDMD_SPI
+  #include <SPI.h>
+
+  #define SPI_CLK 1000000 // 1 MHz
+  #define SPI_IRQ_PIN 21
+
   #define R1_PIN 25
   #define G1_PIN 26
   #define B1_PIN 27
@@ -58,8 +59,38 @@
   #define LAT_PIN 4
   #define OE_PIN 15
   #define CLK_PIN 16
-  #define NEW_FRAME_PIN 21
   // SCLK	18
+
+  // SPI data types and header blocks
+  // header block length should always be a multiple of 32bit
+  #define SPI_BLOCK_PIX 0xcc33
+
+  typedef struct __attribute__((__packed__)) block_header_t
+  {
+      uint16_t block_type; // block type
+      uint16_t len;        // length of the whole data including header in bytes
+  } block_header_t;
+
+  typedef struct __attribute__((__packed__)) block_pix_header_t
+  {
+      uint16_t columns;      // number of columns
+      uint16_t rows;         // number of rows
+      uint16_t bitsperpixel; // bits per pixel
+      uint16_t padding;
+  } block_pix_header_t;
+
+  block_header_t spiBlockHeader;
+  block_pix_header_t spiPixHeader;
+  uint16_t spiGet16 = 0;
+
+  SPIClass *spi = nullptr;
+  SPISettings spiSettings(SPI_CLK, MSBFIRST, SPI_MODE0);
+
+  uint8_t defaultPalette2Bit[12] = { 0, 0, 0, 144, 34, 0, 192, 76, 0, 255, 127 ,0 };
+  uint8_t defaultPalette4Bit[48] = { 0, 0, 0, 51, 25, 0, 64, 32, 0, 77, 38, 0,
+                                     89, 44, 0, 102, 51, 0, 115, 57, 0, 128, 64, 0,
+                                     140, 70, 0, 153, 76, 0, 166, 83, 0, 179, 89, 0,
+                                     191, 95, 0, 204, 102, 0, 230, 114, 0, 255, 127, 0 };
 #endif
 #ifndef R1_PIN
   #define R1_PIN 25
@@ -634,10 +665,22 @@ void setup()
     delay(4000);
   }
 
-  Serial.begin(921600);
-  while (!Serial);
-  Serial.setRxBufferSize(serialTransferChunkSize);
-  Serial.setTimeout(SERIAL_TIMEOUT);
+  #ifdef ZEDMD_SPI
+    // Initialise vspi with default pins
+    // SCLK = 18, MISO = 19, MOSI = 23, SS = 5
+    spi->begin();
+    // Set up slave select pin as outputs as the Arduino API
+    // doesn't handle automatically pulling SS low
+    pinMode(spi->pinSS(), OUTPUT);
+    // DMD reader indicates a new frame by setting this pin high
+    pinMode(SPI_IRQ_PIN, INPUT_PULLDOWN);
+  #endif
+  #ifndef ZEDMD_SPI
+    Serial.begin(921600);
+    while (!Serial);
+    Serial.setRxBufferSize(serialTransferChunkSize);
+    Serial.setTimeout(SERIAL_TIMEOUT);
+  #endif
 
   LoadLum();
 
@@ -653,6 +696,65 @@ void setup()
   InitPalettes(255,109,0);
 }
 
+void updateColorRotations(void)
+{
+  unsigned long actime=millis();
+  bool rotfound=false;
+  for (int ti=0;ti<MAX_COLOR_ROTATIONS;ti++)
+  {
+    if (firstCol[ti]==255) continue;
+    if (actime >= nextTime[ti])
+    {
+        nextTime[ti] = actime + timeSpan[ti];
+        acFirst[ti]++;
+        if (acFirst[ti] == nCol[ti]) acFirst[ti] = 0;
+        rotfound=true;
+        for (unsigned char tj = 0; tj < nCol[ti]; tj++)
+        {
+            rotCols[tj + firstCol[ti]] = tj + firstCol[ti] + acFirst[ti];
+            if (rotCols[tj + firstCol[ti]] >= firstCol[ti] + nCol[ti]) rotCols[tj + firstCol[ti]] -= nCol[ti];
+        }
+    }
+  }
+  if (rotfound==true) fillpanelMode64();
+}
+
+#ifdef ZEDMD_SPI
+uint8_t SpiReadBuffer(unsigned char* pBuffer) {
+  //use it as you would the regular arduino SPI API
+  spi->beginTransaction(spiSettings);
+  digitalWrite(spi->pinSS(), LOW); //pull SS slow to prep other end for transfer
+
+  spiBlockHeader.block_type = spi->transfer16(spiGet16);
+  spiBlockHeader.len = spi->transfer16(spiGet16);
+
+  if (spiBlockHeader.block_type == SPI_BLOCK_PIX) {
+    spiPixHeader.columns = spi->transfer16(spiGet16);
+    spiPixHeader.rows = spi->transfer16(spiGet16);
+    spiPixHeader.bitsperpixel = spi->transfer16(spiGet16);
+    spiPixHeader.padding = spi->transfer16(spiGet16);
+    // DMD reader counts uint32_t blocks, therefore we need to multiply by 4 to get the length for uint8_t.
+    spi->transferBytes(NULL, pBuffer, (spiBlockHeader.len - 3) * 4);
+    spi->endTransaction();
+
+    RomWidth = spiPixHeader.columns;
+    RomHeight = spiPixHeader.rows;
+    if (spiPixHeader.bitsperpixel == 2) {
+      memcpy(Palette64, defaultPalette2Bit, sizeof(defaultPalette2Bit));
+      return 8;
+    }
+    if (spiPixHeader.bitsperpixel == 4) {
+      memcpy(Palette64, defaultPalette4Bit, sizeof(defaultPalette4Bit));
+      return 9;
+    }
+ }
+
+  spi->endTransaction();
+  return 0;
+}
+
+#endif
+#ifndef ZEDMD_SPI
 bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
 {
   memset(pBuffer, 0, BufferSize);
@@ -685,29 +787,6 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
     chunkSize = serialTransferChunkSize;
   }
   return true;
-}
-
-void updateColorRotations(void)
-{
-  unsigned long actime=millis();
-  bool rotfound=false;
-  for (int ti=0;ti<MAX_COLOR_ROTATIONS;ti++)
-  {
-    if (firstCol[ti]==255) continue;
-    if (actime >= nextTime[ti])
-    {
-        nextTime[ti] = actime + timeSpan[ti];
-        acFirst[ti]++;
-        if (acFirst[ti] == nCol[ti]) acFirst[ti] = 0;
-        rotfound=true;
-        for (unsigned char tj = 0; tj < nCol[ti]; tj++)
-        {
-            rotCols[tj + firstCol[ti]] = tj + firstCol[ti] + acFirst[ti];
-            if (rotCols[tj + firstCol[ti]] >= firstCol[ti] + nCol[ti]) rotCols[tj + firstCol[ti]] -= nCol[ti];
-        }
-    }
-  }
-  if (rotfound==true) fillpanelMode64();
 }
 
 void wait_for_ctrl_chars(void)
@@ -746,6 +825,7 @@ void wait_for_ctrl_chars(void)
     }
   }
 }
+#endif
 
 void loop()
 {
@@ -775,11 +855,6 @@ void loop()
     }
   }
 
-  // After handshake, send a (R)eady signal to indicate that a new command could be sent.
-  // The client has to wait for it to avoid buffer issues. The handshake it self works without it.
-  if (handshakeSucceeded) Serial.write('R');
-  wait_for_ctrl_chars();
-
   // Updates to mode64 color rotations have been handled within wait_for_ctrl_chars(), now reset it to false.
   mode64 = false;
 
@@ -795,11 +870,30 @@ void loop()
   // 12: handshake + report resolution
   // 13: set serial transfer chunk size
   // 99: display number
-  unsigned char c4;
-  while (Serial.available()==0);
-  c4=Serial.read();
+  uint8_t c4;
   
-  if (c4 == 12) // ask for resolution (and shake hands)
+#ifdef ZEDMD_SPI
+  while (digitalRead(SPI_IRQ_PIN) == LOW) {
+    // While waiting for the next frame, perform in-frame color rotations.
+    updateColorRotations();
+  }
+  c4 = SpiReadBuffer(panel);
+#endif
+#ifndef ZEDMD_SPI
+  // After handshake, send a (R)eady signal to indicate that a new command could be sent.
+  // The client has to wait for it to avoid buffer issues. The handshake it self works without it.
+  if (handshakeSucceeded) Serial.write('R');
+  wait_for_ctrl_chars();
+
+  while (Serial.available() == 0);
+  c4=Serial.read();
+#endif
+
+  if (c4 == 0) {
+    // noop
+  }
+#ifndef ZEDMD_SPI
+  else if (c4 == 12) // ask for resolution (and shake hands)
   {
     for (int ti=0;ti<N_INTERMEDIATE_CTR_CHARS;ti++) Serial.write(CtrlCharacters[ti]);
     Serial.write(PANE_WIDTH&0xff);
@@ -853,8 +947,10 @@ void loop()
       fillpanel();
     }
   }
+#endif
   else if (c4 == 8) // mode 4 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 4 pixels par byte
   {
+#ifndef ZEDMD_SPI
     if (SerialReadBuffer(img2,3*4+2*RomWidthPlane*RomHeight))
     {
       for (int ti = 3; ti >= 0; ti--)
@@ -882,12 +978,16 @@ void loop()
           }
         }
       }
+#endif
       mode64=false;
       for (int ti=0;ti<64;ti++) rotCols[ti]=ti;
       if ((RomHeight!=PANE_HEIGHT)||(RomWidth!=PANE_WIDTH)) ScaleImage64();
       fillpanelMode64();
+#ifndef ZEDMD_SPI
     }
+#endif
   }
+#ifndef ZEDMD_SPI
   else if (c4 == 7) // mode 16 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 2 pixels par byte
   {
     if (SerialReadBuffer(img2,3*4+4*RomWidthPlane*RomHeight))
@@ -965,8 +1065,10 @@ void loop()
       fillpanelMode64();
     }
   }
+#endif
   else if (c4 == 9) // mode 16 couleurs avec 1 palette 16 couleurs (16*3 bytes) suivis de 4 bytes par groupe de 8 points (séparés en plans de bits 4*512 bytes)
   {
+#ifndef ZEDMD_SPI
     if (SerialReadBuffer(img2,3*16+4*RomWidthPlane*RomHeight))
     {
       for (int ti = 15; ti >= 0; ti--)
@@ -999,14 +1101,18 @@ void loop()
           }
         }
       }
+#endif
       mode64=false;
       for (int ti=0;ti<64;ti++) rotCols[ti]=ti;
       if ((RomHeight!=PANE_HEIGHT)||(RomWidth!=PANE_WIDTH)) ScaleImage64();
       fillpanelMode64();
+#ifndef ZEDMD_SPI
     }
+#endif
   }
   else if (c4 == 11) // mode 64 couleurs avec 1 palette 64 couleurs (64*3 bytes) suivis de 6 bytes par groupe de 8 points (séparés en plans de bits 6*512 bytes) suivis de 3*8 bytes de rotations de couleurs
   {
+#ifndef ZEDMD_SPI
     if (SerialReadBuffer(img2,3*64+6*RomWidthPlane*RomHeight+3*MAX_COLOR_ROTATIONS))
     {
       for (int ti = 63; ti >= 0; ti--)
@@ -1055,11 +1161,15 @@ void loop()
         if (timeSpan[ti]<MIN_SPAN_ROT) timeSpan[ti]=MIN_SPAN_ROT;
         nextTime[ti]=actime+timeSpan[ti];
       }
+#endif
       mode64=true;
       if ((RomHeight!=PANE_HEIGHT)||(RomWidth!=PANE_WIDTH)) ScaleImage64();
       fillpanelMode64();
+#ifndef ZEDMD_SPI
     }
+#endif
   }
+
   if (DEBUG_FRAMES)
   {
     // An overflow of the unsigned int counters should not be an issue, they just reset to 0.
