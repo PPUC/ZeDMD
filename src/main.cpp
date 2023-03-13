@@ -40,27 +40,6 @@
   #include <SPI.h>
 
   #define SPI_CLK 1000000 // 1 MHz
-  #define SPI_IRQ_PIN 21
-
-  #define R1_PIN 25
-  #define G1_PIN 26
-  #define B1_PIN 27
-  #define R2_PIN 14
-  #define G2_PIN 12
-  #define B2_PIN 13
-  // MOSI 23: move A_PIN to 33
-  #define A_PIN 33
-  // MISO	19: move B_PIN to 32
-  #define B_PIN 32
-  // CS 5: move C_PIN to 2
-  #define C_PIN 2
-  #define D_PIN 17
-  #define E_PIN 22 // required for 1/32 scan panels, like 64x64. Any available pin would do, i.e. IO32. If 1/16 scan panels, no connection to this pin needed
-  #define LAT_PIN 4
-  #define OE_PIN 15
-  #define CLK_PIN 16
-  // SCLK	18
-
   // SPI data types and header blocks
   // header block length should always be a multiple of 32bit
   #define SPI_BLOCK_PIX 0xcc33
@@ -91,6 +70,25 @@
                                      89, 44, 0, 102, 51, 0, 115, 57, 0, 128, 64, 0,
                                      140, 70, 0, 153, 76, 0, 166, 83, 0, 179, 89, 0,
                                      191, 95, 0, 204, 102, 0, 230, 114, 0, 255, 127, 0 };
+
+  #define R1_PIN 25
+  #define G1_PIN 26
+  #define B1_PIN 27
+  #define R2_PIN 14
+  #define G2_PIN 12
+  #define B2_PIN 13
+  // MOSI 23: move A_PIN to 33
+  #define A_PIN 33
+  // MISO	19: move B_PIN to 32
+  #define B_PIN 32
+  // CS 5: move C_PIN to 2
+  #define C_PIN 2
+  #define D_PIN 17
+  #define E_PIN 22 // required for 1/32 scan panels, like 64x64. Any available pin would do, i.e. IO32. If 1/16 scan panels, no connection to this pin needed
+  #define LAT_PIN 4
+  #define OE_PIN 15
+  #define CLK_PIN 16
+  // SCLK	18
 #endif
 #ifndef R1_PIN
   #define R1_PIN 25
@@ -666,14 +664,10 @@ void setup()
   }
 
   #ifdef ZEDMD_SPI
-    // Initialise vspi with default pins
-    // SCLK = 18, MISO = 19, MOSI = 23, SS = 5
+    spi = new SPIClass(VSPI);
     spi->begin();
-    // Set up slave select pin as outputs as the Arduino API
-    // doesn't handle automatically pulling SS low
-    pinMode(spi->pinSS(), OUTPUT);
-    // DMD reader indicates a new frame by setting this pin high
-    pinMode(SPI_IRQ_PIN, INPUT_PULLDOWN);
+    // Set up slave select pin as input as the DMD reader indicates a new frame by setting this pin high.
+    pinMode(spi->pinSS(), INPUT_PULLDOWN);
   #endif
   #ifndef ZEDMD_SPI
     Serial.begin(921600);
@@ -723,7 +717,7 @@ void updateColorRotations(void)
 uint8_t SpiReadBuffer(unsigned char* pBuffer) {
   //use it as you would the regular arduino SPI API
   spi->beginTransaction(spiSettings);
-  digitalWrite(spi->pinSS(), LOW); //pull SS slow to prep other end for transfer
+  //digitalWrite(spi->pinSS(), LOW); //pull SS slow to prep other end for transfer
 
   spiBlockHeader.block_type = spi->transfer16(spiGet16);
   spiBlockHeader.len = spi->transfer16(spiGet16);
@@ -873,7 +867,7 @@ void loop()
   uint8_t c4;
   
 #ifdef ZEDMD_SPI
-  while (digitalRead(SPI_IRQ_PIN) == LOW) {
+  while (digitalRead(spi->pinSS()) == LOW) {
     // While waiting for the next frame, perform in-frame color rotations.
     updateColorRotations();
   }
