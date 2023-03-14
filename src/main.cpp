@@ -14,7 +14,9 @@
     #define PANELS_NUMBER  2     // Number of horizontally chained panels.
 #endif
 
+#define SERIAL_BAUD    921600
 #define SERIAL_TIMEOUT 8     // Time in milliseconds to wait for the next data chunk.
+#define SERIAL_BUFFER  8192  // Serial buffer size in byte.
 #define FRAME_TIMEOUT  10000 // Time in milliseconds to wait for a new frame.
 #define DEBUG_FRAMES   0     // Set to 1 to output number of rendered frames on top and number of error at the bottom.
 // ------------------------------------------ ZeDMD by Zedrummer (http://pincabpassion.net)---------------------------------------------
@@ -633,9 +635,9 @@ void setup()
     delay(4000);
   }
 
-  Serial.begin(921600);
+  Serial.begin(SERIAL_BAUD);
   while (!Serial);
-  Serial.setRxBufferSize(serialTransferChunkSize);
+  Serial.setRxBufferSize(SERIAL_BUFFER);
   Serial.setTimeout(SERIAL_TIMEOUT);
 
   LoadLum();
@@ -650,6 +652,15 @@ void setup()
   DisplayLum();
 
   InitPalettes(255,109,0);
+}
+
+bool fastReadySent = false;
+
+void sendFastReady() {
+  // Indicate (R)eady, even if the frame isn't rendered yet.
+  // That would allow to get the buffer filled with the next frame already.
+  Serial.write('R');
+  fastReadySent = true;
 }
 
 bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
@@ -670,7 +681,7 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
   // We always receive chunks of 256 bytes (maximum).
   // At this point, the control chars and the one byte command have been read already.
   // So we only need to read the remaining bytes of the first chunk as full 256 byte chunks afterwards.
-  int chunkSize = serialTransferChunkSize - N_CTRL_CHARS - 1 - (compression ? 4 : 0);
+  int chunkSize = serialTransferChunkSize - N_CTRL_CHARS - 1 - (compression ? 2 : 0);
   int remainingBytes = transferBufferSize;
   while (remainingBytes > 0)
   {
@@ -702,13 +713,16 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
     if ((Z_OK == status) && (uncompressed_buffer_size == BufferSize)) {
       memcpy(pBuffer, uncompressBuffer, BufferSize);
       free(uncompressBuffer);
+      sendFastReady();
       return true;
     }
 
     free(uncompressBuffer);
+    Serial.write('E');
     return false;
   }
 
+  sendFastReady();
   return true;
 }
 
@@ -802,7 +816,15 @@ void loop()
 
   // After handshake, send a (R)eady signal to indicate that a new command could be sent.
   // The client has to wait for it to avoid buffer issues. The handshake it self works without it.
-  if (handshakeSucceeded) Serial.write('R');
+  if (handshakeSucceeded) {
+    if (!fastReadySent) {
+      Serial.write('R');
+    }
+    else {
+      fastReadySent = false;
+    }
+  }
+
   wait_for_ctrl_chars();
 
   // Updates to mode64 color rotations have been handled within wait_for_ctrl_chars(), now reset it to false.
@@ -846,10 +868,15 @@ void loop()
   }
   else if (c4 == 13) // set serial transfer chunk size
   {
-    int serialTransferChunkSize = Serial.read();
-    Serial.setRxBufferSize(serialTransferChunkSize);
-    // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
-    Serial.write('A');
+    int tmpSerialTransferChunkSize = Serial.read();
+    if (tmpSerialTransferChunkSize <= SERIAL_BUFFER) {
+      serialTransferChunkSize = tmpSerialTransferChunkSize;
+      // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
+      Serial.write('A');
+    }
+    else {
+      Serial.write('E');
+    }
   }
   else if (c4 == 14) // enable serial transfer compression
   {
