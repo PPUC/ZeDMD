@@ -14,7 +14,9 @@
     #define PANELS_NUMBER  2     // Number of horizontally chained panels.
 #endif
 
-#define SERIAL_TIMEOUT 100   // Time in milliseconds to wait for the next data chunk.
+#define SERIAL_BAUD    921600
+#define SERIAL_TIMEOUT 8     // Time in milliseconds to wait for the next data chunk.
+#define SERIAL_BUFFER  8192  // Serial buffer size in byte.
 #define FRAME_TIMEOUT  10000 // Time in milliseconds to wait for a new frame.
 #define DEBUG_FRAMES   0     // Set to 1 to output number of rendered frames on top and number of error at the bottom.
 // ------------------------------------------ ZeDMD by Zedrummer (http://pincabpassion.net)---------------------------------------------
@@ -39,6 +41,7 @@
 #include <Arduino.h>
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include <LittleFS.h>
+#include <miniz.h>
 
 /* Pinout from ESP32-HUB75-MatrixPanel-I2S-DMA.h
     #define R1_PIN_DEFAULT  25
@@ -53,7 +56,7 @@
     #define C_PIN_DEFAULT   5
     #define D_PIN_DEFAULT   17
     #define E_PIN_DEFAULT   -1 // IMPORTANT: Change to a valid pin if using a 64x64px panel.
-              
+
     #define LAT_PIN_DEFAULT 4
     #define OE_PIN_DEFAULT  15
     #define CLK_PIN_DEFAULT 16
@@ -78,7 +81,7 @@
 #define N_CTRL_CHARS 6
 #define N_INTERMEDIATE_CTR_CHARS 4
 // !!!!! NE METTRE AUCUNE VALEURE IDENTIQUE !!!!!
-unsigned char CtrlCharacters[6]={0x5a,0x65,0x64,0x72,0x75,0x6d}; 
+unsigned char CtrlCharacters[6]={0x5a,0x65,0x64,0x72,0x75,0x6d};
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 bool min_chiffres[3*10*5]={0,1,0, 0,0,1, 1,1,0, 1,1,0, 0,0,1, 1,1,1, 0,1,1, 1,1,1, 0,1,0, 0,1,0,
@@ -352,14 +355,14 @@ void ScaleImage() // scale for non indexed image (RGB24)
           i=&panel2[3*((tj+1)*RomWidth+ti+1)];
         }
         if (b != h && d != f) {
-          if (CmpColor(d,b)) SetColor(&panel[3*(tj*2*PANE_WIDTH+ti*2)+xoffset],d); else SetColor(&panel[3*(tj*2*PANE_WIDTH+ti*2)+xoffset],e); 
-          if (CmpColor(b,f)) SetColor(&panel[3*(tj*2*PANE_WIDTH+ti*2+1)+xoffset], f); else SetColor(&panel[3*(tj*2*PANE_WIDTH+ti*2+1)+xoffset], e); 
-          if (CmpColor(b,h)) SetColor(&panel[3*((tj*2+1)*PANE_WIDTH+ti*2)+xoffset],d); else SetColor(&panel[3*((tj*2+1)*PANE_WIDTH+ti*2)+xoffset],e); 
+          if (CmpColor(d,b)) SetColor(&panel[3*(tj*2*PANE_WIDTH+ti*2)+xoffset],d); else SetColor(&panel[3*(tj*2*PANE_WIDTH+ti*2)+xoffset],e);
+          if (CmpColor(b,f)) SetColor(&panel[3*(tj*2*PANE_WIDTH+ti*2+1)+xoffset], f); else SetColor(&panel[3*(tj*2*PANE_WIDTH+ti*2+1)+xoffset], e);
+          if (CmpColor(b,h)) SetColor(&panel[3*((tj*2+1)*PANE_WIDTH+ti*2)+xoffset],d); else SetColor(&panel[3*((tj*2+1)*PANE_WIDTH+ti*2)+xoffset],e);
           if (CmpColor(h,f)) SetColor(&panel[3*((tj*2+1)*PANE_WIDTH+ti*2+1)+xoffset],f); else SetColor(&panel[3*((tj*2+1)*PANE_WIDTH+ti*2+1)+xoffset],e);
         } else {
           SetColor(&panel[3*(tj*2*PANE_WIDTH+ti*2)+xoffset],e);
           SetColor(&panel[3*(tj*2*PANE_WIDTH+ti*2+1)+xoffset], e);
-          SetColor(&panel[3*((tj*2+1)*PANE_WIDTH+ti*2)+xoffset],e); 
+          SetColor(&panel[3*((tj*2+1)*PANE_WIDTH+ti*2)+xoffset],e);
           SetColor(&panel[3*((tj*2+1)*PANE_WIDTH+ti*2+1)+xoffset],e);
         }
        }
@@ -528,7 +531,7 @@ void fillpanelMode64()
   {
     for (int ti = 0; ti < PANE_WIDTH; ti++)
     {
-      dma_display->drawPixelRGB888(ti, tj, Palette64[rotCols[panel[ti+tj*PANE_WIDTH]]*3+ordreRGB[acordreRGB * 3]], 
+      dma_display->drawPixelRGB888(ti, tj, Palette64[rotCols[panel[ti+tj*PANE_WIDTH]]*3+ordreRGB[acordreRGB * 3]],
         Palette64[rotCols[panel[ti+tj*PANE_WIDTH]]*3+ordreRGB[acordreRGB * 3+1]],Palette64[rotCols[panel[ti+tj*PANE_WIDTH]]*3+ordreRGB[acordreRGB * 3+2]]);
     }
   }
@@ -602,7 +605,7 @@ void InitPalettes(int R, int G, int B)
     Palette64[ti * 3 + 2] = (unsigned char)((float)B*levels64[ti] / 100.0f);
   }
 }
-void Say(unsigned char where,unsigned int what)
+void Say(unsigned char where, unsigned int what)
 {
     DisplayNombre(where,3,0,where*5,255,255,255);
     if (what!=(unsigned int)-1) DisplayNombre(what,10,15,where*5,255,255,255);
@@ -610,6 +613,7 @@ void Say(unsigned char where,unsigned int what)
 
 bool MireActive = true;
 bool handshakeSucceeded = false;
+bool compression = false;
 // 256 is the default buffer size of the CP210x linux kernel driver, we should not exceed it as default.
 int serialTransferChunkSize = 256;
 unsigned char img2[3*64+6*256/8*64+3*MAX_COLOR_ROTATIONS];
@@ -621,7 +625,7 @@ void setup()
 {
   pinMode(ORDRE_BUTTON_PIN, INPUT_PULLUP);
   pinMode(LUMINOSITE_BUTTON_PIN, INPUT_PULLUP);
-    
+
   mxconfig.clkphase = false; // change if you have some parts of the panel with a shift
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   dma_display->begin();
@@ -631,9 +635,9 @@ void setup()
     delay(4000);
   }
 
-  Serial.begin(921600);
+  Serial.begin(SERIAL_BAUD);
   while (!Serial);
-  Serial.setRxBufferSize(serialTransferChunkSize);
+  Serial.setRxBufferSize(SERIAL_BUFFER);
   Serial.setTimeout(SERIAL_TIMEOUT);
 
   LoadLum();
@@ -650,18 +654,38 @@ void setup()
   InitPalettes(255,109,0);
 }
 
+bool fastReadySent = false;
+
+void sendFastReady() {
+  // Indicate (R)eady, even if the frame isn't rendered yet.
+  // That would allow to get the buffer filled with the next frame already.
+  Serial.write('R');
+  fastReadySent = true;
+}
+
 bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
 {
   memset(pBuffer, 0, BufferSize);
 
+  unsigned int transferBufferSize = BufferSize;
+
+  if (compression) {
+    uint8_t byteArray[2];
+    Serial.readBytes(byteArray, 2);
+    transferBufferSize = (
+      (((unsigned int) byteArray[0]) << 8) +
+      ((unsigned int) byteArray[1])
+    );
+  }
+
   // We always receive chunks of 256 bytes (maximum).
   // At this point, the control chars and the one byte command have been read already.
   // So we only need to read the remaining bytes of the first chunk as full 256 byte chunks afterwards.
-  int chunkSize = serialTransferChunkSize - N_CTRL_CHARS - 1;
-  int remainingBytes = BufferSize;
+  int chunkSize = serialTransferChunkSize - N_CTRL_CHARS - 1 - (compression ? 2 : 0);
+  int remainingBytes = transferBufferSize;
   while (remainingBytes > 0)
   {
-    int receivedBytes = Serial.readBytes(pBuffer + BufferSize - remainingBytes, (remainingBytes > chunkSize) ? chunkSize : remainingBytes);
+    int receivedBytes = Serial.readBytes(pBuffer + transferBufferSize - remainingBytes, (remainingBytes > chunkSize) ? chunkSize : remainingBytes);
     if (receivedBytes != remainingBytes && receivedBytes != chunkSize)
     {
       if (DEBUG_FRAMES) Say(4, ++errorCount);
@@ -681,6 +705,24 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
     // From now on read full amount of byte chunks.
     chunkSize = serialTransferChunkSize;
   }
+
+  if (compression) {
+    unsigned char* uncompressBuffer = (unsigned char*) malloc((size_t) BufferSize);
+    mz_ulong uncompressed_buffer_size = (mz_ulong) BufferSize;
+    int status = uncompress(uncompressBuffer, &uncompressed_buffer_size, pBuffer, (mz_ulong) transferBufferSize);
+    if ((Z_OK == status) && (uncompressed_buffer_size == BufferSize)) {
+      memcpy(pBuffer, uncompressBuffer, BufferSize);
+      free(uncompressBuffer);
+      sendFastReady();
+      return true;
+    }
+
+    free(uncompressBuffer);
+    Serial.write('E');
+    return false;
+  }
+
+  sendFastReady();
   return true;
 }
 
@@ -725,7 +767,7 @@ void wait_for_ctrl_chars(void)
       updateColorRotations();
     }
 
-    // Watchdog: "reset" the communictaion if it took too long between two frames. 
+    // Watchdog: "reset" the communictaion if it took too long between two frames.
     if (handshakeSucceeded && ((millis() - ms) > FRAME_TIMEOUT))
     {
       if (DEBUG_FRAMES) Say(5, ++watchdogCount);
@@ -774,14 +816,22 @@ void loop()
 
   // After handshake, send a (R)eady signal to indicate that a new command could be sent.
   // The client has to wait for it to avoid buffer issues. The handshake it self works without it.
-  if (handshakeSucceeded) Serial.write('R');
+  if (handshakeSucceeded) {
+    if (!fastReadySent) {
+      Serial.write('R');
+    }
+    else {
+      fastReadySent = false;
+    }
+  }
+
   wait_for_ctrl_chars();
 
   // Updates to mode64 color rotations have been handled within wait_for_ctrl_chars(), now reset it to false.
   mode64 = false;
 
   // Commands:
-  //  2: receive rom frame size 
+  //  2: receive rom frame size
   //  3: render raw data
   //  6: init palettes
   //  7: render 16 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 2 pixels par byte
@@ -791,11 +841,12 @@ void loop()
   // 11: render 64 couleurs avec 1 palette 64 couleurs (64*3 bytes) suivis de 6 bytes par groupe de 8 points (séparés en plans de bits 6*512 bytes)
   // 12: handshake + report resolution
   // 13: set serial transfer chunk size
+  // 14: enable serial transfer compression
   // 99: display number
   unsigned char c4;
   while (Serial.available()==0);
   c4=Serial.read();
-  
+
   if (c4 == 12) // ask for resolution (and shake hands)
   {
     for (int ti=0;ti<N_INTERMEDIATE_CTR_CHARS;ti++) Serial.write(CtrlCharacters[ti]);
@@ -817,8 +868,19 @@ void loop()
   }
   else if (c4 == 13) // set serial transfer chunk size
   {
-    int serialTransferChunkSize = Serial.read();
-    Serial.setRxBufferSize(serialTransferChunkSize);
+    int tmpSerialTransferChunkSize = Serial.read();
+    if (tmpSerialTransferChunkSize <= SERIAL_BUFFER) {
+      serialTransferChunkSize = tmpSerialTransferChunkSize;
+      // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
+      Serial.write('A');
+    }
+    else {
+      Serial.write('E');
+    }
+  }
+  else if (c4 == 14) // enable serial transfer compression
+  {
+    compression = true;
     // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
     Serial.write('A');
   }
@@ -834,7 +896,7 @@ void loop()
     // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
     Serial.write('A');
     InitPalettes(255, 109, 0);
-  }    
+  }
   else if (c4 == 10) // clear screen
   {
     // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
@@ -902,7 +964,7 @@ void loop()
       Palette64[6]=2*(Palette64[3*3]/3);
       Palette64[7]=2*(Palette64[3*3+1]/3);
       Palette64[8]=2*(Palette64[3*3+2]/3);
-      
+
       Palette64[12]=Palette64[3*3]+(Palette64[7*3]-Palette64[3*3])/4;
       Palette64[13]=Palette64[3*3+1]+(Palette64[7*3+1]-Palette64[3*3+1])/4;
       Palette64[14]=Palette64[3*3+2]+(Palette64[7*3+2]-Palette64[3*3+2])/4;
@@ -912,7 +974,7 @@ void loop()
       Palette64[18]=Palette64[3*3]+3*((Palette64[7*3]-Palette64[3*3])/4);
       Palette64[19]=Palette64[3*3+1]+3*((Palette64[7*3+1]-Palette64[3*3+1])/4);
       Palette64[20]=Palette64[3*3+2]+3*((Palette64[7*3+2]-Palette64[3*3+2])/4);
-      
+
       Palette64[24]=Palette64[7*3]+(Palette64[11*3]-Palette64[7*3])/4;
       Palette64[25]=Palette64[7*3+1]+(Palette64[11*3+1]-Palette64[7*3+1])/4;
       Palette64[26]=Palette64[7*3+2]+(Palette64[11*3+2]-Palette64[7*3+2])/4;
@@ -922,7 +984,7 @@ void loop()
       Palette64[30]=Palette64[7*3]+3*((Palette64[11*3]-Palette64[7*3])/4);
       Palette64[31]=Palette64[7*3+1]+3*((Palette64[11*3+1]-Palette64[7*3+1])/4);
       Palette64[32]=Palette64[7*3+2]+3*((Palette64[11*3+2]-Palette64[7*3+2])/4);
-      
+
       Palette64[36]=Palette64[11*3]+(Palette64[15*3]-Palette64[11*3])/4;
       Palette64[37]=Palette64[11*3+1]+(Palette64[15*3+1]-Palette64[11*3+1])/4;
       Palette64[38]=Palette64[11*3+2]+(Palette64[15*3+2]-Palette64[11*3+2])/4;
@@ -932,7 +994,7 @@ void loop()
       Palette64[42]=Palette64[11*3]+3*((Palette64[15*3]-Palette64[11*3])/4);
       Palette64[43]=Palette64[11*3+1]+3*((Palette64[15*3+1]-Palette64[11*3+1])/4);
       Palette64[44]=Palette64[11*3+2]+3*((Palette64[15*3+2]-Palette64[11*3+2])/4);
-      
+
       unsigned char* img=&img2[3*4];
       for (int tj = 0; tj < RomHeight; tj++)
       {
