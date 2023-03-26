@@ -868,7 +868,7 @@ void loop()
   }
   else if (c4 == 13) // set serial transfer chunk size
   {
-    int tmpSerialTransferChunkSize = Serial.read();
+    int tmpSerialTransferChunkSize = Serial.read() * 256;
     if (tmpSerialTransferChunkSize <= SERIAL_BUFFER) {
       serialTransferChunkSize = tmpSerialTransferChunkSize;
       // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
