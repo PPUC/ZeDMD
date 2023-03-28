@@ -18,7 +18,9 @@
 #define SERIAL_TIMEOUT 8     // Time in milliseconds to wait for the next data chunk.
 #define SERIAL_BUFFER  8192  // Serial buffer size in byte.
 #define FRAME_TIMEOUT  10000 // Time in milliseconds to wait for a new frame.
-#define DEBUG_FRAMES   0     // Set to 1 to output number of rendered frames on top and number of error at the bottom.
+#ifndef DEBUG_FRAMES
+    #define DEBUG_FRAMES   0 // Set to 1 to output number of rendered frames on top and number of error at the bottom.
+#endif
 // ------------------------------------------ ZeDMD by Zedrummer (http://pincabpassion.net)---------------------------------------------
 // - Install the ESP32 board in Arduino IDE as explained here https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/
 // - Install "ESP32 HUB75 LED MATRIX panel DMA" Display library via the library manager
@@ -669,13 +671,20 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
 
   unsigned int transferBufferSize = BufferSize;
 
-  if (compression) {
+  if (compression)
+  {
     uint8_t byteArray[2];
     Serial.readBytes(byteArray, 2);
     transferBufferSize = (
       (((unsigned int) byteArray[0]) << 8) +
       ((unsigned int) byteArray[1])
     );
+
+    if (DEBUG_FRAMES)
+    {
+      Say(1, byteArray[0]);
+      Say(2, byteArray[1]);
+    }
   }
 
   // We always receive chunks of 256 bytes (maximum).
