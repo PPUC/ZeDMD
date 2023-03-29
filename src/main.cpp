@@ -682,8 +682,8 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
 
     if (DEBUG_FRAMES)
     {
-      Say(1, byteArray[0]);
-      Say(2, byteArray[1]);
+      Say(1, transferBufferSize);
+      Say(2, BufferSize);
     }
   }
 
