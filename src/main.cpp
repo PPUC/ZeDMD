@@ -733,6 +733,11 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
       return true;
     }
 
+    if (DEBUG_FRAMES && (Z_OK == status))
+    {
+      Say(3, 99);
+    }
+
     free(uncompressBuffer);
     Serial.write('E');
     return false;
