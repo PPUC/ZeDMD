@@ -719,6 +719,13 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
     unsigned char* uncompressBuffer = (unsigned char*) malloc((size_t) BufferSize);
     mz_ulong uncompressed_buffer_size = (mz_ulong) BufferSize;
     int status = uncompress(uncompressBuffer, &uncompressed_buffer_size, pBuffer, (mz_ulong) transferBufferSize);
+
+    if (DEBUG_FRAMES)
+    {
+      int tmp_status = (status >= 0) ? status : (-1 * status) + 100;
+      Say(3, tmp_status);
+    }
+
     if ((Z_OK == status) && (uncompressed_buffer_size == BufferSize)) {
       memcpy(pBuffer, uncompressBuffer, BufferSize);
       free(uncompressBuffer);
@@ -877,7 +884,8 @@ void loop()
   }
   else if (c4 == 13) // set serial transfer chunk size
   {
-    int tmpSerialTransferChunkSize = Serial.read() * 256;
+    while (Serial.available() == 0);
+    int tmpSerialTransferChunkSize = ((int) Serial.read()) * 256;
     if (tmpSerialTransferChunkSize <= SERIAL_BUFFER) {
       serialTransferChunkSize = tmpSerialTransferChunkSize;
       // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
