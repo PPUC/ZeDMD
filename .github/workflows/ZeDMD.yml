@@ -11,7 +11,7 @@ jobs:
 
         strategy:
             matrix:
-                panels: ['64x32x2', '64x64x4', '128x64x2']
+                panels: ['64x32x2', '64x64x4', '128x64x2', '64x32x2_debug', '64x64x4_debug', '128x64x2_debug']
 
         name: ZeDMD ${{ matrix.panels }}
 

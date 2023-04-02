@@ -18,7 +18,9 @@
 #define SERIAL_TIMEOUT 8     // Time in milliseconds to wait for the next data chunk.
 #define SERIAL_BUFFER  8192  // Serial buffer size in byte.
 #define FRAME_TIMEOUT  10000 // Time in milliseconds to wait for a new frame.
-#define DEBUG_FRAMES   0     // Set to 1 to output number of rendered frames on top and number of error at the bottom.
+#ifndef DEBUG_FRAMES
+    #define DEBUG_FRAMES   0 // Set to 1 to output number of rendered frames on top and number of error at the bottom.
+#endif
 // ------------------------------------------ ZeDMD by Zedrummer (http://pincabpassion.net)---------------------------------------------
 // - Install the ESP32 board in Arduino IDE as explained here https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/
 // - Install "ESP32 HUB75 LED MATRIX panel DMA" Display library via the library manager
@@ -669,13 +671,20 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
 
   unsigned int transferBufferSize = BufferSize;
 
-  if (compression) {
+  if (compression)
+  {
     uint8_t byteArray[2];
     Serial.readBytes(byteArray, 2);
     transferBufferSize = (
       (((unsigned int) byteArray[0]) << 8) +
       ((unsigned int) byteArray[1])
     );
+
+    if (DEBUG_FRAMES)
+    {
+      Say(1, transferBufferSize);
+      Say(2, BufferSize);
+    }
   }
 
   // We always receive chunks of 256 bytes (maximum).
@@ -710,11 +719,23 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
     unsigned char* uncompressBuffer = (unsigned char*) malloc((size_t) BufferSize);
     mz_ulong uncompressed_buffer_size = (mz_ulong) BufferSize;
     int status = uncompress(uncompressBuffer, &uncompressed_buffer_size, pBuffer, (mz_ulong) transferBufferSize);
+
+    if (DEBUG_FRAMES)
+    {
+      int tmp_status = (status >= 0) ? status : (-1 * status) + 100;
+      Say(3, tmp_status);
+    }
+
     if ((Z_OK == status) && (uncompressed_buffer_size == BufferSize)) {
       memcpy(pBuffer, uncompressBuffer, BufferSize);
       free(uncompressBuffer);
       sendFastReady();
       return true;
+    }
+
+    if (DEBUG_FRAMES && (Z_OK == status))
+    {
+      Say(3, 99);
     }
 
     free(uncompressBuffer);
@@ -868,7 +889,8 @@ void loop()
   }
   else if (c4 == 13) // set serial transfer chunk size
   {
-    int tmpSerialTransferChunkSize = Serial.read() * 256;
+    while (Serial.available() == 0);
+    int tmpSerialTransferChunkSize = ((int) Serial.read()) * 256;
     if (tmpSerialTransferChunkSize <= SERIAL_BUFFER) {
       serialTransferChunkSize = tmpSerialTransferChunkSize;
       // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
