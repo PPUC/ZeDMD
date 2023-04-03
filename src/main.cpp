@@ -18,9 +18,7 @@
 #define SERIAL_TIMEOUT 8     // Time in milliseconds to wait for the next data chunk.
 #define SERIAL_BUFFER  8192  // Serial buffer size in byte.
 #define FRAME_TIMEOUT  10000 // Time in milliseconds to wait for a new frame.
-#ifndef DEBUG_FRAMES
-    #define DEBUG_FRAMES   0 // Set to 1 to output number of rendered frames on top and number of error at the bottom.
-#endif
+
 // ------------------------------------------ ZeDMD by Zedrummer (http://pincabpassion.net)---------------------------------------------
 // - Install the ESP32 board in Arduino IDE as explained here https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/
 // - Install "ESP32 HUB75 LED MATRIX panel DMA" Display library via the library manager
@@ -33,6 +31,15 @@
 // if not, make contact between the ORDRE_BUTTON_PIN (default 21, but you can change below) pin and a ground pin several times
 // until the display is correct (automatically saved, no need to do it again)
 // -----------------------------------------------------------------------------------------------------------------------------------------
+// By pressing the RGB button while a game is running or by sending command 99,you can enable the "Debug Mode".
+// The output will be:
+// 000 number of frames received, regardless if any error happened
+// 001 size of compressed frame if compression is enabled
+// 002 size of the decompressed frame if compression is enabled
+// 003 error code if the decompression if compression is enabled
+// 004 number of incomplete frames
+// 005 number of resets because of communication freezes
+// -----------------------------------------------------------------------------------------------------------------------------------------
 
 #define PANE_WIDTH (PANEL_WIDTH*PANELS_NUMBER)
 #define PANE_WIDTH_PLANE (PANE_WIDTH>>3)
@@ -44,6 +51,7 @@
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include <LittleFS.h>
 #include <miniz.h>
+#include <Bounce2.h>
 
 /* Pinout from ESP32-HUB75-MatrixPanel-I2S-DMA.h
     #define R1_PIN_DEFAULT  25
@@ -125,14 +133,10 @@ unsigned char panel[256*64*3];
 unsigned char panel2[256*64];
 
 #define ORDRE_BUTTON_PIN 21
-bool OrdreBtnRel=false;
-int OrdreBtnPos;
-unsigned long OrdreBtnDebounceTime;
+Bounce2::Button* rgbOrderButton;
 
 #define LUMINOSITE_BUTTON_PIN 33
-bool LuminositeBtnRel=false;
-int LuminositeBtnPos;
-unsigned long LuminositeBtnDebounceTime;
+Bounce2::Button* brightnessButton;
 
 // for color rotation
 unsigned char rotCols[64];
@@ -147,37 +151,8 @@ bool mode64=false;
 int RomWidth=128, RomHeight=32;
 int RomWidthPlane=128>>3;
 
-#define DEBOUNCE_DELAY 100 // in ms, to avoid buttons pushes to be counted several times https://www.arduino.cc/en/Tutorial/BuiltInExamples/Debounce
-unsigned char CheckButton(int btnpin,bool *pbtnrel,int *pbtpos,unsigned long *pbtdebouncetime)
-{
-  // return 1 if the button has been released, 2 if the button has been pushed, 0 if nothing has changed since previous call
-  // Debounce the input as explained here https://www.arduino.cc/en/Tutorial/BuiltInExamples/Debounce
-  int btnPos=digitalRead(btnpin);
-  unsigned long actime=millis();
-  if (btnPos != (*pbtpos))
-  {
-    if (actime > (*pbtdebouncetime) + DEBOUNCE_DELAY)
-    {
-      if ((btnPos == HIGH) && ((*pbtnrel) == false))
-      {
-        (*pbtnrel) = true;
-        (*pbtdebouncetime) = actime;
-        (*pbtpos) = btnPos;
-        return 1;
-      }
-      else if ((btnPos == LOW) && ((*pbtnrel) == true))
-      {
-        (*pbtnrel) = false;
-        (*pbtdebouncetime) = actime;
-        (*pbtpos) = btnPos;
-        return 2;
-      }
-      (*pbtdebouncetime) = actime;
-      (*pbtpos) = btnPos;
-    }
-  }
-  return 0;
-}
+bool debugMode = false;
+unsigned int debugLines[6] = {0};
 
 void DisplayChiffre(unsigned int chf, int x,int y,int R, int G, int B)
 {
@@ -625,8 +600,15 @@ unsigned int watchdogCount = 0;
 
 void setup()
 {
-  pinMode(ORDRE_BUTTON_PIN, INPUT_PULLUP);
-  pinMode(LUMINOSITE_BUTTON_PIN, INPUT_PULLUP);
+  rgbOrderButton = new Bounce2::Button();
+  rgbOrderButton->attach(ORDRE_BUTTON_PIN, INPUT_PULLUP);
+  rgbOrderButton->interval(100);
+  rgbOrderButton->setPressedState(LOW);
+
+  brightnessButton = new Bounce2::Button();
+  brightnessButton->attach(LUMINOSITE_BUTTON_PIN, INPUT_PULLUP);
+  brightnessButton->interval(100);
+  brightnessButton->setPressedState(LOW);
 
   mxconfig.clkphase = false; // change if you have some parts of the panel with a shift
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
@@ -680,10 +662,10 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
       ((unsigned int) byteArray[1])
     );
 
-    if (DEBUG_FRAMES)
+    if (debugMode)
     {
-      Say(1, transferBufferSize);
-      Say(2, BufferSize);
+      debugLines[1] = transferBufferSize;
+      debugLines[2] = BufferSize;
     }
   }
 
@@ -697,7 +679,10 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
     int receivedBytes = Serial.readBytes(pBuffer + transferBufferSize - remainingBytes, (remainingBytes > chunkSize) ? chunkSize : remainingBytes);
     if (receivedBytes != remainingBytes && receivedBytes != chunkSize)
     {
-      if (DEBUG_FRAMES) Say(4, ++errorCount);
+      if (debugMode)
+      {
+        debugLines[4] = ++errorCount;
+      }
 
       // Send an (E)rror signal to tell the client that no more chunks should be send or to repeat the entire frame from the beginning.
       Serial.write('E');
@@ -720,10 +705,11 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
     mz_ulong uncompressed_buffer_size = (mz_ulong) BufferSize;
     int status = uncompress(uncompressBuffer, &uncompressed_buffer_size, pBuffer, (mz_ulong) transferBufferSize);
 
-    if (DEBUG_FRAMES)
+    if (debugMode && (Z_OK != status))
     {
       int tmp_status = (status >= 0) ? status : (-1 * status) + 100;
       Say(3, tmp_status);
+      debugLines[3] = tmp_status;
     }
 
     if ((Z_OK == status) && (uncompressed_buffer_size == BufferSize)) {
@@ -733,9 +719,9 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
       return true;
     }
 
-    if (DEBUG_FRAMES && (Z_OK == status))
+    if (debugMode && (Z_OK == status))
     {
-      Say(3, 99);
+      debugLines[3] = 99;
     }
 
     free(uncompressBuffer);
@@ -791,7 +777,11 @@ void wait_for_ctrl_chars(void)
     // Watchdog: "reset" the communictaion if it took too long between two frames.
     if (handshakeSucceeded && ((millis() - ms) > FRAME_TIMEOUT))
     {
-      if (DEBUG_FRAMES) Say(5, ++watchdogCount);
+      if (debugMode)
+      {
+        Say(5, ++watchdogCount);
+        debugLines[5] = watchdogCount;
+      }
 
       // Send an (E)rror signal.
       Serial.write('E');
@@ -811,7 +801,8 @@ void loop()
 {
   while (MireActive)
   {
-    if (CheckButton(ORDRE_BUTTON_PIN, &OrdreBtnRel, &OrdreBtnPos, &OrdreBtnDebounceTime) == 2)
+    rgbOrderButton->update();
+    if (rgbOrderButton->pressed())
     {
       acordreRGB++;
       if (acordreRGB >= 6) acordreRGB = 0;
@@ -820,7 +811,9 @@ void loop()
       DisplayText(lumtxt,16,PANE_WIDTH/2-16/2-2*4/2,PANE_HEIGHT-5,255,255,255);
       DisplayLum();
     }
-    if (CheckButton(LUMINOSITE_BUTTON_PIN, &LuminositeBtnRel, &LuminositeBtnPos, &LuminositeBtnDebounceTime) == 2)
+
+    brightnessButton->update();
+    if (brightnessButton->pressed())
     {
       lumstep++;
       if (lumstep>=16) lumstep=1;
@@ -828,11 +821,18 @@ void loop()
       DisplayLum();
       SaveLum();
     }
+
     if (Serial.available()>0)
     {
       dma_display->clearScreen();
       MireActive = false;
     }
+  }
+
+  rgbOrderButton->update();
+  if (rgbOrderButton->pressed())
+  {
+    debugMode = !debugMode;
   }
 
   // After handshake, send a (R)eady signal to indicate that a new command could be sent.
@@ -863,7 +863,8 @@ void loop()
   // 12: handshake + report resolution
   // 13: set serial transfer chunk size
   // 14: enable serial transfer compression
-  // 99: display number
+  // 98: disable debug mode
+  // 99: enable debug mode
   unsigned char c4;
   while (Serial.available()==0);
   c4=Serial.read();
@@ -906,12 +907,13 @@ void loop()
     // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
     Serial.write('A');
   }
-  if (c4 == 99) // communication debug
+  else if (c4 == 98) // disable debug mode
   {
-    unsigned int number = Serial.read();
-    // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
-    Serial.write('A');
-    Say(2, number);
+    debugMode = false;
+  }
+  else if (c4 == 99) // enable debug mode
+  {
+    debugMode = true;
   }
   else if (c4 == 6) // reinit palettes
   {
@@ -1141,11 +1143,13 @@ void loop()
       fillpanelMode64();
     }
   }
-  if (DEBUG_FRAMES)
+  if (debugMode)
   {
     // An overflow of the unsigned int counters should not be an issue, they just reset to 0.
-    Say(0, ++frameCount);
-    Say(4, errorCount);
-    Say(5, watchdogCount);
+    debugLines[0] = ++frameCount;
+    for (int i = 0; i < 6; i++)
+    {
+      Say((unsigned char) i, debugLines[i]);
+    }
   }
 }
