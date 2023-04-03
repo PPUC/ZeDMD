@@ -26,7 +26,7 @@ jobs:
 
   pio-run:
     runs-on: ubuntu-latest
-
+    needs: [ version ]
     strategy:
       matrix:
         panels: ['64x32x2', '64x64x4', '128x64x2']
