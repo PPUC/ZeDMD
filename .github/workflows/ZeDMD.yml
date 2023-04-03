@@ -1,57 +1,97 @@
 name: ZeDMD
 
 on:
-    push:
+  push:
 
-    pull_request:
+  pull_request:
 
 jobs:
-    pio-run:
-        runs-on: ubuntu-latest
+  version:
+    name: Detect version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - id: version
+        run: |
+          VERSION_MAJOR=$(grep -Eo "ZEDMD_VERSION_MAJOR\s+[0-9]+" src/main.cpp | grep -Eo "[0-9]+")
+          VERSION_MINOR=$(grep -Eo "ZEDMD_VERSION_MINOR\s+[0-9]+" src/main.cpp | grep -Eo "[0-9]+")
+          VERSION_PATCH=$(grep -Eo "ZEDMD_VERSION_PATCH\s+[0-9]+" src/main.cpp | grep -Eo "[0-9]+")
+          TAG="${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}"
+          echo "${TAG}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
 
-        strategy:
-            matrix:
-                panels: ['64x32x2', '64x64x4', '128x64x2']
+  pio-run:
+    runs-on: ubuntu-latest
+    needs: [ version ]
+    strategy:
+      matrix:
+        panels: ['64x32x2', '64x64x4', '128x64x2']
 
-        name: ZeDMD ${{ matrix.panels }}
+    name: ZeDMD ${{ matrix.panels }}
 
-        steps:
-            - uses: actions/checkout@v3
+    steps:
+      - uses: actions/checkout@v3
 
-            - name: Cache pip
-              uses: actions/cache@v3
-              with:
-                path: ~/.cache/pip
-                key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-                restore-keys: |
-                  ${{ runner.os }}-pip-
+      - name: Cache pip
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
-            - name: Cache PlatformIO
-              uses: actions/cache@v3
-              with:
-                path: ~/.platformio
-                key: ${{ runner.os }}-${{ hashFiles('**/lockfiles') }}
+      - name: Cache PlatformIO
+        uses: actions/cache@v3
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-${{ hashFiles('**/lockfiles') }}
 
-            - name: Set up Python
-              uses: actions/setup-python@v3
+      - name: Set up Python
+        uses: actions/setup-python@v3
 
-            - name: Install PlatformIO
-              run: |
-                python -m pip install --upgrade pip
-                pip install --upgrade platformio
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install --upgrade platformio
 
-            - name: Build ZeDMD
-              run: |
-                pio run -e ${{ matrix.panels }}
-                pio run -e ${{ matrix.panels }} -t buildfs
-                python ~/.platformio/packages/tool-esptoolpy/esptool.py --chip esp32 merge_bin -o ZeDMD.bin --flash_mode qio --flash_size 4MB \
-                  0x1000 .pio/build/${{ matrix.panels }}/bootloader.bin \
-                  0x8000 .pio/build/${{ matrix.panels }}/partitions.bin \
-                  0xe000 ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin \
-                  0x10000 .pio/build/${{ matrix.panels }}/firmware.bin \
-                  0x210000 .pio/build/${{ matrix.panels }}/littlefs.bin
+      - name: Build ZeDMD
+        run: |
+          pio run -e ${{ matrix.panels }}
+          pio run -e ${{ matrix.panels }} -t buildfs
+          python ~/.platformio/packages/tool-esptoolpy/esptool.py --chip esp32 merge_bin -o ZeDMD.bin --flash_mode qio --flash_size 4MB \
+            0x1000 .pio/build/${{ matrix.panels }}/bootloader.bin \
+            0x8000 .pio/build/${{ matrix.panels }}/partitions.bin \
+            0xe000 ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin \
+            0x10000 .pio/build/${{ matrix.panels }}/firmware.bin \
+            0x210000 .pio/build/${{ matrix.panels }}/littlefs.bin
 
-            - uses: actions/upload-artifact@v3
-              with:
-                name: ZeDMD-${{ matrix.panels }}
-                path: ZeDMD.bin
+      - uses: actions/upload-artifact@v3
+        with:
+          name: ZeDMD-${{ matrix.panels }}-${{ needs.version.outputs.tag }}
+          path: ZeDMD.bin
+
+  post-build:
+    runs-on: ubuntu-latest
+    needs: [ version, pio-run ]
+    name: Release
+    steps:
+      - uses: actions/download-artifact@v3
+      - name: Package
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+            zip -r ZeDMD-64x32x2-${{ needs.version.outputs.tag }}.zip ZeDMD-64x32x2-${{ needs.version.outputs.tag }}
+            zip -r ZeDMD-64x64x4-${{ needs.version.outputs.tag }}.zip  ZeDMD-64x64x4-${{ needs.version.outputs.tag }}
+            zip -r ZeDMD-128x64x2-${{ needs.version.outputs.tag }}.zip  ZeDMD-128x64x2-${{ needs.version.outputs.tag }}
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          draft: true
+          files: |
+            ZeDMD-64x32x2-${{ needs.version.outputs.tag }}.zip
+            ZeDMD-64x64x4-${{ needs.version.outputs.tag }}.zip
+            ZeDMD-128x64x2-${{ needs.version.outputs.tag }}.zip
