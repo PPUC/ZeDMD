@@ -1,6 +1,6 @@
 #define ZEDMD_VERSION_MAJOR 3  // X Digits
 #define ZEDMD_VERSION_MINOR 0  // Max 2 Digits
-#define ZEDMD_VERSION_PATCH 0  // Max 2 Digits
+#define ZEDMD_VERSION_PATCH 1  // Max 2 Digits
 
 #ifdef ZEDMD_64_64_4
     #define PANEL_WIDTH    64    // Width: number of LEDs for 1 panel.
@@ -39,7 +39,7 @@
 // The output will be:
 // 000 number of frames received, regardless if any error happened
 // 001 size of compressed frame if compression is enabled
-// 002 size of the decompressed frame if compression is enabled
+// 002 size of currently received bytes of frame (compressed or decompressed)
 // 003 error code if the decompression if compression is enabled
 // 004 number of incomplete frames
 // 005 number of resets because of communication freezes
@@ -669,18 +669,22 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
     if (debugMode)
     {
       debugLines[1] = transferBufferSize;
-      debugLines[2] = BufferSize;
-    }
+     }
   }
 
-  // We always receive chunks of 256 bytes (maximum).
+  // We always receive chunks of "serialTransferChunkSize" bytes (maximum).
   // At this point, the control chars and the one byte command have been read already.
-  // So we only need to read the remaining bytes of the first chunk as full 256 byte chunks afterwards.
+  // So we only need to read the remaining bytes of the first chunk and full chunks afterwards.
   int chunkSize = serialTransferChunkSize - N_CTRL_CHARS - 1 - (compression ? 2 : 0);
   int remainingBytes = transferBufferSize;
   while (remainingBytes > 0)
   {
     int receivedBytes = Serial.readBytes(pBuffer + transferBufferSize - remainingBytes, (remainingBytes > chunkSize) ? chunkSize : remainingBytes);
+    if (debugMode)
+    {
+      Say(2, receivedBytes);
+      debugLines[2] = receivedBytes;
+    }
     if (receivedBytes != remainingBytes && receivedBytes != chunkSize)
     {
       if (debugMode)
@@ -690,9 +694,6 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
 
       // Send an (E)rror signal to tell the client that no more chunks should be send or to repeat the entire frame from the beginning.
       Serial.write('E');
-      // Flush the buffer.
-      Serial.readBytes(img2, sizeof(img2));
-      memset(img2, 0, sizeof(img2));
 
       return false;
     }
@@ -720,11 +721,16 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
       memcpy(pBuffer, uncompressBuffer, BufferSize);
       free(uncompressBuffer);
       sendFastReady();
+      if (debugMode)
+      {
+        debugLines[3] = 0;
+      }
       return true;
     }
 
     if (debugMode && (Z_OK == status))
     {
+      Say(3, 99);
       debugLines[3] = 99;
     }
 
@@ -789,9 +795,6 @@ void wait_for_ctrl_chars(void)
 
       // Send an (E)rror signal.
       Serial.write('E');
-      // Flush the buffer.
-      Serial.readBytes(img2, sizeof(img2));
-      memset(img2, 0, sizeof(img2));
       // Send a (R)eady signal to tell the client to send the next command.
       Serial.write('R');
 
@@ -914,10 +917,12 @@ void loop()
   else if (c4 == 98) // disable debug mode
   {
     debugMode = false;
+    Serial.write('A');
   }
   else if (c4 == 99) // enable debug mode
   {
     debugMode = true;
+    Serial.write('A');
   }
   else if (c4 == 6) // reinit palettes
   {
