@@ -22,6 +22,7 @@
 #define SERIAL_TIMEOUT 8     // Time in milliseconds to wait for the next data chunk.
 #define SERIAL_BUFFER  8192  // Serial buffer size in byte.
 #define FRAME_TIMEOUT  10000 // Time in milliseconds to wait for a new frame.
+#define LOGO_TIMEOUT   20000 // Time in milliseconds before the logo vanishes
 
 // ------------------------------------------ ZeDMD by Zedrummer (http://pincabpassion.net)---------------------------------------------
 // - Install the ESP32 board in Arduino IDE as explained here https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/
@@ -157,6 +158,8 @@ int RomWidthPlane=128>>3;
 
 bool debugMode = false;
 unsigned int debugLines[6] = {0};
+
+unsigned long TimeLogoVanish;
 
 void DisplayChiffre(unsigned int chf, int x,int y,int R, int G, int B)
 {
@@ -640,6 +643,8 @@ void setup()
   DisplayLum();
 
   InitPalettes(255,109,0);
+
+  TimeLogoVanish = millis() + LOGO_TIMEOUT;
 }
 
 bool fastReadySent = false;
@@ -803,27 +808,51 @@ void wait_for_ctrl_chars(void)
 
 void loop()
 {
+  bool screenon = true;
   while (MireActive)
   {
     rgbOrderButton->update();
-    if (rgbOrderButton->pressed())
-    {
-      acordreRGB++;
-      if (acordreRGB >= 6) acordreRGB = 0;
-      SaveOrdreRGB();
-      fillpanel();
-      DisplayText(lumtxt,16,PANE_WIDTH/2-16/2-2*4/2,PANE_HEIGHT-5,255,255,255);
-      DisplayLum();
-    }
-
     brightnessButton->update();
-    if (brightnessButton->pressed())
+
+    if (!screenon)
     {
-      lumstep++;
-      if (lumstep>=16) lumstep=1;
-      dma_display->setBrightness8(lumval[lumstep]);
-      DisplayLum();
-      SaveLum();
+      if (rgbOrderButton->pressed() || brightnessButton->pressed())
+      {
+          DisplayLogo();
+          DisplayText(lumtxt, 16, PANE_WIDTH / 2 - 16 / 2 - 2 * 4 / 2, PANE_HEIGHT - 5, 255, 255, 255);
+          DisplayLum();
+          screenon = true;
+          TimeLogoVanish = millis() + LOGO_TIMEOUT;
+      }
+    }
+    else
+    {
+      if (rgbOrderButton->pressed())
+      {
+        acordreRGB++;
+        if (acordreRGB >= 6) acordreRGB = 0;
+        SaveOrdreRGB();
+        fillpanel();
+        DisplayText(lumtxt,16,PANE_WIDTH/2-16/2-2*4/2,PANE_HEIGHT-5,255,255,255);
+        DisplayLum();
+        TimeLogoVanish = millis() + LOGO_TIMEOUT;
+      }
+
+      if (brightnessButton->pressed())
+      {
+        lumstep++;
+        if (lumstep>=16) lumstep=1;
+        dma_display->setBrightness8(lumval[lumstep]);
+        DisplayLum();
+        //fillpanel(); 
+        SaveLum();
+        TimeLogoVanish = millis() + LOGO_TIMEOUT;
+      }
+    }
+    if (screenon && (millis() > TimeLogoVanish))
+    {
+        dma_display->clearScreen();
+        screenon = false;
     }
 
     if (Serial.available()>0)
@@ -841,11 +870,14 @@ void loop()
 
   // After handshake, send a (R)eady signal to indicate that a new command could be sent.
   // The client has to wait for it to avoid buffer issues. The handshake it self works without it.
-  if (handshakeSucceeded) {
-    if (!fastReadySent) {
+  if (handshakeSucceeded)
+  {
+    if (!fastReadySent)
+    {
       Serial.write('R');
     }
-    else {
+    else
+    {
       fastReadySent = false;
     }
   }
