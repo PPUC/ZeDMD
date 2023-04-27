@@ -1,6 +1,6 @@
 #define ZEDMD_VERSION_MAJOR 3  // X Digits
-#define ZEDMD_VERSION_MINOR 0  // Max 2 Digits
-#define ZEDMD_VERSION_PATCH 1  // Max 2 Digits
+#define ZEDMD_VERSION_MINOR 1  // Max 2 Digits
+#define ZEDMD_VERSION_PATCH 0  // Max 2 Digits
 
 #ifdef ZEDMD_64_64_4
     #define PANEL_WIDTH    64    // Width: number of LEDs for 1 panel.
@@ -24,15 +24,10 @@
 #define FRAME_TIMEOUT  10000 // Time in milliseconds to wait for a new frame.
 
 // ------------------------------------------ ZeDMD by Zedrummer (http://pincabpassion.net)---------------------------------------------
-// - Install the ESP32 board in Arduino IDE as explained here https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/
-// - Install "ESP32 HUB75 LED MATRIX panel DMA" Display library via the library manager
-// - Go to menu "Tools" then click on "ESP32 Sketch Data Upload"
-// - Change the values in the 3 first lines above (PANEL_WIDTH, PANEL_HEIGHT, PANELS_NUMBER) according to your panels
-// - Inject this code in the board
 // - If you have blurry pictures, the display is not clean, try to reduce the input voltage of your LED matrix panels, often, 5V panels need
-// between 4V and 4.5V to display clean pictures, you often have a screw in switch-mode power supplies to change the output voltage a little bit
+//   between 4V and 4.5V to display clean pictures, you often have a screw in switch-mode power supplies to change the output voltage a little bit
 // - While the initial pattern logo is displayed, check you have red in the upper left, green in the lower left and blue in the upper right,
-// if not, make contact between the ORDRE_BUTTON_PIN (default 21, but you can change below) pin and a ground pin several times
+//   if not, make contact between the ORDRE_BUTTON_PIN (default 21, but you can change below) pin and a ground pin several times
 // until the display is correct (automatically saved, no need to do it again)
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // By pressing the RGB button while a game is running or by sending command 99,you can enable the "Debug Mode".
@@ -619,7 +614,7 @@ void setup()
   dma_display->begin();
 
   if (!LittleFS.begin()) {
-    dma_display->drawChar((uint16_t) 0, (uint16_t) 0, (unsigned char) 'E', (uint16_t) 255, (uint16_t) 0, (uint8_t) 8);
+    Say(0, 9999);
     delay(4000);
   }
 
@@ -1059,7 +1054,7 @@ void loop()
   }
   else if (c4 == 9) // mode 16 couleurs avec 1 palette 16 couleurs (16*3 bytes) suivis de 4 bytes par groupe de 8 points (séparés en plans de bits 4*512 bytes)
   {
-    if (SerialReadBuffer(img2,3*16+4*RomWidthPlane*RomHeight))
+    if (SerialReadBuffer(img2, 3*16+4*RomWidthPlane*RomHeight))
     {
       for (int ti = 15; ti >= 0; ti--)
       {
