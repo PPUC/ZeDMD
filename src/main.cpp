@@ -1,5 +1,5 @@
 #define ZEDMD_VERSION_MAJOR 3  // X Digits
-#define ZEDMD_VERSION_MINOR 1  // Max 2 Digits
+#define ZEDMD_VERSION_MINOR 2  // Max 2 Digits
 #define ZEDMD_VERSION_PATCH 0  // Max 2 Digits
 
 #ifdef ZEDMD_64_64_4
@@ -129,7 +129,7 @@ bool mode64=false;
 int RomWidth=128, RomHeight=32;
 int RomWidthPlane=128>>3;
 
-bool debugMode = true;
+bool debugMode = false;
 unsigned int debugLines[6] = {0};
 
 unsigned char lumstep=1;
@@ -182,6 +182,20 @@ void DisplayNombre(unsigned int chf,unsigned char nc,int x,int y,int R,int G,int
   }
 }
 
+void DisplayVersion()
+{
+  // display the version number to the lower left
+  int ncM,ncm,ncp;
+  if (ZEDMD_VERSION_MAJOR>=100) ncM=3; else if (ZEDMD_VERSION_MAJOR>=10) ncM=2; else ncM=1;
+  DisplayNombre(ZEDMD_VERSION_MAJOR,ncM,4,TOTAL_HEIGHT-5,150,150,150);
+  dma_display->drawPixelRGB888(4+4*ncM,TOTAL_HEIGHT-1,150,150,150);
+  if (ZEDMD_VERSION_MINOR>=10) ncm=2; else ncm=1;
+  DisplayNombre(ZEDMD_VERSION_MINOR,ncm,4+4*ncM+2,TOTAL_HEIGHT-5,150,150,150);
+  dma_display->drawPixelRGB888(4+4*ncM+2+4*ncm,TOTAL_HEIGHT-1,150,150,150);
+  if (ZEDMD_VERSION_PATCH>=10) ncp=2; else ncp=1;
+  DisplayNombre(ZEDMD_VERSION_PATCH,ncp,4+4*ncM+2+4*ncm+2,TOTAL_HEIGHT-5,150,150,150);
+}
+
 void DisplayLum(void)
 {
   DisplayNombre(lumstep,2,TOTAL_WIDTH/2-16/2-2*4/2+16,TOTAL_HEIGHT-5,255,255,255);
@@ -205,22 +219,25 @@ void Say(unsigned char where, unsigned int what)
     if (what!=(unsigned int)-1) DisplayNombre(what,10,15,where*5,255,255,255);
 }
 
-bool CmpColor(unsigned char* px1,unsigned char* px2)
+bool CmpColor(unsigned char* px1, unsigned char* px2)
 {
-  if ((px1[0]==px2[0])&&(px1[1]==px2[1])&&(px1[2]==px2[2])) return true;
-  return false;
+  return
+    (px1[0] == px2[0]) &&
+    (px1[1] == px2[1]) &&
+    (px1[2] == px2[2]);
 }
 
-void SetColor(unsigned char* px1,unsigned char* px2)
+void SetColor(unsigned char* px1, unsigned char* px2)
 {
-  px1[0]=px2[0];
-  px1[1]=px2[1];
-  px1[2]=px2[2];
+  px1[0] = px2[0];
+  px1[1] = px2[1];
+  px1[2] = px2[2];
 }
 
 void ScaleImage() // scale for non indexed image (RGB24)
 {
   int xoffset=0;
+  int yoffset=0;
   int scale=0; // 0 - no scale, 1 - half scale, 2 - twice scale
 
   if ((RomWidth==192)&&(TOTAL_WIDTH==256)) xoffset=32*3;
@@ -230,10 +247,17 @@ void ScaleImage() // scale for non indexed image (RGB24)
     scale=1;
   }
   else if ((RomWidth==256)&&(TOTAL_WIDTH==128)) scale=1;
-  else if ((RomWidth==128)&&(TOTAL_WIDTH==256)) scale=2;
+  else if ((RomWidth==128)&&(TOTAL_WIDTH==256)) {
+    // Scaling doesn't look nice for real RGB tables like Diablo.
+    // @todo we should add a command to turn scaling on or off from the client.
+    // For now we just center the DMD.
+    xoffset = 64 * 3;
+    yoffset = 16 * 3;
+    // scale=2;
+  }
   else return;
 
-  unsigned char panel[RomWidth * RomHeight * 3];
+  unsigned char* panel = (unsigned char*) malloc(RomWidth * RomHeight * 3);
   memcpy(panel, renderBuffer, RomWidth * RomHeight * 3);
 
   if (scale==1)
@@ -351,11 +375,20 @@ void ScaleImage() // scale for non indexed image (RGB24)
   }
   else //offset!=0
   {
-    for (int tj=0;tj<RomHeight;tj++)
+    memset(renderBuffer, 0, TOTAL_BYTES);
+
+    for (int tj=0; tj<RomHeight; tj++)
     {
-      for (int ti=0;ti<RomWidth;ti++) renderBuffer[3*(tj*TOTAL_WIDTH+ti)+xoffset]=panel[3*(tj*RomWidth+ti)];
+      for (int ti=0; ti<RomWidth; ti++)
+      {
+        for (int i=0; i <= 2; i++) {
+          renderBuffer[yoffset * TOTAL_WIDTH + 3 * (tj * TOTAL_WIDTH + ti) + xoffset + i] = panel[3 * (tj * RomWidth + ti) + i];
+        }
+      }
     }
   }
+
+  free(panel);
 }
 
 void ScaleImage64() // scale for indexed image (all except RGB24)
@@ -616,7 +649,10 @@ void DisplayLogo(void)
   }
   flogo.close();
   fillPanelRaw();
+
   free(renderBuffer);
+
+  DisplayVersion();
 }
 
 void setup()
