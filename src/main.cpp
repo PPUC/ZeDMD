@@ -240,14 +240,21 @@ void ScaleImage() // scale for non indexed image (RGB24)
   int yoffset=0;
   int scale=0; // 0 - no scale, 1 - half scale, 2 - twice scale
 
-  if ((RomWidth==192)&&(TOTAL_WIDTH==256)) xoffset=32*3;
+  if ((RomWidth==192)&&(TOTAL_WIDTH==256))
+  {
+    xoffset=32*3;
+  }
   else if (RomWidth==192)
   {
     xoffset=16*3;
     scale=1;
   }
-  else if ((RomWidth==256)&&(TOTAL_WIDTH==128)) scale=1;
-  else if ((RomWidth==128)&&(TOTAL_WIDTH==256)) {
+  else if ((RomWidth==256)&&(TOTAL_WIDTH==128))
+  {
+    scale=1;
+  }
+  else if ((RomWidth==128)&&(TOTAL_WIDTH==256))
+  {
     // Scaling doesn't look nice for real RGB tables like Diablo.
     // @todo we should add a command to turn scaling on or off from the client.
     // For now we just center the DMD.
@@ -418,7 +425,7 @@ void ScaleImage64() // scale for indexed image (all except RGB24)
     return;
   }
 
-  unsigned char panel[RomWidth * RomHeight];
+  unsigned char* panel = (unsigned char*) malloc(RomWidth * RomHeight);
   memcpy(panel, renderBuffer, RomWidth * RomHeight);
 
   if (scale == 1)
@@ -536,6 +543,8 @@ void ScaleImage64() // scale for indexed image (all except RGB24)
   }
   else //offset!=0
   {
+    memset(renderBuffer, 0, TOTAL_WIDTH * TOTAL_HEIGHT);
+
     for (int tj = 0; tj < RomHeight; tj++)
     {
       for (int ti = 0; ti < RomWidth; ti++)
@@ -544,6 +553,8 @@ void ScaleImage64() // scale for indexed image (all except RGB24)
       }
     }
   }
+
+  free(panel);
 }
 
 void fillPanelRaw()
@@ -742,7 +753,6 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
         Say(9, remainingBytes);
         Say(10, chunkSize);
         Say(11, receivedBytes);
-        sleep(5);
         debugLines[4] = ++errorCount;
       }
 
@@ -950,8 +960,12 @@ void loop()
     {
       RomWidth=(int)(tbuf[0])+(int)(tbuf[1]<<8);
       RomHeight=(int)(tbuf[2])+(int)(tbuf[3]<<8);
+      RomWidthPlane=RomWidth>>3;
+      if (debugMode) {
+        DisplayNombre(RomWidth, 3, TOTAL_WIDTH - 7*4, 4, 150, 150, 150);
+        DisplayNombre(RomHeight, 2, TOTAL_WIDTH - 3*4, 4, 150, 150, 150);
+      }
     }
-    RomWidthPlane=RomWidth>>3;
   }
   else if (c4 == 13) // set serial transfer chunk size
   {
@@ -1005,10 +1019,7 @@ void loop()
     if (SerialReadBuffer(renderBuffer, RomHeight * RomWidth * 3))
     {
       mode64=false;
-      if (RomHeight < TOTAL_HEIGHT)
-      {
-        ScaleImage();
-      }
+      ScaleImage();
       fillPanelRaw();
     }
 
@@ -1025,8 +1036,8 @@ void loop()
       int renderBufferSize = RomWidth < TOTAL_WIDTH ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
       renderBuffer = (unsigned char*) malloc(renderBufferSize);
       memset(renderBuffer, 0, renderBufferSize);
-      palette = (unsigned char*) malloc(4*3);
-      memset(palette, 0, 4*3);
+      palette = (unsigned char*) malloc(3*4);
+      memset(palette, 0, 3*4);
 
       for (int ti = 3; ti >= 0; ti--)
       {
@@ -1058,11 +1069,7 @@ void loop()
       mode64=false;
       for (int ti=0;ti<64;ti++) rotCols[ti]=ti;
 
-      if (RomHeight < TOTAL_HEIGHT)
-      {
-        ScaleImage64();
-      }
-
+      ScaleImage64();
       fillPanelUsingPalette();
 
       free(renderBuffer);
@@ -1159,11 +1166,7 @@ void loop()
       mode64=false;
       for (int ti=0;ti<64;ti++) rotCols[ti]=ti;
 
-      if (RomHeight < TOTAL_HEIGHT)
-      {
-        ScaleImage64();
-      }
-
+      ScaleImage64();
       fillPanelUsingPalette();
 
       free(renderBuffer);
@@ -1223,11 +1226,7 @@ void loop()
       mode64=false;
       for (int ti=0;ti<64;ti++) rotCols[ti]=ti;
 
-       if (RomHeight < TOTAL_HEIGHT)
-      {
-        ScaleImage64();
-      }
-
+      ScaleImage64();
       fillPanelUsingPalette();
 
       free(renderBuffer);
@@ -1302,11 +1301,7 @@ void loop()
 
       mode64=true;
 
-      if (RomHeight < TOTAL_HEIGHT)
-      {
-        ScaleImage64();
-      }
-
+      ScaleImage64();
       fillPanelUsingPalette();
 
       free(renderBuffer);
