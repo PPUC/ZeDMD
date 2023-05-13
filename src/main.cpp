@@ -257,10 +257,11 @@ void ScaleImage() // scale for non indexed image (RGB24)
   {
     // Scaling doesn't look nice for real RGB tables like Diablo.
     // @todo we should add a command to turn scaling on or off from the client.
-    // For now we just center the DMD.
-    xoffset = 64 * 3;
-    yoffset = 16 * 3;
-    // scale=2;
+    scale=2;
+
+    // Optional: just center the DMD.
+    // xoffset = 64 * 3;
+    // yoffset = 16 * 3;
   }
   else return;
 
@@ -1091,8 +1092,8 @@ void loop()
       int renderBufferSize = RomWidth < TOTAL_WIDTH ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
       renderBuffer = (unsigned char*) malloc(renderBufferSize);
       memset(renderBuffer, 0, renderBufferSize);
-      palette = (unsigned char*) malloc(4*3);
-      memset(palette, 0, 4*3);
+      palette = (unsigned char*) malloc(48);
+      memset(palette, 0, 48);
 
       for (int ti = 3; ti >= 0; ti--)
       {
@@ -1188,8 +1189,8 @@ void loop()
       int renderBufferSize = RomWidth < TOTAL_WIDTH ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
       renderBuffer = (unsigned char*) malloc(renderBufferSize);
       memset(renderBuffer, 0, renderBufferSize);
-      palette = (unsigned char*) malloc(4*3);
-      memset(palette, 0, 4*3);
+      palette = (unsigned char*) malloc(3*16);
+      memset(palette, 0, 3*16);
 
       for (int ti = 15; ti >= 0; ti--)
       {
@@ -1248,8 +1249,8 @@ void loop()
       int renderBufferSize = RomWidth < TOTAL_WIDTH ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
       renderBuffer = (unsigned char*) malloc(renderBufferSize);
       memset(renderBuffer, 0, renderBufferSize);
-      palette = (unsigned char*) malloc(64*3);
-      memset(palette, 0, 64*3);
+      palette = (unsigned char*) malloc(3*64);
+      memset(palette, 0, 3*64);
 
       for (int ti = 63; ti >= 0; ti--)
       {
