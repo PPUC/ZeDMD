@@ -29,7 +29,7 @@ jobs:
     needs: [ version ]
     strategy:
       matrix:
-        panels: ['64x32x2', '64x64x4', '128x64x2']
+        panels: ['128x32', '256x64']
 
     name: ZeDMD ${{ matrix.panels }}
 
@@ -83,15 +83,13 @@ jobs:
       - name: Package
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-            zip -r ZeDMD-64x32x2-${{ needs.version.outputs.tag }}.zip ZeDMD-64x32x2-${{ needs.version.outputs.tag }}
-            zip -r ZeDMD-64x64x4-${{ needs.version.outputs.tag }}.zip  ZeDMD-64x64x4-${{ needs.version.outputs.tag }}
-            zip -r ZeDMD-128x64x2-${{ needs.version.outputs.tag }}.zip  ZeDMD-128x64x2-${{ needs.version.outputs.tag }}
+            zip -r ZeDMD-128x32-${{ needs.version.outputs.tag }}.zip ZeDMD-128x32-${{ needs.version.outputs.tag }}
+            zip -r ZeDMD-256x64-${{ needs.version.outputs.tag }}.zip  ZeDMD-256x64-${{ needs.version.outputs.tag }}
       - name: Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
           draft: true
           files: |
-            ZeDMD-64x32x2-${{ needs.version.outputs.tag }}.zip
-            ZeDMD-64x64x4-${{ needs.version.outputs.tag }}.zip
-            ZeDMD-128x64x2-${{ needs.version.outputs.tag }}.zip
+            ZeDMD-128x32-${{ needs.version.outputs.tag }}.zip
+            ZeDMD-256x64-${{ needs.version.outputs.tag }}.zip

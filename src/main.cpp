@@ -1,5 +1,5 @@
 #define ZEDMD_VERSION_MAJOR 3  // X Digits
-#define ZEDMD_VERSION_MINOR 0  // Max 2 Digits
+#define ZEDMD_VERSION_MINOR 2  // Max 2 Digits
 #define ZEDMD_VERSION_PATCH 0  // Max 2 Digits
 
 #ifdef ZEDMD_64_64_4
@@ -19,35 +19,31 @@
 #endif
 
 #define SERIAL_BAUD    921600
-#define SERIAL_TIMEOUT 8     // Time in milliseconds to wait for the next data chunk.
-#define SERIAL_BUFFER  8192  // Serial buffer size in byte.
-#define FRAME_TIMEOUT  10000 // Time in milliseconds to wait for a new frame.
+#define SERIAL_TIMEOUT 8      // Time in milliseconds to wait for the next data chunk.
+#define SERIAL_BUFFER  8192   // Serial buffer size in byte.
+#define FRAME_TIMEOUT  10000  // Time in milliseconds to wait for a new frame.
 
 // ------------------------------------------ ZeDMD by Zedrummer (http://pincabpassion.net)---------------------------------------------
-// - Install the ESP32 board in Arduino IDE as explained here https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/
-// - Install "ESP32 HUB75 LED MATRIX panel DMA" Display library via the library manager
-// - Go to menu "Tools" then click on "ESP32 Sketch Data Upload"
-// - Change the values in the 3 first lines above (PANEL_WIDTH, PANEL_HEIGHT, PANELS_NUMBER) according to your panels
-// - Inject this code in the board
 // - If you have blurry pictures, the display is not clean, try to reduce the input voltage of your LED matrix panels, often, 5V panels need
-// between 4V and 4.5V to display clean pictures, you often have a screw in switch-mode power supplies to change the output voltage a little bit
+//   between 4V and 4.5V to display clean pictures, you often have a screw in switch-mode power supplies to change the output voltage a little bit
 // - While the initial pattern logo is displayed, check you have red in the upper left, green in the lower left and blue in the upper right,
-// if not, make contact between the ORDRE_BUTTON_PIN (default 21, but you can change below) pin and a ground pin several times
+//   if not, make contact between the ORDRE_BUTTON_PIN (default 21, but you can change below) pin and a ground pin several times
 // until the display is correct (automatically saved, no need to do it again)
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // By pressing the RGB button while a game is running or by sending command 99,you can enable the "Debug Mode".
 // The output will be:
 // 000 number of frames received, regardless if any error happened
 // 001 size of compressed frame if compression is enabled
-// 002 size of the decompressed frame if compression is enabled
+// 002 size of currently received bytes of frame (compressed or decompressed)
 // 003 error code if the decompression if compression is enabled
 // 004 number of incomplete frames
 // 005 number of resets because of communication freezes
 // -----------------------------------------------------------------------------------------------------------------------------------------
 
-#define PANE_WIDTH (PANEL_WIDTH*PANELS_NUMBER)
-#define PANE_WIDTH_PLANE (PANE_WIDTH>>3)
-#define PANE_HEIGHT PANEL_HEIGHT
+#define TOTAL_WIDTH (PANEL_WIDTH * PANELS_NUMBER)
+#define TOTAL_WIDTH_PLANE (TOTAL_WIDTH >> 3)
+#define TOTAL_HEIGHT PANEL_HEIGHT
+#define TOTAL_BYTES (TOTAL_WIDTH * TOTAL_HEIGHT * 3)
 #define MAX_COLOR_ROTATIONS 8
 #define MIN_SPAN_ROT 60
 
@@ -57,40 +53,27 @@
 #include <miniz.h>
 #include <Bounce2.h>
 
-/* Pinout from ESP32-HUB75-MatrixPanel-I2S-DMA.h
-    #define R1_PIN_DEFAULT  25
-    #define G1_PIN_DEFAULT  26
-    #define B1_PIN_DEFAULT  27
-    #define R2_PIN_DEFAULT  14
-    #define G2_PIN_DEFAULT  12
-    #define B2_PIN_DEFAULT  13
-
-    #define A_PIN_DEFAULT   23
-    #define B_PIN_DEFAULT   19
-    #define C_PIN_DEFAULT   5
-    #define D_PIN_DEFAULT   17
-    #define E_PIN_DEFAULT   -1 // IMPORTANT: Change to a valid pin if using a 64x64px panel.
-
-    #define LAT_PIN_DEFAULT 4
-    #define OE_PIN_DEFAULT  15
-    #define CLK_PIN_DEFAULT 16
- */
-
-// Change these to whatever suits
-#define R1_PIN 25
-#define G1_PIN 26
-#define B1_PIN 27
-#define R2_PIN 14
-#define G2_PIN 12
-#define B2_PIN 13
-#define A_PIN 23
-#define B_PIN 19
-#define C_PIN 5
-#define D_PIN 17
-#define E_PIN 22 // required for 1/32 scan panels, like 64x64. Any available pin would do, i.e. IO32. If 1/16 scan panels, no connection to this pin needed
+// Pinout derived from ESP32-HUB75-MatrixPanel-I2S-DMA.h
+#define R1_PIN  25
+#define G1_PIN  26
+#define B1_PIN  27
+#define R2_PIN  14
+#define G2_PIN  12
+#define B2_PIN  13
+#define A_PIN   23
+#define B_PIN   19
+#define C_PIN   5
+#define D_PIN   17
+#define E_PIN   22 // required for 1/32 scan panels, like 64x64. Any available pin would do, i.e. IO32. If 1/16 scan panels, no connection to this pin needed
 #define LAT_PIN 4
-#define OE_PIN 15
+#define OE_PIN  15
 #define CLK_PIN 16
+
+#define ORDRE_BUTTON_PIN 21
+Bounce2::Button* rgbOrderButton;
+
+#define LUMINOSITE_BUTTON_PIN 33
+Bounce2::Button* brightnessButton;
 
 #define N_CTRL_CHARS 6
 #define N_INTERMEDIATE_CTR_CHARS 4
@@ -114,33 +97,24 @@ unsigned char lumval[16]={0,2,4,7,11,18,30,40,50,65,80,100,125,160,200,255}; // 
 
 HUB75_I2S_CFG::i2s_pins _pins={R1_PIN, G1_PIN, B1_PIN, R2_PIN, G2_PIN, B2_PIN, A_PIN, B_PIN, C_PIN, D_PIN, E_PIN, LAT_PIN, OE_PIN, CLK_PIN};
 HUB75_I2S_CFG mxconfig(
-          PANEL_WIDTH,   // width
+          PANEL_WIDTH,    // width
           PANEL_HEIGHT,   // height
-           PANELS_NUMBER,   // chain length
-         _pins//,   // pin mapping
-         //HUB75_I2S_CFG::FM6126A      // driver chip
+          PANELS_NUMBER,  // chain length
+          _pins           // pin mapping
+          //HUB75_I2S_CFG::FM6126A  // driver chip
 );
+
 MatrixPanel_I2S_DMA *dma_display = nullptr;
 
 int ordreRGB[3*6]={0,1,2, 2,0,1, 1,2,0,
                    0,2,1, 1,0,2, 2,1,0};
 int acordreRGB=0;
 
-unsigned char Palette4[3*4]; // palettes 4 couleurs et 16 couleurs en RGB
-static const float levels4[4]  = {10,33,67,100};
-unsigned char Palette16[3*16];
-static const float levels16[16]  = {0, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 90, 100}; // SAM brightness seems okay
-unsigned char Palette64[3*64];
-static const float levels64[64]  = {0, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 90, 100}; // SAM brightness seems okay
-
-unsigned char panel[256*64*3];
-unsigned char panel2[256*64];
-
-#define ORDRE_BUTTON_PIN 21
-Bounce2::Button* rgbOrderButton;
-
-#define LUMINOSITE_BUTTON_PIN 33
-Bounce2::Button* brightnessButton;
+unsigned char* palette;
+unsigned char* renderBuffer;
+unsigned char doubleBufferR[TOTAL_HEIGHT][TOTAL_WIDTH] = {0};
+unsigned char doubleBufferG[TOTAL_HEIGHT][TOTAL_WIDTH] = {0};
+unsigned char doubleBufferB[TOTAL_HEIGHT][TOTAL_WIDTH] = {0};
 
 // for color rotation
 unsigned char rotCols[64];
@@ -157,6 +131,26 @@ int RomWidthPlane=128>>3;
 
 bool debugMode = false;
 unsigned int debugLines[6] = {0};
+
+unsigned char lumstep=1;
+
+bool MireActive = true;
+bool handshakeSucceeded = false;
+bool compression = false;
+// 256 is the default buffer size of the CP210x linux kernel driver, we should not exceed it as default.
+int serialTransferChunkSize = 256;
+unsigned int frameCount = 0;
+unsigned int errorCount = 0;
+unsigned int watchdogCount = 0;
+
+bool fastReadySent = false;
+
+void sendFastReady() {
+  // Indicate (R)eady, even if the frame isn't rendered yet.
+  // That would allow to get the buffer filled with the next frame already.
+  Serial.write('R');
+  fastReadySent = true;
+}
 
 void DisplayChiffre(unsigned int chf, int x,int y,int R, int G, int B)
 {
@@ -188,11 +182,23 @@ void DisplayNombre(unsigned int chf,unsigned char nc,int x,int y,int R,int G,int
   }
 }
 
-unsigned char lumstep=1;
+void DisplayVersion()
+{
+  // display the version number to the lower left
+  int ncM,ncm,ncp;
+  if (ZEDMD_VERSION_MAJOR>=100) ncM=3; else if (ZEDMD_VERSION_MAJOR>=10) ncM=2; else ncM=1;
+  DisplayNombre(ZEDMD_VERSION_MAJOR,ncM,4,TOTAL_HEIGHT-5,150,150,150);
+  dma_display->drawPixelRGB888(4+4*ncM,TOTAL_HEIGHT-1,150,150,150);
+  if (ZEDMD_VERSION_MINOR>=10) ncm=2; else ncm=1;
+  DisplayNombre(ZEDMD_VERSION_MINOR,ncm,4+4*ncM+2,TOTAL_HEIGHT-5,150,150,150);
+  dma_display->drawPixelRGB888(4+4*ncM+2+4*ncm,TOTAL_HEIGHT-1,150,150,150);
+  if (ZEDMD_VERSION_PATCH>=10) ncp=2; else ncp=1;
+  DisplayNombre(ZEDMD_VERSION_PATCH,ncp,4+4*ncM+2+4*ncm+2,TOTAL_HEIGHT-5,150,150,150);
+}
 
 void DisplayLum(void)
 {
-  DisplayNombre(lumstep,2,PANE_WIDTH/2-16/2-2*4/2+16,PANE_HEIGHT-5,255,255,255);
+  DisplayNombre(lumstep,2,TOTAL_WIDTH/2-16/2-2*4/2+16,TOTAL_HEIGHT-5,255,255,255);
 }
 
 void  DisplayText(bool* text, int width, int x, int y, int R, int G, int B)
@@ -207,34 +213,60 @@ void  DisplayText(bool* text, int width, int x, int y, int R, int G, int B)
   }
 }
 
-bool CmpColor(unsigned char* px1,unsigned char* px2)
+void Say(unsigned char where, unsigned int what)
 {
-  if ((px1[0]==px2[0])&&(px1[1]==px2[1])&&(px1[2]==px2[2])) return true;
-  return false;
+    DisplayNombre(where,3,0,where*5,255,255,255);
+    if (what!=(unsigned int)-1) DisplayNombre(what,10,15,where*5,255,255,255);
 }
 
-void SetColor(unsigned char* px1,unsigned char* px2)
+bool CmpColor(unsigned char* px1, unsigned char* px2)
 {
-  px1[0]=px2[0];
-  px1[1]=px2[1];
-  px1[2]=px2[2];
+  return
+    (px1[0] == px2[0]) &&
+    (px1[1] == px2[1]) &&
+    (px1[2] == px2[2]);
+}
+
+void SetColor(unsigned char* px1, unsigned char* px2)
+{
+  px1[0] = px2[0];
+  px1[1] = px2[1];
+  px1[2] = px2[2];
 }
 
 void ScaleImage() // scale for non indexed image (RGB24)
 {
   int xoffset=0;
-  memcpy(panel2,panel,RomWidth*RomHeight*3);
-  memset(panel,0,PANE_WIDTH*PANE_HEIGHT*3);
+  int yoffset=0;
   int scale=0; // 0 - no scale, 1 - half scale, 2 - twice scale
-  if ((RomWidth==192)&&(PANE_WIDTH==256)) xoffset=32*3;
+
+  if ((RomWidth==192)&&(TOTAL_WIDTH==256))
+  {
+    xoffset=32*3;
+  }
   else if (RomWidth==192)
   {
     xoffset=16*3;
     scale=1;
   }
-  else if ((RomWidth==256)&&(PANE_WIDTH==128)) scale=1;
-  else if ((RomWidth==128)&&(PANE_WIDTH==256)) scale=2;
+  else if ((RomWidth==256)&&(TOTAL_WIDTH==128))
+  {
+    scale=1;
+  }
+  else if ((RomWidth==128)&&(TOTAL_WIDTH==256))
+  {
+    // Scaling doesn't look nice for real RGB tables like Diablo.
+    // @todo we should add a command to turn scaling on or off from the client.
+    scale=2;
+
+    // Optional: just center the DMD.
+    // xoffset = 64 * 3;
+    // yoffset = 16 * 3;
+  }
   else return;
+
+  unsigned char* panel = (unsigned char*) malloc(RomWidth * RomHeight * 3);
+  memcpy(panel, renderBuffer, RomWidth * RomHeight * 3);
 
   if (scale==1)
   {
@@ -243,11 +275,11 @@ void ScaleImage() // scale for non indexed image (RGB24)
     {
       for (int tj=0;tj<RomWidth;tj+=2)
       {
-        unsigned char* pp=&panel2[ti*RomWidth*3+tj*3];
-        if (CmpColor(pp,&pp[3])||CmpColor(pp,&pp[3*RomWidth])||CmpColor(pp,&pp[3*RomWidth+3])) SetColor(&panel[xoffset+3*(tj>>1+(ti>>1)*PANE_WIDTH)],pp);
-        else if (CmpColor(&pp[3],&pp[3*RomWidth])||CmpColor(&pp[3],&pp[3*RomWidth+3])) SetColor(&panel[xoffset+3*(tj>>1+(ti>>1)*PANE_WIDTH)],&pp[3]);
-        else if (CmpColor(&pp[3*RomWidth],&pp[3*RomWidth+3])) SetColor(&panel[xoffset+3*(tj>>1+(ti>>1)*PANE_WIDTH)],&pp[3*RomWidth]);
-        else SetColor(&panel[xoffset+3*(tj>>1+(ti>>1)*PANE_WIDTH)],pp);
+        unsigned char* pp=&panel[ti*RomWidth*3+tj*3];
+        if (CmpColor(pp,&pp[3])||CmpColor(pp,&pp[3*RomWidth])||CmpColor(pp,&pp[3*RomWidth+3])) SetColor(&renderBuffer[xoffset+3*(tj>>1+(ti>>1)*TOTAL_WIDTH)],pp);
+        else if (CmpColor(&pp[3],&pp[3*RomWidth])||CmpColor(&pp[3],&pp[3*RomWidth+3])) SetColor(&renderBuffer[xoffset+3*(tj>>1+(ti>>1)*TOTAL_WIDTH)],&pp[3]);
+        else if (CmpColor(&pp[3*RomWidth],&pp[3*RomWidth+3])) SetColor(&renderBuffer[xoffset+3*(tj>>1+(ti>>1)*TOTAL_WIDTH)],&pp[3*RomWidth]);
+        else SetColor(&renderBuffer[xoffset+3*(tj>>1+(ti>>1)*TOTAL_WIDTH)],pp);
       }
     }
   }
@@ -261,259 +293,325 @@ void ScaleImage() // scale for non indexed image (RGB24)
         unsigned char *a, *b, *c, *d, *e, *f, *g, *h, *i;
         if ((ti==0)&&(tj==0))
         {
-          a=b=d=e=panel2;
-          c=f=&panel2[3];
-          g=h=&panel2[3*RomWidth];
-          i=&panel2[3*(RomWidth+1)];
+          a=b=d=e=panel;
+          c=f=&panel[3];
+          g=h=&panel[3*RomWidth];
+          i=&panel[3*(RomWidth+1)];
         }
         else if ((ti==0)&&(tj==RomHeight-1))
         {
-          a=b=&panel2[3*(tj-1)*RomWidth];
-          c=&panel2[3*((tj-1)*RomWidth+1)];
-          d=g=h=e=&panel2[3*tj*RomWidth];
-          f=i=&panel2[3*(tj*RomWidth+1)];
+          a=b=&panel[3*(tj-1)*RomWidth];
+          c=&panel[3*((tj-1)*RomWidth+1)];
+          d=g=h=e=&panel[3*tj*RomWidth];
+          f=i=&panel[3*(tj*RomWidth+1)];
         }
         else if ((ti==RomWidth-1)&&(tj==0))
         {
-          a=d=&panel2[3*(ti-1)];
-          b=c=f=e=&panel2[3*ti];
-          g=&panel2[3*(RomWidth+ti-1)];
-          h=i=&panel2[3*(RomWidth+ti)];
+          a=d=&panel[3*(ti-1)];
+          b=c=f=e=&panel[3*ti];
+          g=&panel[3*(RomWidth+ti-1)];
+          h=i=&panel[3*(RomWidth+ti)];
         }
         else if ((ti==RomWidth-1)&&(tj==RomHeight-1))
         {
-          a=&panel2[3*(tj*RomWidth-2)];
-          b=c=&panel2[3*(tj*RomWidth-1)];
-          d=g=&panel2[3*(RomHeight*RomWidth-2)];
-          e=f=h=i=&panel2[3*(RomHeight*RomWidth-1)];
+          a=&panel[3*(tj*RomWidth-2)];
+          b=c=&panel[3*(tj*RomWidth-1)];
+          d=g=&panel[3*(RomHeight*RomWidth-2)];
+          e=f=h=i=&panel[3*(RomHeight*RomWidth-1)];
         }
         else if (ti==0)
         {
-          a=b=&panel2[3*((tj-1)*RomWidth)];
-          c=&panel2[3*((tj-1)*RomWidth+1)];
-          d=e=&panel2[3*(tj*RomWidth)];
-          f=&panel2[3*(tj*RomWidth+1)];
-          g=h=&panel2[3*((tj+1)*RomWidth)];
-          i=&panel2[3*((tj+1)*RomWidth+1)];
+          a=b=&panel[3*((tj-1)*RomWidth)];
+          c=&panel[3*((tj-1)*RomWidth+1)];
+          d=e=&panel[3*(tj*RomWidth)];
+          f=&panel[3*(tj*RomWidth+1)];
+          g=h=&panel[3*((tj+1)*RomWidth)];
+          i=&panel[3*((tj+1)*RomWidth+1)];
         }
         else if (ti==RomWidth-1)
         {
-          a=&panel2[3*(tj*RomWidth-2)];
-          b=c=&panel2[3*(tj*RomWidth-1)];
-          d=&panel2[3*((tj+1)*RomWidth-2)];
-          e=f=&panel2[3*((tj+1)*RomWidth-1)];
-          g=&panel2[3*((tj+2)*RomWidth-2)];
-          h=i=&panel2[3*((tj+2)*RomWidth-1)];
+          a=&panel[3*(tj*RomWidth-2)];
+          b=c=&panel[3*(tj*RomWidth-1)];
+          d=&panel[3*((tj+1)*RomWidth-2)];
+          e=f=&panel[3*((tj+1)*RomWidth-1)];
+          g=&panel[3*((tj+2)*RomWidth-2)];
+          h=i=&panel[3*((tj+2)*RomWidth-1)];
         }
         else if (tj==0)
         {
-          a=d=&panel2[3*(ti-1)];
-          b=e=&panel2[3*ti];
-          c=f=&panel2[3*(ti+1)];
-          g=&panel2[3*(RomWidth+ti-1)];
-          h=&panel2[3*(RomWidth+ti)];
-          i=&panel2[3*(RomWidth+ti+1)];
+          a=d=&panel[3*(ti-1)];
+          b=e=&panel[3*ti];
+          c=f=&panel[3*(ti+1)];
+          g=&panel[3*(RomWidth+ti-1)];
+          h=&panel[3*(RomWidth+ti)];
+          i=&panel[3*(RomWidth+ti+1)];
         }
         else if (tj==RomHeight-1)
         {
-          a=&panel2[3*((tj-1)*RomWidth+ti-1)];
-          b=&panel2[3*((tj-1)*RomWidth+ti)];
-          c=&panel2[3*((tj-1)*RomWidth+ti+1)];
-          d=g=&panel2[3*(tj*RomWidth+ti-1)];
-          e=h=&panel2[3*(tj*RomWidth+ti)];
-          f=i=&panel2[3*(tj*RomWidth+ti+1)];
+          a=&panel[3*((tj-1)*RomWidth+ti-1)];
+          b=&panel[3*((tj-1)*RomWidth+ti)];
+          c=&panel[3*((tj-1)*RomWidth+ti+1)];
+          d=g=&panel[3*(tj*RomWidth+ti-1)];
+          e=h=&panel[3*(tj*RomWidth+ti)];
+          f=i=&panel[3*(tj*RomWidth+ti+1)];
         }
         else
         {
-          a=&panel2[3*((tj-1)*RomWidth+ti-1)];
-          b=&panel2[3*((tj-1)*RomWidth+ti)];
-          c=&panel2[3*((tj-1)*RomWidth+ti+1)];
-          d=&panel2[3*(tj*RomWidth+ti-1)];
-          e=&panel2[3*(tj*RomWidth+ti)];
-          f=&panel2[3*(tj*RomWidth+ti+1)];
-          g=&panel2[3*((tj+1)*RomWidth+ti-1)];
-          h=&panel2[3*((tj+1)*RomWidth+ti)];
-          i=&panel2[3*((tj+1)*RomWidth+ti+1)];
+          a=&panel[3*((tj-1)*RomWidth+ti-1)];
+          b=&panel[3*((tj-1)*RomWidth+ti)];
+          c=&panel[3*((tj-1)*RomWidth+ti+1)];
+          d=&panel[3*(tj*RomWidth+ti-1)];
+          e=&panel[3*(tj*RomWidth+ti)];
+          f=&panel[3*(tj*RomWidth+ti+1)];
+          g=&panel[3*((tj+1)*RomWidth+ti-1)];
+          h=&panel[3*((tj+1)*RomWidth+ti)];
+          i=&panel[3*((tj+1)*RomWidth+ti+1)];
         }
         if (b != h && d != f) {
-          if (CmpColor(d,b)) SetColor(&panel[3*(tj*2*PANE_WIDTH+ti*2)+xoffset],d); else SetColor(&panel[3*(tj*2*PANE_WIDTH+ti*2)+xoffset],e);
-          if (CmpColor(b,f)) SetColor(&panel[3*(tj*2*PANE_WIDTH+ti*2+1)+xoffset], f); else SetColor(&panel[3*(tj*2*PANE_WIDTH+ti*2+1)+xoffset], e);
-          if (CmpColor(b,h)) SetColor(&panel[3*((tj*2+1)*PANE_WIDTH+ti*2)+xoffset],d); else SetColor(&panel[3*((tj*2+1)*PANE_WIDTH+ti*2)+xoffset],e);
-          if (CmpColor(h,f)) SetColor(&panel[3*((tj*2+1)*PANE_WIDTH+ti*2+1)+xoffset],f); else SetColor(&panel[3*((tj*2+1)*PANE_WIDTH+ti*2+1)+xoffset],e);
+          if (CmpColor(d,b)) SetColor(&renderBuffer[3*(tj*2*TOTAL_WIDTH+ti*2)+xoffset],d); else SetColor(&renderBuffer[3*(tj*2*TOTAL_WIDTH+ti*2)+xoffset],e);
+          if (CmpColor(b,f)) SetColor(&renderBuffer[3*(tj*2*TOTAL_WIDTH+ti*2+1)+xoffset], f); else SetColor(&renderBuffer[3*(tj*2*TOTAL_WIDTH+ti*2+1)+xoffset], e);
+          if (CmpColor(b,h)) SetColor(&renderBuffer[3*((tj*2+1)*TOTAL_WIDTH+ti*2)+xoffset],d); else SetColor(&renderBuffer[3*((tj*2+1)*TOTAL_WIDTH+ti*2)+xoffset],e);
+          if (CmpColor(h,f)) SetColor(&renderBuffer[3*((tj*2+1)*TOTAL_WIDTH+ti*2+1)+xoffset],f); else SetColor(&renderBuffer[3*((tj*2+1)*TOTAL_WIDTH+ti*2+1)+xoffset],e);
         } else {
-          SetColor(&panel[3*(tj*2*PANE_WIDTH+ti*2)+xoffset],e);
-          SetColor(&panel[3*(tj*2*PANE_WIDTH+ti*2+1)+xoffset], e);
-          SetColor(&panel[3*((tj*2+1)*PANE_WIDTH+ti*2)+xoffset],e);
-          SetColor(&panel[3*((tj*2+1)*PANE_WIDTH+ti*2+1)+xoffset],e);
+          SetColor(&renderBuffer[3*(tj*2*TOTAL_WIDTH+ti*2)+xoffset],e);
+          SetColor(&renderBuffer[3*(tj*2*TOTAL_WIDTH+ti*2+1)+xoffset], e);
+          SetColor(&renderBuffer[3*((tj*2+1)*TOTAL_WIDTH+ti*2)+xoffset],e);
+          SetColor(&renderBuffer[3*((tj*2+1)*TOTAL_WIDTH+ti*2+1)+xoffset],e);
         }
        }
     }
   }
   else //offset!=0
   {
-    for (int tj=0;tj<RomHeight;tj++)
+    memset(renderBuffer, 0, TOTAL_BYTES);
+
+    for (int tj=0; tj<RomHeight; tj++)
     {
-      for (int ti=0;ti<RomWidth;ti++) panel[3*(tj*PANE_WIDTH+ti)+xoffset]=panel2[3*(tj*RomWidth+ti)];
+      for (int ti=0; ti<RomWidth; ti++)
+      {
+        for (int i=0; i <= 2; i++) {
+          renderBuffer[yoffset * TOTAL_WIDTH + 3 * (tj * TOTAL_WIDTH + ti) + xoffset + i] = panel[3 * (tj * RomWidth + ti) + i];
+        }
+      }
     }
   }
+
+  free(panel);
 }
 
 void ScaleImage64() // scale for indexed image (all except RGB24)
 {
-  int xoffset=0;
-  memcpy(panel2,panel,RomWidth*RomHeight);
-  memset(panel,0,PANE_WIDTH*PANE_HEIGHT);
-  int scale=0; // 0 - no scale, 1 - half scale, 2 - twice scale
-  if ((RomWidth==192)&&(PANE_WIDTH==256)) xoffset=32;
-  else if (RomWidth==192)
+  int xoffset = 0;
+  int scale = 0; // 0 - no scale, 1 - half scale, 2 - double scale
+
+  if (RomWidth == 192 && TOTAL_WIDTH == 256)
   {
-    xoffset=16;
-    scale=1;
+    xoffset = 32;
   }
-  else if ((RomWidth==256)&&(PANE_WIDTH==128)) scale=1;
-  else if ((RomWidth==128)&&(PANE_WIDTH==256)) scale=2;
-  else return;
-  if (scale==1)
+  else if (RomWidth == 192)
+  {
+    xoffset = 16;
+    scale = 1;
+  }
+  else if (RomWidth == 256 && TOTAL_WIDTH == 128)
+  {
+    scale = 1;
+  }
+  else if (RomWidth == 128 && TOTAL_WIDTH == 256)
+  {
+    scale = 2;
+  }
+  else
+  {
+    return;
+  }
+
+  unsigned char* panel = (unsigned char*) malloc(RomWidth * RomHeight);
+  memcpy(panel, renderBuffer, RomWidth * RomHeight);
+
+  if (scale == 1)
   {
     // for half scaling we take the 4 points and look if there is one colour repeated
-    for (int ti=0;ti<RomHeight;ti+=2)
+    for (int ti = 0; ti < RomHeight; ti += 2)
     {
-      for (int tj=0;tj<RomWidth;tj+=2)
+      for (int tj = 0; tj < RomWidth; tj += 2)
       {
-        unsigned char* pp=&panel2[ti*RomWidth+tj];
-        if ((pp[0]==pp[1])||(pp[0]==pp[RomWidth])||(pp[0]==pp[RomWidth+1])) panel[xoffset+(tj/2)+(ti/2)*PANE_WIDTH]=pp[0];
-        else if ((pp[1]==pp[RomWidth])||(pp[1]==pp[RomWidth+1])) panel[xoffset+(tj/2)+(ti/2)*PANE_WIDTH]=pp[1];
-        else if ((pp[RomWidth]==pp[RomWidth+1])) panel[xoffset+(tj/2)+(ti/2)*PANE_WIDTH]=pp[RomWidth];
-        else panel[xoffset+(tj/2)+(ti/2)*PANE_WIDTH]=pp[0];
+        unsigned char* pp=&panel[ti*RomWidth+tj];
+        if ((pp[0]==pp[1])||(pp[0]==pp[RomWidth])||(pp[0]==pp[RomWidth+1])) renderBuffer[xoffset+(tj/2)+(ti/2)*TOTAL_WIDTH]=pp[0];
+        else if ((pp[1]==pp[RomWidth])||(pp[1]==pp[RomWidth+1])) renderBuffer[xoffset+(tj/2)+(ti/2)*TOTAL_WIDTH]=pp[1];
+        else if ((pp[RomWidth]==pp[RomWidth+1])) renderBuffer[xoffset+(tj/2)+(ti/2)*TOTAL_WIDTH]=pp[RomWidth];
+        else renderBuffer[xoffset+(tj/2)+(ti/2)*TOTAL_WIDTH]=pp[0];
       }
     }
   }
-  else if (scale==2)
+  else if (scale == 2)
   {
     // we implement scale2x http://www.scale2x.it/algorithm
-    for (int tj=0;tj<RomHeight;tj++)
+    for (int tj = 0; tj < RomHeight; tj++)
     {
-      for (int ti=0;ti<RomWidth;ti++)
+      for (int ti = 0; ti < RomWidth; ti++)
       {
         unsigned int a, b, c, d, e, f, g, h, i;
-        if ((ti==0)&&(tj==0))
+        if (ti == 0 && tj == 0)
         {
-          a=b=d=e=panel2[0];
-          c=f=panel2[1];
-          g=h=panel2[RomWidth];
-          i=panel2[RomWidth+1];
+          a=b=d=e=panel[0];
+          c=f=panel[1];
+          g=h=panel[RomWidth];
+          i=panel[RomWidth+1];
         }
         else if ((ti==0)&&(tj==RomHeight-1))
         {
-          a=b=panel2[(tj-1)*RomWidth];
-          c=panel2[(tj-1)*RomWidth+1];
-          d=g=h=e=panel2[tj*RomWidth];
-          f=i=panel2[tj*RomWidth+1];
+          a=b=panel[(tj-1)*RomWidth];
+          c=panel[(tj-1)*RomWidth+1];
+          d=g=h=e=panel[tj*RomWidth];
+          f=i=panel[tj*RomWidth+1];
         }
         else if ((ti==RomWidth-1)&&(tj==0))
         {
-          a=d=panel2[ti-1];
-          b=c=f=e=panel2[ti];
-          g=panel2[RomWidth+ti-1];
-          h=i=panel2[RomWidth+ti];
+          a=d=panel[ti-1];
+          b=c=f=e=panel[ti];
+          g=panel[RomWidth+ti-1];
+          h=i=panel[RomWidth+ti];
         }
         else if ((ti==RomWidth-1)&&(tj==RomHeight-1))
         {
-          a=panel2[tj*RomWidth-2];
-          b=c=panel2[tj*RomWidth-1];
-          d=g=panel2[RomHeight*RomWidth-2];
-          e=f=h=i=panel2[RomHeight*RomWidth-1];
+          a=panel[tj*RomWidth-2];
+          b=c=panel[tj*RomWidth-1];
+          d=g=panel[RomHeight*RomWidth-2];
+          e=f=h=i=panel[RomHeight*RomWidth-1];
         }
         else if (ti==0)
         {
-          a=b=panel2[(tj-1)*RomWidth];
-          c=panel2[(tj-1)*RomWidth+1];
-          d=e=panel2[tj*RomWidth];
-          f=panel2[tj*RomWidth+1];
-          g=h=panel2[(tj+1)*RomWidth];
-          i=panel2[(tj+1)*RomWidth+1];
+          a=b=panel[(tj-1)*RomWidth];
+          c=panel[(tj-1)*RomWidth+1];
+          d=e=panel[tj*RomWidth];
+          f=panel[tj*RomWidth+1];
+          g=h=panel[(tj+1)*RomWidth];
+          i=panel[(tj+1)*RomWidth+1];
         }
         else if (ti==RomWidth-1)
         {
-          a=panel2[tj*RomWidth-2];
-          b=c=panel2[tj*RomWidth-1];
-          d=panel2[(tj+1)*RomWidth-2];
-          e=f=panel2[(tj+1)*RomWidth-1];
-          g=panel2[(tj+2)*RomWidth-2];
-          h=i=panel2[(tj+2)*RomWidth-1];
+          a=panel[tj*RomWidth-2];
+          b=c=panel[tj*RomWidth-1];
+          d=panel[(tj+1)*RomWidth-2];
+          e=f=panel[(tj+1)*RomWidth-1];
+          g=panel[(tj+2)*RomWidth-2];
+          h=i=panel[(tj+2)*RomWidth-1];
         }
         else if (tj==0)
         {
-          a=d=panel2[ti-1];
-          b=e=panel2[ti];
-          c=f=panel2[ti+1];
-          g=panel2[RomWidth+ti-1];
-          h=panel2[RomWidth+ti];
-          i=panel2[RomWidth+ti+1];
+          a=d=panel[ti-1];
+          b=e=panel[ti];
+          c=f=panel[ti+1];
+          g=panel[RomWidth+ti-1];
+          h=panel[RomWidth+ti];
+          i=panel[RomWidth+ti+1];
         }
         else if (tj==RomHeight-1)
         {
-          a=panel2[(tj-1)*RomWidth+ti-1];
-          b=panel2[(tj-1)*RomWidth+ti];
-          c=panel2[(tj-1)*RomWidth+ti+1];
-          d=g=panel2[tj*RomWidth+ti-1];
-          e=h=panel2[tj*RomWidth+ti];
-          f=i=panel2[tj*RomWidth+ti+1];
+          a=panel[(tj-1)*RomWidth+ti-1];
+          b=panel[(tj-1)*RomWidth+ti];
+          c=panel[(tj-1)*RomWidth+ti+1];
+          d=g=panel[tj*RomWidth+ti-1];
+          e=h=panel[tj*RomWidth+ti];
+          f=i=panel[tj*RomWidth+ti+1];
         }
         else
         {
-          a=panel2[(tj-1)*RomWidth+ti-1];
-          b=panel2[(tj-1)*RomWidth+ti];
-          c=panel2[(tj-1)*RomWidth+ti+1];
-          d=panel2[tj*RomWidth+ti-1];
-          e=panel2[tj*RomWidth+ti];
-          f=panel2[tj*RomWidth+ti+1];
-          g=panel2[(tj+1)*RomWidth+ti-1];
-          h=panel2[(tj+1)*RomWidth+ti];
-          i=panel2[(tj+1)*RomWidth+ti+1];
+          a=panel[(tj-1)*RomWidth+ti-1];
+          b=panel[(tj-1)*RomWidth+ti];
+          c=panel[(tj-1)*RomWidth+ti+1];
+          d=panel[tj*RomWidth+ti-1];
+          e=panel[tj*RomWidth+ti];
+          f=panel[tj*RomWidth+ti+1];
+          g=panel[(tj+1)*RomWidth+ti-1];
+          h=panel[(tj+1)*RomWidth+ti];
+          i=panel[(tj+1)*RomWidth+ti+1];
         }
         if (b != h && d != f) {
-          panel[tj*2*PANE_WIDTH+ti*2+xoffset] = d == b ? d : e;
-          panel[tj*2*PANE_WIDTH+ti*2+1+xoffset] = b == f ? f : e;
-          panel[(tj*2+1)*PANE_WIDTH+ti*2+xoffset] = d == h ? d : e;
-          panel[(tj*2+1)*PANE_WIDTH+ti*2+1+xoffset] = h == f ? f : e;
+          renderBuffer[tj*2*TOTAL_WIDTH+ti*2+xoffset] = d == b ? d : e;
+          renderBuffer[tj*2*TOTAL_WIDTH+ti*2+1+xoffset] = b == f ? f : e;
+          renderBuffer[(tj*2+1)*TOTAL_WIDTH+ti*2+xoffset] = d == h ? d : e;
+          renderBuffer[(tj*2+1)*TOTAL_WIDTH+ti*2+1+xoffset] = h == f ? f : e;
         } else {
-          panel[tj*2*PANE_WIDTH+ti*2+xoffset] = e;
-          panel[tj*2*PANE_WIDTH+ti*2+1+xoffset] = e;
-          panel[(tj*2+1)*PANE_WIDTH+ti*2+xoffset] = e;
-          panel[(tj*2+1)*PANE_WIDTH+ti*2+1+xoffset] = e;
+          renderBuffer[tj*2*TOTAL_WIDTH+ti*2+xoffset] = e;
+          renderBuffer[tj*2*TOTAL_WIDTH+ti*2+1+xoffset] = e;
+          renderBuffer[(tj*2+1)*TOTAL_WIDTH+ti*2+xoffset] = e;
+          renderBuffer[(tj*2+1)*TOTAL_WIDTH+ti*2+1+xoffset] = e;
         }
       }
     }
   }
   else //offset!=0
   {
-    for (int tj=0;tj<RomHeight;tj++)
+    memset(renderBuffer, 0, TOTAL_WIDTH * TOTAL_HEIGHT);
+
+    for (int tj = 0; tj < RomHeight; tj++)
     {
-      for (int ti=0;ti<RomWidth;ti++) panel[tj*PANE_WIDTH+xoffset+ti]=panel2[tj*RomWidth+ti];
+      for (int ti = 0; ti < RomWidth; ti++)
+      {
+        renderBuffer[tj * TOTAL_WIDTH + xoffset + ti] = panel[tj * RomWidth + ti];
+      }
+    }
+  }
+
+  free(panel);
+}
+
+void fillPanelRaw()
+{
+  int r;
+  int g;
+  int b;
+
+  int pos;
+
+  for (int tj = 0; tj < TOTAL_HEIGHT; tj++)
+  {
+    for (int ti = 0; ti < TOTAL_WIDTH; ti++)
+    {
+      pos = ti + tj * TOTAL_WIDTH;
+      r = renderBuffer[ti * 3 + tj * 3 * TOTAL_WIDTH + ordreRGB[acordreRGB * 3]];
+      g = renderBuffer[ti * 3 + tj * 3 * TOTAL_WIDTH + ordreRGB[acordreRGB * 3 + 1]];
+      b = renderBuffer[ti * 3 + tj * 3 * TOTAL_WIDTH + ordreRGB[acordreRGB * 3 + 2]];
+
+      if (r != doubleBufferR[tj][ti] || g != doubleBufferG[tj][ti] || b != doubleBufferB[tj][ti])
+      {
+        doubleBufferR[tj][ti] = r;
+        doubleBufferG[tj][ti] = g;
+        doubleBufferB[tj][ti] = b;
+
+        dma_display->drawPixelRGB888(ti, tj, r, g, b);
+      }
     }
   }
 }
 
-void fillpanel()
+void fillPanelUsingPalette()
 {
-  for (int tj = 0; tj < PANE_HEIGHT; tj++)
-  {
-    for (int ti = 0; ti < PANE_WIDTH; ti++)
-    {
-      dma_display->drawPixelRGB888(ti, tj, panel[ti * 3 + tj * 3 * PANE_WIDTH + ordreRGB[acordreRGB * 3]], panel[ti * 3 + tj * 3 * PANE_WIDTH + ordreRGB[acordreRGB * 3 + 1]], panel[ti * 3 + tj * 3 * PANE_WIDTH + ordreRGB[acordreRGB * 3 + 2]]);
-    }
-  }
-}
+  int r;
+  int g;
+  int b;
 
-void fillpanelMode64()
-{
-  for (int tj = 0; tj < PANE_HEIGHT; tj++)
+  int pos;
+
+  for (int tj = 0; tj < TOTAL_HEIGHT; tj++)
   {
-    for (int ti = 0; ti < PANE_WIDTH; ti++)
+    for (int ti = 0; ti < TOTAL_WIDTH; ti++)
     {
-      dma_display->drawPixelRGB888(ti, tj, Palette64[rotCols[panel[ti+tj*PANE_WIDTH]]*3+ordreRGB[acordreRGB * 3]],
-        Palette64[rotCols[panel[ti+tj*PANE_WIDTH]]*3+ordreRGB[acordreRGB * 3+1]],Palette64[rotCols[panel[ti+tj*PANE_WIDTH]]*3+ordreRGB[acordreRGB * 3+2]]);
+      pos = ti + tj * TOTAL_WIDTH;
+      r = palette[rotCols[renderBuffer[pos]] * 3 + ordreRGB[acordreRGB * 3]];
+      g = palette[rotCols[renderBuffer[pos]] * 3 + ordreRGB[acordreRGB * 3 + 1]];
+      b = palette[rotCols[renderBuffer[pos]] * 3 + ordreRGB[acordreRGB * 3 + 2]];
+
+      if (r != doubleBufferR[tj][ti] || g != doubleBufferG[tj][ti] || b != doubleBufferB[tj][ti])
+      {
+        doubleBufferR[tj][ti] = r;
+        doubleBufferG[tj][ti] = g;
+        doubleBufferB[tj][ti] = b;
+
+        dma_display->drawPixelRGB888(ti, tj, r, g, b);
+      }
     }
   }
 }
@@ -551,56 +649,23 @@ void SaveLum()
 void DisplayLogo(void)
 {
   File flogo;
-  if (PANE_HEIGHT==64) flogo=LittleFS.open("/logoHD.raw", "r"); else flogo=LittleFS.open("/logo.raw", "r");
+  if (TOTAL_HEIGHT==64) flogo=LittleFS.open("/logoHD.raw", "r"); else flogo=LittleFS.open("/logo.raw", "r");
   if (!flogo) {
     //Serial.println("Failed to open file for reading");
     return;
   }
-  for (unsigned int tj = 0; tj < PANE_HEIGHT*PANE_WIDTH*3; tj++)
+  renderBuffer = (unsigned char*) malloc(TOTAL_BYTES);
+  for (unsigned int tj = 0; tj < TOTAL_BYTES; tj++)
   {
-    panel[tj]=flogo.read();
+    renderBuffer[tj] = flogo.read();
   }
   flogo.close();
-  fillpanel();
-}
+  fillPanelRaw();
 
-void InitPalettes(int R, int G, int B)
-{
-  // initialise les palettes à partir d'une couleur qui représente le 100%
-  for (int ti = 0; ti < 4; ti++)
-  {
-    Palette4[ti * 3] = (unsigned char)((float)R*levels4[ti] / 100.0f);
-    Palette4[ti * 3 + 1] = (unsigned char)((float)G*levels4[ti] / 100.0f);
-    Palette4[ti * 3 + 2] = (unsigned char)((float)B*levels4[ti] / 100.0f);
-  }
-  for (int ti = 0; ti < 16; ti++)
-  {
-    Palette16[ti * 3] = (unsigned char)((float)R*levels16[ti] / 100.0f);
-    Palette16[ti * 3 + 1] = (unsigned char)((float)G*levels16[ti] / 100.0f);
-    Palette16[ti * 3 + 2] = (unsigned char)((float)B*levels16[ti] / 100.0f);
-  }
-  for (int ti = 0; ti < 64; ti++)
-  {
-    Palette64[ti * 3] = (unsigned char)((float)R*levels64[ti] / 100.0f);
-    Palette64[ti * 3 + 1] = (unsigned char)((float)G*levels64[ti] / 100.0f);
-    Palette64[ti * 3 + 2] = (unsigned char)((float)B*levels64[ti] / 100.0f);
-  }
-}
-void Say(unsigned char where, unsigned int what)
-{
-    DisplayNombre(where,3,0,where*5,255,255,255);
-    if (what!=(unsigned int)-1) DisplayNombre(what,10,15,where*5,255,255,255);
-}
+  free(renderBuffer);
 
-bool MireActive = true;
-bool handshakeSucceeded = false;
-bool compression = false;
-// 256 is the default buffer size of the CP210x linux kernel driver, we should not exceed it as default.
-int serialTransferChunkSize = 256;
-unsigned char img2[3*64+6*256/8*64+3*MAX_COLOR_ROTATIONS];
-unsigned int frameCount = 0;
-unsigned int errorCount = 0;
-unsigned int watchdogCount = 0;
+  DisplayVersion();
+}
 
 void setup()
 {
@@ -619,14 +684,14 @@ void setup()
   dma_display->begin();
 
   if (!LittleFS.begin()) {
-    dma_display->drawChar((uint16_t) 0, (uint16_t) 0, (unsigned char) 'E', (uint16_t) 255, (uint16_t) 0, (uint8_t) 8);
+    Say(0, 9999);
     delay(4000);
   }
 
-  Serial.begin(SERIAL_BAUD);
-  while (!Serial);
   Serial.setRxBufferSize(SERIAL_BUFFER);
   Serial.setTimeout(SERIAL_TIMEOUT);
+  Serial.begin(SERIAL_BAUD);
+  while (!Serial);
 
   LoadLum();
 
@@ -636,19 +701,8 @@ void setup()
   LoadOrdreRGB();
 
   DisplayLogo();
-  DisplayText(lumtxt,16,PANE_WIDTH/2-16/2-2*4/2,PANE_HEIGHT-5,255,255,255);
+  DisplayText(lumtxt,16,TOTAL_WIDTH/2-16/2-2*4/2,TOTAL_HEIGHT-5,255,255,255);
   DisplayLum();
-
-  InitPalettes(255,109,0);
-}
-
-bool fastReadySent = false;
-
-void sendFastReady() {
-  // Indicate (R)eady, even if the frame isn't rendered yet.
-  // That would allow to get the buffer filled with the next frame already.
-  Serial.write('R');
-  fastReadySent = true;
 }
 
 bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
@@ -656,6 +710,7 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
   memset(pBuffer, 0, BufferSize);
 
   unsigned int transferBufferSize = BufferSize;
+  unsigned char* transferBuffer;
 
   if (compression)
   {
@@ -666,33 +721,44 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
       ((unsigned int) byteArray[1])
     );
 
-    if (debugMode)
-    {
-      debugLines[1] = transferBufferSize;
-      debugLines[2] = BufferSize;
-    }
+    transferBuffer = (unsigned char*) malloc(transferBufferSize);
+  }
+  else
+  {
+    transferBuffer = pBuffer;
   }
 
-  // We always receive chunks of 256 bytes (maximum).
+  if (debugMode)
+  {
+    Say(1, transferBufferSize);
+    debugLines[1] = transferBufferSize;
+  }
+
+  // We always receive chunks of "serialTransferChunkSize" bytes (maximum).
   // At this point, the control chars and the one byte command have been read already.
-  // So we only need to read the remaining bytes of the first chunk as full 256 byte chunks afterwards.
+  // So we only need to read the remaining bytes of the first chunk and full chunks afterwards.
   int chunkSize = serialTransferChunkSize - N_CTRL_CHARS - 1 - (compression ? 2 : 0);
   int remainingBytes = transferBufferSize;
   while (remainingBytes > 0)
   {
-    int receivedBytes = Serial.readBytes(pBuffer + transferBufferSize - remainingBytes, (remainingBytes > chunkSize) ? chunkSize : remainingBytes);
+    int receivedBytes = Serial.readBytes(transferBuffer + transferBufferSize - remainingBytes, (remainingBytes > chunkSize) ? chunkSize : remainingBytes);
+    if (debugMode)
+    {
+      Say(2, receivedBytes);
+      debugLines[2] = receivedBytes;
+    }
     if (receivedBytes != remainingBytes && receivedBytes != chunkSize)
     {
       if (debugMode)
       {
+        Say(9, remainingBytes);
+        Say(10, chunkSize);
+        Say(11, receivedBytes);
         debugLines[4] = ++errorCount;
       }
 
       // Send an (E)rror signal to tell the client that no more chunks should be send or to repeat the entire frame from the beginning.
       Serial.write('E');
-      // Flush the buffer.
-      Serial.readBytes(img2, sizeof(img2));
-      memset(img2, 0, sizeof(img2));
 
       return false;
     }
@@ -705,9 +771,9 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
   }
 
   if (compression) {
-    unsigned char* uncompressBuffer = (unsigned char*) malloc((size_t) BufferSize);
     mz_ulong uncompressed_buffer_size = (mz_ulong) BufferSize;
-    int status = uncompress(uncompressBuffer, &uncompressed_buffer_size, pBuffer, (mz_ulong) transferBufferSize);
+    int status = uncompress(pBuffer, &uncompressed_buffer_size, transferBuffer, (mz_ulong) transferBufferSize);
+    free(transferBuffer);
 
     if (debugMode && (Z_OK != status))
     {
@@ -717,18 +783,27 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
     }
 
     if ((Z_OK == status) && (uncompressed_buffer_size == BufferSize)) {
-      memcpy(pBuffer, uncompressBuffer, BufferSize);
-      free(uncompressBuffer);
-      sendFastReady();
+      // Some HD panels take too long too render. The small ZeDMD seems to be fast enough to send a fast (R)eady signal here.
+      if (TOTAL_WIDTH <= 128) {
+        //sendFastReady();
+      }
+
+      if (debugMode)
+      {
+        Say(3, 0);
+        debugLines[3] = 0;
+      }
+
       return true;
     }
 
     if (debugMode && (Z_OK == status))
     {
+      // uncrompessed data isn't of expected size
+      Say(3, 99);
       debugLines[3] = 99;
     }
 
-    free(uncompressBuffer);
     Serial.write('E');
     return false;
   }
@@ -757,7 +832,7 @@ void updateColorRotations(void)
         }
     }
   }
-  if (rotfound==true) fillpanelMode64();
+  if (rotfound==true) fillPanelUsingPalette();
 }
 
 void wait_for_ctrl_chars(void)
@@ -789,9 +864,6 @@ void wait_for_ctrl_chars(void)
 
       // Send an (E)rror signal.
       Serial.write('E');
-      // Flush the buffer.
-      Serial.readBytes(img2, sizeof(img2));
-      memset(img2, 0, sizeof(img2));
       // Send a (R)eady signal to tell the client to send the next command.
       Serial.write('R');
 
@@ -811,8 +883,8 @@ void loop()
       acordreRGB++;
       if (acordreRGB >= 6) acordreRGB = 0;
       SaveOrdreRGB();
-      fillpanel();
-      DisplayText(lumtxt,16,PANE_WIDTH/2-16/2-2*4/2,PANE_HEIGHT-5,255,255,255);
+      fillPanelRaw();
+      DisplayText(lumtxt,16,TOTAL_WIDTH/2-16/2-2*4/2,TOTAL_HEIGHT-5,255,255,255);
       DisplayLum();
     }
 
@@ -858,7 +930,7 @@ void loop()
   // Commands:
   //  2: receive rom frame size
   //  3: render raw data
-  //  6: init palettes
+  //  6: init palette (deprectated)
   //  7: render 16 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 2 pixels par byte
   //  8: render 4 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 4 pixels par byte
   //  9: render 16 couleurs avec 1 palette 16 couleurs (16*3 bytes) suivis de 4 bytes par groupe de 8 points (séparés en plans de bits 4*512 bytes)
@@ -876,10 +948,10 @@ void loop()
   if (c4 == 12) // ask for resolution (and shake hands)
   {
     for (int ti=0;ti<N_INTERMEDIATE_CTR_CHARS;ti++) Serial.write(CtrlCharacters[ti]);
-    Serial.write(PANE_WIDTH&0xff);
-    Serial.write((PANE_WIDTH>>8)&0xff);
-    Serial.write(PANE_HEIGHT&0xff);
-    Serial.write((PANE_HEIGHT>>8)&0xff);
+    Serial.write(TOTAL_WIDTH&0xff);
+    Serial.write((TOTAL_WIDTH>>8)&0xff);
+    Serial.write(TOTAL_HEIGHT&0xff);
+    Serial.write((TOTAL_HEIGHT>>8)&0xff);
     handshakeSucceeded=true;
   }
   else if (c4 == 2) // get rom frame dimension
@@ -889,8 +961,12 @@ void loop()
     {
       RomWidth=(int)(tbuf[0])+(int)(tbuf[1]<<8);
       RomHeight=(int)(tbuf[2])+(int)(tbuf[3]<<8);
+      RomWidthPlane=RomWidth>>3;
+      if (debugMode) {
+        DisplayNombre(RomWidth, 3, TOTAL_WIDTH - 7*4, 4, 150, 150, 150);
+        DisplayNombre(RomHeight, 2, TOTAL_WIDTH - 3*4, 4, 150, 150, 150);
+      }
     }
-    RomWidthPlane=RomWidth>>3;
   }
   else if (c4 == 13) // set serial transfer chunk size
   {
@@ -914,16 +990,19 @@ void loop()
   else if (c4 == 98) // disable debug mode
   {
     debugMode = false;
+    Serial.write('A');
   }
   else if (c4 == 99) // enable debug mode
   {
     debugMode = true;
+    Serial.write('A');
   }
-  else if (c4 == 6) // reinit palettes
+  else if (c4 == 6) // reinit palette (deprecated)
   {
+    // Just backward compatibility. We don't need that command anymore.
+
     // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
     Serial.write('A');
-    InitPalettes(255, 109, 0);
   }
   else if (c4 == 10) // clear screen
   {
@@ -933,97 +1012,134 @@ void loop()
   }
   else if (c4 == 3) // mode RGB24
   {
-    if (SerialReadBuffer(panel,RomHeight*RomWidth*3))
+    // We need to cover downscaling, too.
+    int renderBufferSize = RomWidth < TOTAL_WIDTH ? TOTAL_BYTES : RomWidth * RomHeight * 3;
+    renderBuffer = (unsigned char*) malloc(renderBufferSize);
+    memset(renderBuffer, 0, renderBufferSize);
+
+    if (SerialReadBuffer(renderBuffer, RomHeight * RomWidth * 3))
     {
       mode64=false;
-      if ((RomHeight!=PANE_HEIGHT)||(RomWidth!=PANE_WIDTH)) ScaleImage();
-      fillpanel();
+      ScaleImage();
+      fillPanelRaw();
     }
+
+    free(renderBuffer);
   }
   else if (c4 == 8) // mode 4 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 4 pixels par byte
   {
-    if (SerialReadBuffer(img2,3*4+2*RomWidthPlane*RomHeight))
+    int bufferSize = 3*4 + 2*RomWidthPlane*RomHeight;
+    unsigned char* buffer = (unsigned char*) malloc(bufferSize);
+
+    if (SerialReadBuffer(buffer, bufferSize))
     {
+      // We need to cover downscaling, too.
+      int renderBufferSize = RomWidth < TOTAL_WIDTH ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
+      renderBuffer = (unsigned char*) malloc(renderBufferSize);
+      memset(renderBuffer, 0, renderBufferSize);
+      palette = (unsigned char*) malloc(3*4);
+      memset(palette, 0, 3*4);
+
       for (int ti = 3; ti >= 0; ti--)
       {
-        Palette64[ti * 3] = img2[ti*3];
-        Palette64[ti * 3 + 1] = img2[ti*3+1];
-        Palette64[ti * 3 + 2] = img2[ti*3+2];
+        palette[ti * 3] = buffer[ti*3];
+        palette[ti * 3 + 1] = buffer[ti*3+1];
+        palette[ti * 3 + 2] = buffer[ti*3+2];
       }
-      unsigned char* img=&img2[3*4];
+      unsigned char* frame = &buffer[3*4];
       for (int tj = 0; tj < RomHeight; tj++)
       {
         for (int ti = 0; ti < RomWidthPlane; ti++)
         {
           unsigned char mask = 1;
           unsigned char planes[2];
-          planes[0] = img[ti + tj * RomWidthPlane];
-          planes[1] = img[RomWidthPlane*RomHeight + ti + tj * RomWidthPlane];
+          planes[0] = frame[ti + tj * RomWidthPlane];
+          planes[1] = frame[RomWidthPlane*RomHeight + ti + tj * RomWidthPlane];
           for (int tk = 0; tk < 8; tk++)
           {
             unsigned char idx = 0;
             if ((planes[0] & mask) > 0) idx |= 1;
             if ((planes[1] & mask) > 0) idx |= 2;
-            panel[(ti * 8 + tk)+tj * RomWidth]=idx;
+            renderBuffer[(ti * 8 + tk) + tj * RomWidth]=idx;
             mask <<= 1;
           }
         }
       }
+      free(buffer);
+
       mode64=false;
       for (int ti=0;ti<64;ti++) rotCols[ti]=ti;
-      if ((RomHeight!=PANE_HEIGHT)||(RomWidth!=PANE_WIDTH)) ScaleImage64();
-      fillpanelMode64();
+
+      ScaleImage64();
+      fillPanelUsingPalette();
+
+      free(renderBuffer);
+      free(palette);
+    }
+    else
+    {
+      free(buffer);
     }
   }
   else if (c4 == 7) // mode 16 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 2 pixels par byte
   {
-    if (SerialReadBuffer(img2,3*4+4*RomWidthPlane*RomHeight))
+    int bufferSize = 3*4 + 4*RomWidthPlane*RomHeight;
+    unsigned char* buffer = (unsigned char*) malloc(bufferSize);
+
+    if (SerialReadBuffer(buffer, bufferSize))
     {
+      // We need to cover downscaling, too.
+      int renderBufferSize = RomWidth < TOTAL_WIDTH ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
+      renderBuffer = (unsigned char*) malloc(renderBufferSize);
+      memset(renderBuffer, 0, renderBufferSize);
+      palette = (unsigned char*) malloc(48);
+      memset(palette, 0, 48);
+
       for (int ti = 3; ti >= 0; ti--)
       {
-        Palette64[(4 * ti + 3)* 3] = img2[ti*3];
-        Palette64[(4 * ti + 3) * 3 + 1] = img2[ti*3+1];
-        Palette64[(4 * ti + 3) * 3 + 2] = img2[ti*3+2];
+        palette[(4 * ti + 3)* 3] = buffer[ti*3];
+        palette[(4 * ti + 3) * 3 + 1] = buffer[ti*3+1];
+        palette[(4 * ti + 3) * 3 + 2] = buffer[ti*3+2];
       }
-      Palette64[0]=Palette64[1]=Palette64[2]=0;
-      Palette64[3]=Palette64[3*3]/3;
-      Palette64[4]=Palette64[3*3+1]/3;
-      Palette64[5]=Palette64[3*3+2]/3;
-      Palette64[6]=2*(Palette64[3*3]/3);
-      Palette64[7]=2*(Palette64[3*3+1]/3);
-      Palette64[8]=2*(Palette64[3*3+2]/3);
+      palette[0]=palette[1]=palette[2]=0;
+      palette[3]=palette[3*3]/3;
+      palette[4]=palette[3*3+1]/3;
+      palette[5]=palette[3*3+2]/3;
+      palette[6]=2*(palette[3*3]/3);
+      palette[7]=2*(palette[3*3+1]/3);
+      palette[8]=2*(palette[3*3+2]/3);
 
-      Palette64[12]=Palette64[3*3]+(Palette64[7*3]-Palette64[3*3])/4;
-      Palette64[13]=Palette64[3*3+1]+(Palette64[7*3+1]-Palette64[3*3+1])/4;
-      Palette64[14]=Palette64[3*3+2]+(Palette64[7*3+2]-Palette64[3*3+2])/4;
-      Palette64[15]=Palette64[3*3]+2*((Palette64[7*3]-Palette64[3*3])/4);
-      Palette64[16]=Palette64[3*3+1]+2*((Palette64[7*3+1]-Palette64[3*3+1])/4);
-      Palette64[17]=Palette64[3*3+2]+2*((Palette64[7*3+2]-Palette64[3*3+2])/4);
-      Palette64[18]=Palette64[3*3]+3*((Palette64[7*3]-Palette64[3*3])/4);
-      Palette64[19]=Palette64[3*3+1]+3*((Palette64[7*3+1]-Palette64[3*3+1])/4);
-      Palette64[20]=Palette64[3*3+2]+3*((Palette64[7*3+2]-Palette64[3*3+2])/4);
+      palette[12]=palette[3*3]+(palette[7*3]-palette[3*3])/4;
+      palette[13]=palette[3*3+1]+(palette[7*3+1]-palette[3*3+1])/4;
+      palette[14]=palette[3*3+2]+(palette[7*3+2]-palette[3*3+2])/4;
+      palette[15]=palette[3*3]+2*((palette[7*3]-palette[3*3])/4);
+      palette[16]=palette[3*3+1]+2*((palette[7*3+1]-palette[3*3+1])/4);
+      palette[17]=palette[3*3+2]+2*((palette[7*3+2]-palette[3*3+2])/4);
+      palette[18]=palette[3*3]+3*((palette[7*3]-palette[3*3])/4);
+      palette[19]=palette[3*3+1]+3*((palette[7*3+1]-palette[3*3+1])/4);
+      palette[20]=palette[3*3+2]+3*((palette[7*3+2]-palette[3*3+2])/4);
 
-      Palette64[24]=Palette64[7*3]+(Palette64[11*3]-Palette64[7*3])/4;
-      Palette64[25]=Palette64[7*3+1]+(Palette64[11*3+1]-Palette64[7*3+1])/4;
-      Palette64[26]=Palette64[7*3+2]+(Palette64[11*3+2]-Palette64[7*3+2])/4;
-      Palette64[27]=Palette64[7*3]+2*((Palette64[11*3]-Palette64[7*3])/4);
-      Palette64[28]=Palette64[7*3+1]+2*((Palette64[11*3+1]-Palette64[7*3+1])/4);
-      Palette64[29]=Palette64[7*3+2]+2*((Palette64[11*3+2]-Palette64[7*3+2])/4);
-      Palette64[30]=Palette64[7*3]+3*((Palette64[11*3]-Palette64[7*3])/4);
-      Palette64[31]=Palette64[7*3+1]+3*((Palette64[11*3+1]-Palette64[7*3+1])/4);
-      Palette64[32]=Palette64[7*3+2]+3*((Palette64[11*3+2]-Palette64[7*3+2])/4);
+      palette[24]=palette[7*3]+(palette[11*3]-palette[7*3])/4;
+      palette[25]=palette[7*3+1]+(palette[11*3+1]-palette[7*3+1])/4;
+      palette[26]=palette[7*3+2]+(palette[11*3+2]-palette[7*3+2])/4;
+      palette[27]=palette[7*3]+2*((palette[11*3]-palette[7*3])/4);
+      palette[28]=palette[7*3+1]+2*((palette[11*3+1]-palette[7*3+1])/4);
+      palette[29]=palette[7*3+2]+2*((palette[11*3+2]-palette[7*3+2])/4);
+      palette[30]=palette[7*3]+3*((palette[11*3]-palette[7*3])/4);
+      palette[31]=palette[7*3+1]+3*((palette[11*3+1]-palette[7*3+1])/4);
+      palette[32]=palette[7*3+2]+3*((palette[11*3+2]-palette[7*3+2])/4);
 
-      Palette64[36]=Palette64[11*3]+(Palette64[15*3]-Palette64[11*3])/4;
-      Palette64[37]=Palette64[11*3+1]+(Palette64[15*3+1]-Palette64[11*3+1])/4;
-      Palette64[38]=Palette64[11*3+2]+(Palette64[15*3+2]-Palette64[11*3+2])/4;
-      Palette64[39]=Palette64[11*3]+2*((Palette64[15*3]-Palette64[11*3])/4);
-      Palette64[40]=Palette64[11*3+1]+2*((Palette64[15*3+1]-Palette64[11*3+1])/4);
-      Palette64[41]=Palette64[11*3+2]+2*((Palette64[15*3+2]-Palette64[11*3+2])/4);
-      Palette64[42]=Palette64[11*3]+3*((Palette64[15*3]-Palette64[11*3])/4);
-      Palette64[43]=Palette64[11*3+1]+3*((Palette64[15*3+1]-Palette64[11*3+1])/4);
-      Palette64[44]=Palette64[11*3+2]+3*((Palette64[15*3+2]-Palette64[11*3+2])/4);
+      palette[36]=palette[11*3]+(palette[15*3]-palette[11*3])/4;
+      palette[37]=palette[11*3+1]+(palette[15*3+1]-palette[11*3+1])/4;
+      palette[38]=palette[11*3+2]+(palette[15*3+2]-palette[11*3+2])/4;
+      palette[39]=palette[11*3]+2*((palette[15*3]-palette[11*3])/4);
+      palette[40]=palette[11*3+1]+2*((palette[15*3+1]-palette[11*3+1])/4);
+      palette[41]=palette[11*3+2]+2*((palette[15*3+2]-palette[11*3+2])/4);
+      palette[42]=palette[11*3]+3*((palette[15*3]-palette[11*3])/4);
+      palette[43]=palette[11*3+1]+3*((palette[15*3+1]-palette[11*3+1])/4);
+      palette[44]=palette[11*3+2]+3*((palette[15*3+2]-palette[11*3+2])/4);
 
-      unsigned char* img=&img2[3*4];
+      unsigned char* img=&buffer[3*4];
       for (int tj = 0; tj < RomHeight; tj++)
       {
         for (int ti = 0; ti < RomWidthPlane; ti++)
@@ -1041,28 +1157,48 @@ void loop()
             if ((planes[1] & mask) > 0) idx |= 2;
             if ((planes[2] & mask) > 0) idx |= 4;
             if ((planes[3] & mask) > 0) idx |= 8;
-            panel[(ti * 8 + tk)+tj * RomWidth]=idx;
+            renderBuffer[(ti * 8 + tk)+tj * RomWidth]=idx;
             mask <<= 1;
           }
         }
       }
+      free(buffer);
+
       mode64=false;
       for (int ti=0;ti<64;ti++) rotCols[ti]=ti;
-      if ((RomHeight!=PANE_HEIGHT)||(RomWidth!=PANE_WIDTH)) ScaleImage64();
-      fillpanelMode64();
+
+      ScaleImage64();
+      fillPanelUsingPalette();
+
+      free(renderBuffer);
+      free(palette);
+    }
+    else
+    {
+      free(buffer);
     }
   }
   else if (c4 == 9) // mode 16 couleurs avec 1 palette 16 couleurs (16*3 bytes) suivis de 4 bytes par groupe de 8 points (séparés en plans de bits 4*512 bytes)
   {
-    if (SerialReadBuffer(img2,3*16+4*RomWidthPlane*RomHeight))
+    int bufferSize = 3*16 + 4*RomWidthPlane*RomHeight;
+    unsigned char* buffer = (unsigned char*) malloc(bufferSize);
+
+    if (SerialReadBuffer(buffer, bufferSize))
     {
+      // We need to cover downscaling, too.
+      int renderBufferSize = RomWidth < TOTAL_WIDTH ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
+      renderBuffer = (unsigned char*) malloc(renderBufferSize);
+      memset(renderBuffer, 0, renderBufferSize);
+      palette = (unsigned char*) malloc(3*16);
+      memset(palette, 0, 3*16);
+
       for (int ti = 15; ti >= 0; ti--)
       {
-        Palette64[ti * 3] = img2[ti*3];
-        Palette64[ti * 3 + 1] = img2[ti*3+1];
-        Palette64[ti * 3 + 2] = img2[ti*3+2];
+        palette[ti * 3] = buffer[ti*3];
+        palette[ti * 3 + 1] = buffer[ti*3+1];
+        palette[ti * 3 + 2] = buffer[ti*3+2];
       }
-      unsigned char* img=&img2[3*16];
+      unsigned char* img=&buffer[3*16];
       for (int tj = 0; tj < RomHeight; tj++)
       {
         for (int ti = 0; ti < RomWidthPlane; ti++)
@@ -1081,28 +1217,48 @@ void loop()
             if ((planes[1] & mask) > 0) idx |= 2;
             if ((planes[2] & mask) > 0) idx |= 4;
             if ((planes[3] & mask) > 0) idx |= 8;
-            panel[(ti * 8 + tk)+tj * RomWidth]=idx;
+            renderBuffer[(ti * 8 + tk)+tj * RomWidth]=idx;
             mask <<= 1;
           }
         }
       }
+      free(buffer);
+
       mode64=false;
       for (int ti=0;ti<64;ti++) rotCols[ti]=ti;
-      if ((RomHeight!=PANE_HEIGHT)||(RomWidth!=PANE_WIDTH)) ScaleImage64();
-      fillpanelMode64();
+
+      ScaleImage64();
+      fillPanelUsingPalette();
+
+      free(renderBuffer);
+      free(palette);
+    }
+    else
+    {
+      free(buffer);
     }
   }
   else if (c4 == 11) // mode 64 couleurs avec 1 palette 64 couleurs (64*3 bytes) suivis de 6 bytes par groupe de 8 points (séparés en plans de bits 6*512 bytes) suivis de 3*8 bytes de rotations de couleurs
   {
-    if (SerialReadBuffer(img2,3*64+6*RomWidthPlane*RomHeight+3*MAX_COLOR_ROTATIONS))
+    int bufferSize = 3*64 + 6*RomWidthPlane*RomHeight + 3*MAX_COLOR_ROTATIONS;
+    unsigned char* buffer = (unsigned char*) malloc(bufferSize);
+
+    if (SerialReadBuffer(buffer, bufferSize))
     {
+      // We need to cover downscaling, too.
+      int renderBufferSize = RomWidth < TOTAL_WIDTH ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
+      renderBuffer = (unsigned char*) malloc(renderBufferSize);
+      memset(renderBuffer, 0, renderBufferSize);
+      palette = (unsigned char*) malloc(3*64);
+      memset(palette, 0, 3*64);
+
       for (int ti = 63; ti >= 0; ti--)
       {
-        Palette64[ti * 3] = img2[ti*3];
-        Palette64[ti * 3 + 1] = img2[ti*3+1];
-        Palette64[ti * 3 + 2] = img2[ti*3+2];
+        palette[ti * 3] = buffer[ti*3];
+        palette[ti * 3 + 1] = buffer[ti*3+1];
+        palette[ti * 3 + 2] = buffer[ti*3+2];
       }
-      unsigned char* img=&img2[3*64];
+      unsigned char* img = &buffer[3*64];
       for (int tj = 0; tj < RomHeight; tj++)
       {
         for (int ti = 0; ti < RomWidthPlane; ti++)
@@ -1125,13 +1281,13 @@ void loop()
             if ((planes[3] & mask) > 0) idx |= 8;
             if ((planes[4] & mask) > 0) idx |= 0x10;
             if ((planes[5] & mask) > 0) idx |= 0x20;
-            panel[(ti * 8 + tk)+tj * RomWidth]=idx;
+            renderBuffer[(ti * 8 + tk)+tj * RomWidth]=idx;
             mask <<= 1;
           }
         }
       }
-      img=&img2[3*64+6*RomWidthPlane*RomHeight];
-      unsigned long actime=millis();
+      img = &buffer[3*64 + 6*RomWidthPlane*RomHeight];
+      unsigned long actime = millis();
       for (int ti=0;ti<64;ti++) rotCols[ti]=ti;
       for (int ti=0;ti<MAX_COLOR_ROTATIONS;ti++)
       {
@@ -1142,9 +1298,19 @@ void loop()
         if (timeSpan[ti]<MIN_SPAN_ROT) timeSpan[ti]=MIN_SPAN_ROT;
         nextTime[ti]=actime+timeSpan[ti];
       }
+      free(buffer);
+
       mode64=true;
-      if ((RomHeight!=PANE_HEIGHT)||(RomWidth!=PANE_WIDTH)) ScaleImage64();
-      fillpanelMode64();
+
+      ScaleImage64();
+      fillPanelUsingPalette();
+
+      free(renderBuffer);
+      free(palette);
+    }
+    else
+    {
+      free(buffer);
     }
   }
   if (debugMode)
