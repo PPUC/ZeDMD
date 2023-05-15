@@ -270,16 +270,30 @@ void ScaleImage() // scale for non indexed image (RGB24)
 
   if (scale==1)
   {
+    memset(renderBuffer, 0, TOTAL_BYTES);
+
     // for half scaling we take the 4 points and look if there is one colour repeated
     for (int ti=0;ti<RomHeight;ti+=2)
     {
       for (int tj=0;tj<RomWidth;tj+=2)
       {
-        unsigned char* pp=&panel[ti*RomWidth*3+tj*3];
-        if (CmpColor(pp,&pp[3])||CmpColor(pp,&pp[3*RomWidth])||CmpColor(pp,&pp[3*RomWidth+3])) SetColor(&renderBuffer[xoffset+3*(tj>>1+(ti>>1)*TOTAL_WIDTH)],pp);
-        else if (CmpColor(&pp[3],&pp[3*RomWidth])||CmpColor(&pp[3],&pp[3*RomWidth+3])) SetColor(&renderBuffer[xoffset+3*(tj>>1+(ti>>1)*TOTAL_WIDTH)],&pp[3]);
-        else if (CmpColor(&pp[3*RomWidth],&pp[3*RomWidth+3])) SetColor(&renderBuffer[xoffset+3*(tj>>1+(ti>>1)*TOTAL_WIDTH)],&pp[3*RomWidth]);
-        else SetColor(&renderBuffer[xoffset+3*(tj>>1+(ti>>1)*TOTAL_WIDTH)],pp);
+        unsigned char* pp = &panel[ti * RomWidth * 3 + tj*3];
+        if (CmpColor(pp, &pp[3]) || CmpColor(pp, &pp[3*RomWidth]) || CmpColor(pp, &pp[3*RomWidth+3]))
+        {
+          SetColor(&renderBuffer[xoffset + 3*(tj>>1+(ti>>1)*TOTAL_WIDTH)], pp);
+        }
+        else if (CmpColor(&pp[3], &pp[3*RomWidth]) || CmpColor(&pp[3], &pp[3*RomWidth+3]))
+        {
+          SetColor(&renderBuffer[xoffset + 3*(tj>>1+(ti>>1)*TOTAL_WIDTH)], &pp[3]);
+        }
+        else if (CmpColor(&pp[3*RomWidth], &pp[3*RomWidth+3]))
+        {
+          SetColor(&renderBuffer[xoffset + 3*(tj>>1+(ti>>1)*TOTAL_WIDTH)], &pp[3*RomWidth]);
+        }
+        else
+        {
+          SetColor(&renderBuffer[xoffset + 3*(tj>>1+(ti>>1)*TOTAL_WIDTH)], pp);
+        }
       }
     }
   }
@@ -431,16 +445,30 @@ void ScaleImage64() // scale for indexed image (all except RGB24)
 
   if (scale == 1)
   {
+    memset(renderBuffer, 0, TOTAL_WIDTH * TOTAL_HEIGHT);
+
     // for half scaling we take the 4 points and look if there is one colour repeated
     for (int ti = 0; ti < RomHeight; ti += 2)
     {
       for (int tj = 0; tj < RomWidth; tj += 2)
       {
-        unsigned char* pp=&panel[ti*RomWidth+tj];
-        if ((pp[0]==pp[1])||(pp[0]==pp[RomWidth])||(pp[0]==pp[RomWidth+1])) renderBuffer[xoffset+(tj/2)+(ti/2)*TOTAL_WIDTH]=pp[0];
-        else if ((pp[1]==pp[RomWidth])||(pp[1]==pp[RomWidth+1])) renderBuffer[xoffset+(tj/2)+(ti/2)*TOTAL_WIDTH]=pp[1];
-        else if ((pp[RomWidth]==pp[RomWidth+1])) renderBuffer[xoffset+(tj/2)+(ti/2)*TOTAL_WIDTH]=pp[RomWidth];
-        else renderBuffer[xoffset+(tj/2)+(ti/2)*TOTAL_WIDTH]=pp[0];
+        unsigned char* pp = &panel[ti*RomWidth+tj];
+        if (pp[0]==pp[1] || pp[0]==pp[RomWidth] || pp[0]==pp[RomWidth+1])
+        {
+          renderBuffer[xoffset + (tj/2 ) + (ti/2) * TOTAL_WIDTH] = pp[0];
+        }
+        else if (pp[1]==pp[RomWidth] || pp[1]==pp[RomWidth+1])
+        {
+          renderBuffer[xoffset+ (tj/2) + (ti/2) * TOTAL_WIDTH] = pp[1];
+        }
+        else if (pp[RomWidth]==pp[RomWidth+1])
+        {
+          renderBuffer[xoffset + (tj/2) + (ti/2) * TOTAL_WIDTH] = pp[RomWidth];
+        }
+        else
+        {
+          renderBuffer[xoffset + (tj/2) + (ti/2) * TOTAL_WIDTH] = pp[0];
+        }
       }
     }
   }
@@ -928,17 +956,20 @@ void loop()
   mode64 = false;
 
   // Commands:
-  //  2: receive rom frame size
+  //  2: set rom frame size
   //  3: render raw data
   //  6: init palette (deprectated)
-  //  7: render 16 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 2 pixels par byte
-  //  8: render 4 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 4 pixels par byte
-  //  9: render 16 couleurs avec 1 palette 16 couleurs (16*3 bytes) suivis de 4 bytes par groupe de 8 points (séparés en plans de bits 4*512 bytes)
+  //  7: render 16 colors using a 4 color palette (3*4 bytes), 2 pixels per byte
+  //  8: render 4 colors using a 4 color palette (3*4 bytes), 4 pixels per byte
+  //  9: render 16 colors using a 16 color palette (3*16 bytes), 4 bytes per group of 8 pixels (encoded as 4*512 bytes planes)
   // 10: clear screen
-  // 11: render 64 couleurs avec 1 palette 64 couleurs (64*3 bytes) suivis de 6 bytes par groupe de 8 points (séparés en plans de bits 6*512 bytes)
+  // 11: render 64 colors using a 64 color palette (3*64 bytes), 6 bytes per group of 8 pixels (encoded as 6*512 bytes planes)
   // 12: handshake + report resolution
   // 13: set serial transfer chunk size
   // 14: enable serial transfer compression
+  // todo 20: turn off upscaling
+  // todo 21: turn on upscaling
+  // todo 22: set brightness
   // 98: disable debug mode
   // 99: enable debug mode
   unsigned char c4;
