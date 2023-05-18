@@ -1,6 +1,6 @@
 #define ZEDMD_VERSION_MAJOR 3  // X Digits
 #define ZEDMD_VERSION_MINOR 2  // Max 2 Digits
-#define ZEDMD_VERSION_PATCH 0  // Max 2 Digits
+#define ZEDMD_VERSION_PATCH 1  // Max 2 Digits
 
 #ifdef ZEDMD_64_64_4
     #define PANEL_WIDTH    64  // Width: number of LEDs for 1 panel.
@@ -99,7 +99,7 @@ HUB75_I2S_CFG mxconfig(
           //HUB75_I2S_CFG::FM6126A  // driver chip
 );
 
-MatrixPanel_I2S_DMA *dma_display = nullptr;
+MatrixPanel_I2S_DMA *dma_display;
 
 int ordreRGB[3*6]={0,1,2, 2,0,1, 1,2,0,
                    0,2,1, 1,0,2, 2,1,0};
@@ -107,9 +107,7 @@ int acordreRGB=0;
 
 unsigned char* palette;
 unsigned char* renderBuffer;
-unsigned char doubleBufferR[TOTAL_HEIGHT][TOTAL_WIDTH] = {0};
-unsigned char doubleBufferG[TOTAL_HEIGHT][TOTAL_WIDTH] = {0};
-unsigned char doubleBufferB[TOTAL_HEIGHT][TOTAL_WIDTH] = {0};
+unsigned char doubleBuffer[TOTAL_BYTES] = {0};
 
 // for color rotation
 unsigned char rotCols[64];
@@ -238,9 +236,7 @@ void ClearScreen()
 {
   dma_display->clearScreen();
 
-  memset(doubleBufferR, 0, TOTAL_HEIGHT * TOTAL_WIDTH);
-  memset(doubleBufferG, 0, TOTAL_HEIGHT * TOTAL_WIDTH);
-  memset(doubleBufferB, 0, TOTAL_HEIGHT * TOTAL_WIDTH);
+  memset(doubleBuffer, 0, TOTAL_BYTES);
 }
 
 bool CmpColor(unsigned char* px1, unsigned char* px2)
@@ -610,60 +606,64 @@ void ScaleImage64() // scale for indexed image (all except RGB24)
   free(panel);
 }
 
+void DrawPixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
+{
+  int pos = 3 * y * TOTAL_WIDTH + 3 * x;
+
+  if (r != doubleBuffer[pos] || g != doubleBuffer[pos + 1] || b != doubleBuffer[pos + 2])
+  {
+    doubleBuffer[pos] = r;
+    doubleBuffer[pos + 1] = g;
+    doubleBuffer[pos + 2] = b;
+
+    dma_display->drawPixelRGB888(x, y, r, g, b);
+  }
+}
+
 void fillPanelRaw()
 {
-  int r;
-  int g;
-  int b;
-
+  uint8_t r;
+  uint8_t g;
+  uint8_t b;
   int pos;
 
-  for (int tj = 0; tj < TOTAL_HEIGHT; tj++)
+  for (int y = 0; y < TOTAL_HEIGHT; y++)
   {
-    for (int ti = 0; ti < TOTAL_WIDTH; ti++)
+    for (int x = 0; x < TOTAL_WIDTH; x++)
     {
-      pos = ti + tj * TOTAL_WIDTH;
-      r = renderBuffer[ti * 3 + tj * 3 * TOTAL_WIDTH + ordreRGB[acordreRGB * 3]];
-      g = renderBuffer[ti * 3 + tj * 3 * TOTAL_WIDTH + ordreRGB[acordreRGB * 3 + 1]];
-      b = renderBuffer[ti * 3 + tj * 3 * TOTAL_WIDTH + ordreRGB[acordreRGB * 3 + 2]];
+      pos = x * 3 + y * 3 * TOTAL_WIDTH;
 
-      if (r != doubleBufferR[tj][ti] || g != doubleBufferG[tj][ti] || b != doubleBufferB[tj][ti])
-      {
-        doubleBufferR[tj][ti] = r;
-        doubleBufferG[tj][ti] = g;
-        doubleBufferB[tj][ti] = b;
-
-        dma_display->drawPixelRGB888(ti, tj, r, g, b);
-      }
+      DrawPixel(
+        x,
+        y,
+        renderBuffer[pos + ordreRGB[acordreRGB * 3]],
+        renderBuffer[pos + ordreRGB[acordreRGB * 3 + 1]],
+        renderBuffer[pos + ordreRGB[acordreRGB * 3 + 2]]
+      );
     }
   }
 }
 
 void fillPanelUsingPalette()
 {
-  int r;
-  int g;
-  int b;
-
+  uint8_t r;
+  uint8_t g;
+  uint8_t b;
   int pos;
 
-  for (int tj = 0; tj < TOTAL_HEIGHT; tj++)
+  for (int y = 0; y < TOTAL_HEIGHT; y++)
   {
-    for (int ti = 0; ti < TOTAL_WIDTH; ti++)
+    for (int x = 0; x < TOTAL_WIDTH; x++)
     {
-      pos = ti + tj * TOTAL_WIDTH;
-      r = palette[rotCols[renderBuffer[pos]] * 3 + ordreRGB[acordreRGB * 3]];
-      g = palette[rotCols[renderBuffer[pos]] * 3 + ordreRGB[acordreRGB * 3 + 1]];
-      b = palette[rotCols[renderBuffer[pos]] * 3 + ordreRGB[acordreRGB * 3 + 2]];
+      pos = y*TOTAL_WIDTH + x;
 
-      if (r != doubleBufferR[tj][ti] || g != doubleBufferG[tj][ti] || b != doubleBufferB[tj][ti])
-      {
-        doubleBufferR[tj][ti] = r;
-        doubleBufferG[tj][ti] = g;
-        doubleBufferB[tj][ti] = b;
-
-        dma_display->drawPixelRGB888(ti, tj, r, g, b);
-      }
+      DrawPixel(
+        x,
+        y,
+        palette[rotCols[renderBuffer[pos]] * 3 + ordreRGB[acordreRGB * 3]],
+        palette[rotCols[renderBuffer[pos]] * 3 + ordreRGB[acordreRGB * 3 + 1]],
+        palette[rotCols[renderBuffer[pos]] * 3 + ordreRGB[acordreRGB * 3 + 2]]
+      );
     }
   }
 }
@@ -767,6 +767,7 @@ void setup()
   Serial.begin(SERIAL_BAUD);
   while (!Serial);
 
+  ClearScreen();
   LoadLum();
 
   dma_display->setBrightness8(lumval[lumstep]); // range is 0-255, 0 - 0%, 255 - 100%
@@ -964,6 +965,7 @@ void loop()
         continue;
       }
 
+      nextTime[0] = millis();
       acordreRGB++;
       if (acordreRGB >= 6) acordreRGB = 0;
       SaveOrdreRGB();
@@ -981,6 +983,7 @@ void loop()
         continue;
       }
 
+      nextTime[0] = millis();
       lumstep++;
       if (lumstep>=16) lumstep=1;
       dma_display->setBrightness8(lumval[lumstep]);
