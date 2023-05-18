@@ -99,7 +99,7 @@ HUB75_I2S_CFG mxconfig(
           //HUB75_I2S_CFG::FM6126A  // driver chip
 );
 
-MatrixPanel_I2S_DMA *dma_display = nullptr;
+MatrixPanel_I2S_DMA *dma_display;
 
 int ordreRGB[3*6]={0,1,2, 2,0,1, 1,2,0,
                    0,2,1, 1,0,2, 2,1,0};
@@ -431,7 +431,6 @@ void ScaleImage() // scale for non indexed image (RGB24)
   }
 
   free(panel);
-  panel = nullptr;
 }
 
 void ScaleImage64() // scale for indexed image (all except RGB24)
@@ -605,7 +604,6 @@ void ScaleImage64() // scale for indexed image (all except RGB24)
   }
 
   free(panel);
-  panel = nullptr;
 }
 
 void DrawPixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
@@ -731,7 +729,6 @@ void DisplayLogo(void)
   fillPanelRaw();
 
   free(renderBuffer);
-  renderBuffer = nullptr;
 
   DisplayVersion();
   DisplayText(lumtxt, 16, TOTAL_WIDTH/2 - 16/2 - 2*4/2, TOTAL_HEIGHT-5, 255, 255, 255);
@@ -848,7 +845,6 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
     mz_ulong uncompressed_buffer_size = (mz_ulong) BufferSize;
     int status = uncompress(pBuffer, &uncompressed_buffer_size, transferBuffer, (mz_ulong) transferBufferSize);
     free(transferBuffer);
-    transferBuffer = nullptr;
 
     if (debugMode && (Z_OK != status))
     {
@@ -1129,7 +1125,6 @@ void loop()
       }
 
       free(renderBuffer);
-      renderBuffer = nullptr;
     }
     else if (c4 == 8) // mode 4 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 4 pixels par byte
     {
@@ -1171,7 +1166,6 @@ void loop()
           }
         }
         free(buffer);
-        buffer = nullptr;
 
         mode64=false;
         for (int ti=0;ti<64;ti++) rotCols[ti]=ti;
@@ -1180,14 +1174,11 @@ void loop()
         fillPanelUsingPalette();
 
         free(renderBuffer);
-        renderBuffer = nullptr;
         free(palette);
-        palette = nullptr;
       }
       else
       {
         free(buffer);
-        buffer = nullptr;
       }
     }
     else if (c4 == 7) // mode 16 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 2 pixels par byte
@@ -1272,7 +1263,6 @@ void loop()
           }
         }
         free(buffer);
-        buffer = nullptr;
 
         mode64=false;
         for (int ti=0;ti<64;ti++) rotCols[ti]=ti;
@@ -1281,14 +1271,11 @@ void loop()
         fillPanelUsingPalette();
 
         free(renderBuffer);
-        renderBuffer = nullptr;
         free(palette);
-        palette = nullptr;
       }
       else
       {
         free(buffer);
-        buffer = nullptr;
       }
     }
     else if (c4 == 9) // mode 16 couleurs avec 1 palette 16 couleurs (16*3 bytes) suivis de 4 bytes par groupe de 8 points (séparés en plans de bits 4*512 bytes)
@@ -1336,7 +1323,6 @@ void loop()
           }
         }
         free(buffer);
-        buffer = nullptr;
 
         mode64=false;
         for (int ti=0;ti<64;ti++) rotCols[ti]=ti;
@@ -1345,14 +1331,11 @@ void loop()
         fillPanelUsingPalette();
 
         free(renderBuffer);
-        renderBuffer = nullptr;
         free(palette);
-        palette = nullptr;
       }
       else
       {
         free(buffer);
-        buffer = nullptr;
       }
     }
     else if (c4 == 11) // mode 64 couleurs avec 1 palette 64 couleurs (64*3 bytes) suivis de 6 bytes par groupe de 8 points (séparés en plans de bits 6*512 bytes) suivis de 3*8 bytes de rotations de couleurs
@@ -1416,7 +1399,6 @@ void loop()
           nextTime[ti]=actime+timeSpan[ti];
         }
         free(buffer);
-        buffer = nullptr;
 
         mode64=true;
 
@@ -1424,14 +1406,11 @@ void loop()
         fillPanelUsingPalette();
 
         free(renderBuffer);
-        renderBuffer = nullptr;
         free(palette);
-        palette = nullptr;
       }
       else
       {
         free(buffer);
-        buffer = nullptr;
       }
     }
     if (debugMode)
