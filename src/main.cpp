@@ -965,6 +965,7 @@ void loop()
         continue;
       }
 
+      nextTime[0] = millis();
       acordreRGB++;
       if (acordreRGB >= 6) acordreRGB = 0;
       SaveOrdreRGB();
@@ -982,6 +983,7 @@ void loop()
         continue;
       }
 
+      nextTime[0] = millis();
       lumstep++;
       if (lumstep>=16) lumstep=1;
       dma_display->setBrightness8(lumval[lumstep]);
