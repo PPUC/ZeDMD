@@ -107,7 +107,7 @@ int acordreRGB=0;
 
 unsigned char* palette;
 unsigned char* renderBuffer;
-unsigned char* doubleBuffer;
+unsigned char doubleBuffer[TOTAL_BYTES] = {0};
 
 // for color rotation
 unsigned char rotCols[64];
@@ -767,7 +767,6 @@ void setup()
   Serial.begin(SERIAL_BAUD);
   while (!Serial);
 
-  doubleBuffer = (unsigned char*) malloc(TOTAL_BYTES);
   ClearScreen();
   LoadLum();
 
