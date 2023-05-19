@@ -107,7 +107,7 @@ int acordreRGB=0;
 
 unsigned char* palette;
 unsigned char* renderBuffer;
-unsigned char doubleBuffer[TOTAL_BYTES] = {0};
+uint8_t doubleBuffer[TOTAL_WIDTH * TOTAL_HEIGHT] = {0};
 
 // for color rotation
 unsigned char rotCols[64];
@@ -236,7 +236,7 @@ void ClearScreen()
 {
   dma_display->clearScreen();
 
-  memset(doubleBuffer, 0, TOTAL_BYTES);
+  memset(doubleBuffer, 0, TOTAL_WIDTH * TOTAL_HEIGHT);
 }
 
 bool CmpColor(unsigned char* px1, unsigned char* px2)
@@ -608,13 +608,12 @@ void ScaleImage64() // scale for indexed image (all except RGB24)
 
 void DrawPixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
 {
-  int pos = 3 * y * TOTAL_WIDTH + 3 * x;
+  int pos = y * TOTAL_WIDTH + x;
+  uint8_t colors = ((r >> 5) << 5) + ((g >> 5) << 2) + (b >> 6);
 
-  if (r != doubleBuffer[pos] || g != doubleBuffer[pos + 1] || b != doubleBuffer[pos + 2])
+  if (colors != doubleBuffer[pos])
   {
-    doubleBuffer[pos] = r;
-    doubleBuffer[pos + 1] = g;
-    doubleBuffer[pos + 2] = b;
+    doubleBuffer[pos] = colors;
 
     dma_display->drawPixelRGB888(x, y, r, g, b);
   }
@@ -622,9 +621,6 @@ void DrawPixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
 
 void fillPanelRaw()
 {
-  uint8_t r;
-  uint8_t g;
-  uint8_t b;
   int pos;
 
   for (int y = 0; y < TOTAL_HEIGHT; y++)
@@ -646,9 +642,6 @@ void fillPanelRaw()
 
 void fillPanelUsingPalette()
 {
-  uint8_t r;
-  uint8_t g;
-  uint8_t b;
   int pos;
 
   for (int y = 0; y < TOTAL_HEIGHT; y++)
