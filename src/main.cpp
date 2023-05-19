@@ -51,7 +51,7 @@
 #include <Arduino.h>
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include <LittleFS.h>
-#include <miniz.h>
+#include "miniz/miniz.h"
 #include <Bounce2.h>
 
 // Pinout derived from ESP32-HUB75-MatrixPanel-I2S-DMA.h
@@ -842,17 +842,17 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
 
   if (compression) {
     mz_ulong uncompressed_buffer_size = (mz_ulong) BufferSize;
-    int status = uncompress(pBuffer, &uncompressed_buffer_size, transferBuffer, (mz_ulong) transferBufferSize);
+    int status = mz_uncompress2(pBuffer, &uncompressed_buffer_size, transferBuffer, (mz_ulong*) &transferBufferSize);
     free(transferBuffer);
 
-    if (debugMode && (Z_OK != status))
+    if (debugMode && (MZ_OK != status))
     {
       int tmp_status = (status >= 0) ? status : (-1 * status) + 100;
       Say(3, tmp_status);
       debugLines[3] = tmp_status;
     }
 
-    if ((Z_OK == status) && (uncompressed_buffer_size == BufferSize)) {
+    if ((MZ_OK == status) && (uncompressed_buffer_size == BufferSize)) {
       // Some HD panels take too long too render. The small ZeDMD seems to be fast enough to send a fast (R)eady signal here.
       if (TOTAL_WIDTH <= 128) {
         //sendFastReady();
@@ -867,7 +867,7 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
       return true;
     }
 
-    if (debugMode && (Z_OK == status))
+    if (debugMode && (MZ_OK == status))
     {
       // uncrompessed data isn't of expected size
       Say(3, 99);
