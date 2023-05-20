@@ -2,11 +2,6 @@
 #define ZEDMD_VERSION_MINOR 2  // Max 2 Digits
 #define ZEDMD_VERSION_PATCH 1  // Max 2 Digits
 
-#ifdef ZEDMD_64_64_4
-    #define PANEL_WIDTH    64  // Width: number of LEDs for 1 panel.
-    #define PANEL_HEIGHT   64  // Height: number of LEDs.
-    #define PANELS_NUMBER  4   // Number of horizontally chained panels.
-#endif
 #ifdef ZEDMD_128_64_2
     #define PANEL_WIDTH    128 // Width: number of LEDs for 1 panel.
     #define PANEL_HEIGHT   64  // Height: number of LEDs.
@@ -107,7 +102,11 @@ int acordreRGB=0;
 
 unsigned char* palette;
 unsigned char* renderBuffer;
-unsigned char doubleBuffer[TOTAL_BYTES] = {0};
+#ifdef ZEDMD_128_64_2
+  uint8_t doubleBuffer[TOTAL_WIDTH * TOTAL_HEIGHT] = {0};
+#else
+  uint8_t doubleBuffer[TOTAL_BYTES] = {0};
+#endif
 
 // for color rotation
 unsigned char rotCols[64];
@@ -236,7 +235,11 @@ void ClearScreen()
 {
   dma_display->clearScreen();
 
+#ifdef ZEDMD_128_64_2
+  memset(doubleBuffer, 0, TOTAL_WIDTH * TOTAL_HEIGHT);
+#else
   memset(doubleBuffer, 0, TOTAL_BYTES);
+#endif
 }
 
 bool CmpColor(unsigned char* px1, unsigned char* px2)
@@ -608,6 +611,14 @@ void ScaleImage64() // scale for indexed image (all except RGB24)
 
 void DrawPixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
 {
+#ifdef ZEDMD_128_64_2
+  int pos = y * TOTAL_WIDTH + x;
+  uint8_t colors = ((r >> 5) << 5) + ((g >> 5) << 2) + (b >> 6);
+
+  if (colors != doubleBuffer[pos])
+  {
+    doubleBuffer[pos] = colors;
+#else
   int pos = 3 * y * TOTAL_WIDTH + 3 * x;
 
   if (r != doubleBuffer[pos] || g != doubleBuffer[pos + 1] || b != doubleBuffer[pos + 2])
@@ -615,6 +626,7 @@ void DrawPixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
     doubleBuffer[pos] = r;
     doubleBuffer[pos + 1] = g;
     doubleBuffer[pos + 2] = b;
+#endif
 
     dma_display->drawPixelRGB888(x, y, r, g, b);
   }
@@ -622,9 +634,6 @@ void DrawPixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
 
 void fillPanelRaw()
 {
-  uint8_t r;
-  uint8_t g;
-  uint8_t b;
   int pos;
 
   for (int y = 0; y < TOTAL_HEIGHT; y++)
@@ -646,9 +655,6 @@ void fillPanelRaw()
 
 void fillPanelUsingPalette()
 {
-  uint8_t r;
-  uint8_t g;
-  uint8_t b;
   int pos;
 
   for (int y = 0; y < TOTAL_HEIGHT; y++)
