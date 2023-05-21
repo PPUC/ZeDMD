@@ -259,22 +259,22 @@ void SetColor(unsigned char* px1, unsigned char* px2)
 
 void ScaleImage() // scale for non indexed image (RGB24)
 {
-  int xoffset=0;
-  int yoffset=0;
-  int scale=0; // 0 - no scale, 1 - half scale, 2 - twice scale
+  int xoffset = 0;
+  int yoffset = 0;
+  int scale = 0; // 0 - no scale, 1 - half scale, 2 - twice scale
 
   if ((RomWidth==192)&&(TOTAL_WIDTH==256))
   {
-    xoffset=32*3;
+    xoffset = 32*3;
   }
   else if (RomWidth==192)
   {
-    xoffset=16*3;
-    scale=1;
+    xoffset = 16*3;
+    scale = 1;
   }
   else if ((RomWidth==256)&&(TOTAL_WIDTH==128))
   {
-    scale=1;
+    scale = 1;
   }
   else if ((RomWidth==128)&&(TOTAL_WIDTH==256))
   {
@@ -283,10 +283,22 @@ void ScaleImage() // scale for non indexed image (RGB24)
     scale=2;
 
     // Optional: just center the DMD.
-    // xoffset = 64 * 3;
-    // yoffset = 16 * 3;
+    // xoffset = 64;
+    // yoffset = 16;
   }
-  else return;
+  else if (RomHeight == 16 && TOTAL_HEIGHT == 32)
+  {
+    yoffset = 8;
+  }
+  else if (RomHeight == 16 && TOTAL_HEIGHT == 64)
+  {
+    yoffset = 16;
+    scale = 2;
+  }
+  else
+  {
+    return;
+  }
 
   unsigned char* panel = (unsigned char*) malloc(RomWidth * RomHeight * 3);
   memcpy(panel, renderBuffer, RomWidth * RomHeight * 3);
@@ -405,20 +417,20 @@ void ScaleImage() // scale for non indexed image (RGB24)
           i=&panel[3*((tj+1)*RomWidth+ti+1)];
         }
         if (b != h && d != f) {
-          if (CmpColor(d,b)) SetColor(&renderBuffer[3*(tj*2*TOTAL_WIDTH+ti*2)+xoffset],d); else SetColor(&renderBuffer[3*(tj*2*TOTAL_WIDTH+ti*2)+xoffset],e);
-          if (CmpColor(b,f)) SetColor(&renderBuffer[3*(tj*2*TOTAL_WIDTH+ti*2+1)+xoffset], f); else SetColor(&renderBuffer[3*(tj*2*TOTAL_WIDTH+ti*2+1)+xoffset], e);
-          if (CmpColor(b,h)) SetColor(&renderBuffer[3*((tj*2+1)*TOTAL_WIDTH+ti*2)+xoffset],d); else SetColor(&renderBuffer[3*((tj*2+1)*TOTAL_WIDTH+ti*2)+xoffset],e);
-          if (CmpColor(h,f)) SetColor(&renderBuffer[3*((tj*2+1)*TOTAL_WIDTH+ti*2+1)+xoffset],f); else SetColor(&renderBuffer[3*((tj*2+1)*TOTAL_WIDTH+ti*2+1)+xoffset],e);
+          if (CmpColor(d,b)) SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*(tj*2*TOTAL_WIDTH+ti*2)+ 3 * xoffset],d); else SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*(tj*2*TOTAL_WIDTH+ti*2)+ 3 * xoffset],e);
+          if (CmpColor(b,f)) SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*(tj*2*TOTAL_WIDTH+ti*2+1)+ 3 * xoffset], f); else SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*(tj*2*TOTAL_WIDTH+ti*2+1)+ 3 * xoffset], e);
+          if (CmpColor(b,h)) SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*((tj*2+1)*TOTAL_WIDTH+ti*2)+ 3 * xoffset],d); else SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*((tj*2+1)*TOTAL_WIDTH+ti*2)+ 3 * xoffset],e);
+          if (CmpColor(h,f)) SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*((tj*2+1)*TOTAL_WIDTH+ti*2+1)+ 3 * xoffset],f); else SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*((tj*2+1)*TOTAL_WIDTH+ti*2+1)+ 3 * xoffset],e);
         } else {
-          SetColor(&renderBuffer[3*(tj*2*TOTAL_WIDTH+ti*2)+xoffset],e);
-          SetColor(&renderBuffer[3*(tj*2*TOTAL_WIDTH+ti*2+1)+xoffset], e);
-          SetColor(&renderBuffer[3*((tj*2+1)*TOTAL_WIDTH+ti*2)+xoffset],e);
-          SetColor(&renderBuffer[3*((tj*2+1)*TOTAL_WIDTH+ti*2+1)+xoffset],e);
+          SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*(tj*2*TOTAL_WIDTH+ti*2)+ 3 * xoffset],e);
+          SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*(tj*2*TOTAL_WIDTH+ti*2+1)+ 3 * xoffset], e);
+          SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*((tj*2+1)*TOTAL_WIDTH+ti*2)+ 3 * xoffset],e);
+          SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*((tj*2+1)*TOTAL_WIDTH+ti*2+1)+ 3 * xoffset],e);
         }
        }
     }
   }
-  else //offset!=0
+  else // offset
   {
     memset(renderBuffer, 0, TOTAL_BYTES);
 
@@ -427,7 +439,7 @@ void ScaleImage() // scale for non indexed image (RGB24)
       for (int ti=0; ti<RomWidth; ti++)
       {
         for (int i=0; i <= 2; i++) {
-          renderBuffer[yoffset * TOTAL_WIDTH + 3 * (tj * TOTAL_WIDTH + ti) + xoffset + i] = panel[3 * (tj * RomWidth + ti) + i];
+          renderBuffer[3 * yoffset * TOTAL_WIDTH + 3 * (tj * TOTAL_WIDTH + ti) + xoffset + i] = panel[3 * (tj * RomWidth + ti) + i];
         }
       }
     }
@@ -439,6 +451,7 @@ void ScaleImage() // scale for non indexed image (RGB24)
 void ScaleImage64() // scale for indexed image (all except RGB24)
 {
   int xoffset = 0;
+  int yoffset = 0;
   int scale = 0; // 0 - no scale, 1 - half scale, 2 - double scale
 
   if (RomWidth == 192 && TOTAL_WIDTH == 256)
@@ -456,6 +469,15 @@ void ScaleImage64() // scale for indexed image (all except RGB24)
   }
   else if (RomWidth == 128 && TOTAL_WIDTH == 256)
   {
+    scale = 2;
+  }
+  else if (RomHeight == 16 && TOTAL_HEIGHT == 32)
+  {
+    yoffset = 8;
+  }
+  else if (RomHeight == 16 && TOTAL_HEIGHT == 64)
+  {
+    yoffset = 16;
     scale = 2;
   }
   else
@@ -580,15 +602,15 @@ void ScaleImage64() // scale for indexed image (all except RGB24)
           i=panel[(tj+1)*RomWidth+ti+1];
         }
         if (b != h && d != f) {
-          renderBuffer[tj*2*TOTAL_WIDTH+ti*2+xoffset] = d == b ? d : e;
-          renderBuffer[tj*2*TOTAL_WIDTH+ti*2+1+xoffset] = b == f ? f : e;
-          renderBuffer[(tj*2+1)*TOTAL_WIDTH+ti*2+xoffset] = d == h ? d : e;
-          renderBuffer[(tj*2+1)*TOTAL_WIDTH+ti*2+1+xoffset] = h == f ? f : e;
+          renderBuffer[yoffset * TOTAL_WIDTH + tj*2*TOTAL_WIDTH+ti*2+xoffset] = d == b ? d : e;
+          renderBuffer[yoffset * TOTAL_WIDTH + tj*2*TOTAL_WIDTH+ti*2+1+xoffset] = b == f ? f : e;
+          renderBuffer[yoffset * TOTAL_WIDTH + (tj*2+1)*TOTAL_WIDTH+ti*2+xoffset] = d == h ? d : e;
+          renderBuffer[yoffset * TOTAL_WIDTH + (tj*2+1)*TOTAL_WIDTH+ti*2+1+xoffset] = h == f ? f : e;
         } else {
-          renderBuffer[tj*2*TOTAL_WIDTH+ti*2+xoffset] = e;
-          renderBuffer[tj*2*TOTAL_WIDTH+ti*2+1+xoffset] = e;
-          renderBuffer[(tj*2+1)*TOTAL_WIDTH+ti*2+xoffset] = e;
-          renderBuffer[(tj*2+1)*TOTAL_WIDTH+ti*2+1+xoffset] = e;
+          renderBuffer[yoffset * TOTAL_WIDTH + tj*2*TOTAL_WIDTH+ti*2+xoffset] = e;
+          renderBuffer[yoffset * TOTAL_WIDTH + tj*2*TOTAL_WIDTH+ti*2+1+xoffset] = e;
+          renderBuffer[yoffset * TOTAL_WIDTH + (tj*2+1)*TOTAL_WIDTH+ti*2+xoffset] = e;
+          renderBuffer[yoffset * TOTAL_WIDTH + (tj*2+1)*TOTAL_WIDTH+ti*2+1+xoffset] = e;
         }
       }
     }
@@ -601,7 +623,7 @@ void ScaleImage64() // scale for indexed image (all except RGB24)
     {
       for (int ti = 0; ti < RomWidth; ti++)
       {
-        renderBuffer[tj * TOTAL_WIDTH + xoffset + ti] = panel[tj * RomWidth + ti];
+        renderBuffer[yoffset * TOTAL_WIDTH + tj * TOTAL_WIDTH + xoffset + ti] = panel[tj * RomWidth + ti];
       }
     }
   }
@@ -1052,6 +1074,10 @@ void loop()
     while (Serial.available()==0);
     c4=Serial.read();
 
+    if (debugMode) {
+      DisplayNombre(c4, 2, TOTAL_WIDTH - 3*4, TOTAL_HEIGHT - 8, 200, 200, 200);
+    }
+
     if (c4 == 12) // ask for resolution (and shake hands)
     {
       for (int ti=0;ti<N_INTERMEDIATE_CTR_CHARS;ti++) Serial.write(CtrlCharacters[ti]);
@@ -1070,8 +1096,8 @@ void loop()
         RomHeight=(int)(tbuf[2])+(int)(tbuf[3]<<8);
         RomWidthPlane=RomWidth>>3;
         if (debugMode) {
-          DisplayNombre(RomWidth, 3, TOTAL_WIDTH - 7*4, 4, 150, 150, 150);
-          DisplayNombre(RomHeight, 2, TOTAL_WIDTH - 3*4, 4, 150, 150, 150);
+          DisplayNombre(RomWidth, 3, TOTAL_WIDTH - 7*4, 4, 200, 200, 200);
+          DisplayNombre(RomHeight, 2, TOTAL_WIDTH - 3*4, 4, 200, 200, 200);
         }
       }
     }
@@ -1422,6 +1448,10 @@ void loop()
     }
     if (debugMode)
     {
+      DisplayNombre(RomWidth, 3, TOTAL_WIDTH - 7*4, 4, 200, 200, 200);
+      DisplayNombre(RomHeight, 2, TOTAL_WIDTH - 3*4, 4, 200, 200, 200);
+      DisplayNombre(c4, 2, TOTAL_WIDTH - 3*4, TOTAL_HEIGHT - 8, 200, 200, 200);
+
       // An overflow of the unsigned int counters should not be an issue, they just reset to 0.
       debugLines[0] = ++frameCount;
       for (int i = 0; i < 6; i++)
