@@ -1,6 +1,6 @@
 #define ZEDMD_VERSION_MAJOR 3  // X Digits
 #define ZEDMD_VERSION_MINOR 2  // Max 2 Digits
-#define ZEDMD_VERSION_PATCH 1  // Max 2 Digits
+#define ZEDMD_VERSION_PATCH 2  // Max 2 Digits
 
 #ifdef ZEDMD_128_64_2
     #define PANEL_WIDTH    128 // Width: number of LEDs for 1 panel.
@@ -73,6 +73,10 @@ Bounce2::Button* brightnessButton;
 
 #define N_CTRL_CHARS 6
 #define N_INTERMEDIATE_CTR_CHARS 4
+
+bool debugMode = false;
+unsigned int debugLines[6] = {0};
+
 // !!!!! NE METTRE AUCUNE VALEURE IDENTIQUE !!!!!
 unsigned char CtrlCharacters[6]={0x5a,0x65,0x64,0x72,0x75,0x6d};
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -103,7 +107,8 @@ int acordreRGB=0;
 unsigned char* palette;
 unsigned char* renderBuffer;
 #ifdef ZEDMD_128_64_2
-  uint8_t doubleBuffer[TOTAL_WIDTH * TOTAL_HEIGHT] = {0};
+  uint8_t doubleBuffer[TOTAL_HEIGHT][TOTAL_WIDTH] = {0};
+  uint8_t existsBuffer[TOTAL_HEIGHT][TOTAL_WIDTH / 2] = {0};
 #else
   uint8_t doubleBuffer[TOTAL_BYTES] = {0};
 #endif
@@ -120,9 +125,6 @@ bool mode64=false;
 
 int RomWidth=128, RomHeight=32;
 int RomWidthPlane=128>>3;
-
-bool debugMode = false;
-unsigned int debugLines[6] = {0};
 
 unsigned char lumstep=1;
 
@@ -236,7 +238,8 @@ void ClearScreen()
   dma_display->clearScreen();
 
 #ifdef ZEDMD_128_64_2
-  memset(doubleBuffer, 0, TOTAL_WIDTH * TOTAL_HEIGHT);
+  memset(doubleBuffer, 0, TOTAL_HEIGHT * TOTAL_WIDTH);
+  memset(existsBuffer, 0, TOTAL_HEIGHT * TOTAL_WIDTH / 2);
 #else
   memset(doubleBuffer, 0, TOTAL_BYTES);
 #endif
@@ -272,6 +275,15 @@ void ScaleImage() // scale for non indexed image (RGB24)
     xoffset = 16*3;
     scale = 1;
   }
+  else if (RomHeight == 16 && TOTAL_HEIGHT == 32)
+  {
+    yoffset = 8;
+  }
+  else if (RomHeight == 16 && TOTAL_HEIGHT == 64)
+  {
+    yoffset = 16;
+    scale = 2;
+  }
   else if ((RomWidth==256)&&(TOTAL_WIDTH==128))
   {
     scale = 1;
@@ -286,15 +298,6 @@ void ScaleImage() // scale for non indexed image (RGB24)
     // xoffset = 64;
     // yoffset = 16;
   }
-  else if (RomHeight == 16 && TOTAL_HEIGHT == 32)
-  {
-    yoffset = 8;
-  }
-  else if (RomHeight == 16 && TOTAL_HEIGHT == 64)
-  {
-    yoffset = 16;
-    scale = 2;
-  }
   else
   {
     return;
@@ -302,11 +305,11 @@ void ScaleImage() // scale for non indexed image (RGB24)
 
   unsigned char* panel = (unsigned char*) malloc(RomWidth * RomHeight * 3);
   memcpy(panel, renderBuffer, RomWidth * RomHeight * 3);
+  memset(renderBuffer, 0, TOTAL_BYTES);
+
 
   if (scale==1)
   {
-    memset(renderBuffer, 0, TOTAL_BYTES);
-
     // for half scaling we take the 4 points and look if there is one colour repeated
     for (int ti=0;ti<RomHeight;ti+=2)
     {
@@ -432,8 +435,6 @@ void ScaleImage() // scale for non indexed image (RGB24)
   }
   else // offset
   {
-    memset(renderBuffer, 0, TOTAL_BYTES);
-
     for (int tj=0; tj<RomHeight; tj++)
     {
       for (int ti=0; ti<RomWidth; ti++)
@@ -463,14 +464,6 @@ void ScaleImage64() // scale for indexed image (all except RGB24)
     xoffset = 16;
     scale = 1;
   }
-  else if (RomWidth == 256 && TOTAL_WIDTH == 128)
-  {
-    scale = 1;
-  }
-  else if (RomWidth == 128 && TOTAL_WIDTH == 256)
-  {
-    scale = 2;
-  }
   else if (RomHeight == 16 && TOTAL_HEIGHT == 32)
   {
     yoffset = 8;
@@ -480,6 +473,14 @@ void ScaleImage64() // scale for indexed image (all except RGB24)
     yoffset = 16;
     scale = 2;
   }
+  else if (RomWidth == 256 && TOTAL_WIDTH == 128)
+  {
+    scale = 1;
+  }
+  else if (RomWidth == 128 && TOTAL_WIDTH == 256)
+  {
+    scale = 2;
+  }
   else
   {
     return;
@@ -487,11 +488,10 @@ void ScaleImage64() // scale for indexed image (all except RGB24)
 
   unsigned char* panel = (unsigned char*) malloc(RomWidth * RomHeight);
   memcpy(panel, renderBuffer, RomWidth * RomHeight);
+  memset(renderBuffer, 0, TOTAL_WIDTH * TOTAL_HEIGHT);
 
   if (scale == 1)
   {
-    memset(renderBuffer, 0, TOTAL_WIDTH * TOTAL_HEIGHT);
-
     // for half scaling we take the 4 points and look if there is one colour repeated
     for (int ti = 0; ti < RomHeight; ti += 2)
     {
@@ -617,13 +617,11 @@ void ScaleImage64() // scale for indexed image (all except RGB24)
   }
   else //offset!=0
   {
-    memset(renderBuffer, 0, TOTAL_WIDTH * TOTAL_HEIGHT);
-
-    for (int tj = 0; tj < RomHeight; tj++)
+    for (int y = 0; y < RomHeight; y++)
     {
-      for (int ti = 0; ti < RomWidth; ti++)
+      for (int x = 0; x < RomWidth; x++)
       {
-        renderBuffer[yoffset * TOTAL_WIDTH + tj * TOTAL_WIDTH + xoffset + ti] = panel[tj * RomWidth + ti];
+        renderBuffer[(yoffset + y) * TOTAL_WIDTH + xoffset + x] = panel[y * RomWidth + x];
       }
     }
   }
@@ -634,12 +632,14 @@ void ScaleImage64() // scale for indexed image (all except RGB24)
 void DrawPixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
 {
 #ifdef ZEDMD_128_64_2
-  int pos = y * TOTAL_WIDTH + x;
   uint8_t colors = ((r >> 5) << 5) + ((g >> 5) << 2) + (b >> 6);
+  uint8_t colorsExist = (r ? 8 : 0) + (g ? 4 : 0) + (b ? 2 : 0) + ((r || g || b) ? 1 : 0);
+  uint8_t buf = (x % 2) ? (existsBuffer[y][x / 2] >> 4) : ((existsBuffer[y][x / 2] << 4) >> 4);
 
-  if (colors != doubleBuffer[pos])
+  if (colors != doubleBuffer[y][x] || colorsExist != buf)
   {
-    doubleBuffer[pos] = colors;
+    doubleBuffer[y][x] = colors;
+    existsBuffer[y][x / 2] = (x % 2) ? (((existsBuffer[y][x / 2] << 4) >> 4) + (colorsExist << 4)) : (((existsBuffer[y][x / 2] >> 4) << 4) + colorsExist);
 #else
   int pos = 3 * y * TOTAL_WIDTH + 3 * x;
 
@@ -1146,7 +1146,7 @@ void loop()
     else if (c4 == 3) // mode RGB24
     {
       // We need to cover downscaling, too.
-      int renderBufferSize = RomWidth < TOTAL_WIDTH ? TOTAL_BYTES : RomWidth * RomHeight * 3;
+      int renderBufferSize = (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT) ? TOTAL_BYTES : RomWidth * RomHeight * 3;
       renderBuffer = (unsigned char*) malloc(renderBufferSize);
       memset(renderBuffer, 0, renderBufferSize);
 
@@ -1167,7 +1167,7 @@ void loop()
       if (SerialReadBuffer(buffer, bufferSize))
       {
         // We need to cover downscaling, too.
-        int renderBufferSize = RomWidth < TOTAL_WIDTH ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
+        int renderBufferSize = (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT) ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
         renderBuffer = (unsigned char*) malloc(renderBufferSize);
         memset(renderBuffer, 0, renderBufferSize);
         palette = (unsigned char*) malloc(3*4);
@@ -1222,7 +1222,7 @@ void loop()
       if (SerialReadBuffer(buffer, bufferSize))
       {
         // We need to cover downscaling, too.
-        int renderBufferSize = RomWidth < TOTAL_WIDTH ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
+        int renderBufferSize = (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT) ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
         renderBuffer = (unsigned char*) malloc(renderBufferSize);
         memset(renderBuffer, 0, renderBufferSize);
         palette = (unsigned char*) malloc(48);
@@ -1319,7 +1319,7 @@ void loop()
       if (SerialReadBuffer(buffer, bufferSize))
       {
         // We need to cover downscaling, too.
-        int renderBufferSize = RomWidth < TOTAL_WIDTH ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
+        int renderBufferSize = (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT) ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
         renderBuffer = (unsigned char*) malloc(renderBufferSize);
         memset(renderBuffer, 0, renderBufferSize);
         palette = (unsigned char*) malloc(3*16);
@@ -1379,7 +1379,7 @@ void loop()
       if (SerialReadBuffer(buffer, bufferSize))
       {
         // We need to cover downscaling, too.
-        int renderBufferSize = RomWidth < TOTAL_WIDTH ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
+        int renderBufferSize = (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT) ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
         renderBuffer = (unsigned char*) malloc(renderBufferSize);
         memset(renderBuffer, 0, renderBufferSize);
         palette = (unsigned char*) malloc(3*64);
