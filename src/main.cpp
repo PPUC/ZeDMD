@@ -1,6 +1,6 @@
 #define ZEDMD_VERSION_MAJOR 3  // X Digits
 #define ZEDMD_VERSION_MINOR 2  // Max 2 Digits
-#define ZEDMD_VERSION_PATCH 2  // Max 2 Digits
+#define ZEDMD_VERSION_PATCH 3  // Max 2 Digits
 
 #ifdef ZEDMD_128_64_2
     #define PANEL_WIDTH    128 // Width: number of LEDs for 1 panel.
@@ -121,7 +121,8 @@ unsigned char nCol[MAX_COLOR_ROTATIONS];
 unsigned char acFirst[MAX_COLOR_ROTATIONS];
 unsigned long timeSpan[MAX_COLOR_ROTATIONS];
 
-bool mode64=false;
+bool mode64 = false;
+bool upscaling = true;
 
 int RomWidth=128, RomHeight=32;
 int RomWidthPlane=128>>3;
@@ -281,8 +282,17 @@ void ScaleImage() // scale for non indexed image (RGB24)
   }
   else if (RomHeight == 16 && TOTAL_HEIGHT == 64)
   {
-    yoffset = 16;
-    scale = 2;
+    if (upscaling)
+    {
+      yoffset = 16*3;
+      scale=2;
+    }
+    else
+    {
+      // Just center the DMD.
+      xoffset = 64*3;
+      yoffset = 24*3;
+    }
   }
   else if ((RomWidth==256)&&(TOTAL_WIDTH==128))
   {
@@ -290,13 +300,17 @@ void ScaleImage() // scale for non indexed image (RGB24)
   }
   else if ((RomWidth==128)&&(TOTAL_WIDTH==256))
   {
-    // Scaling doesn't look nice for real RGB tables like Diablo.
-    // @todo we should add a command to turn scaling on or off from the client.
-    scale=2;
-
-    // Optional: just center the DMD.
-    // xoffset = 64;
-    // yoffset = 16;
+    if (upscaling)
+    {
+      // Scaling doesn't look nice for real RGB tables like Diablo.
+      scale=2;
+    }
+    else
+    {
+      // Just center the DMD.
+      xoffset = 64*3;
+      yoffset = 16*3;
+    }
   }
   else
   {
@@ -470,8 +484,17 @@ void ScaleImage64() // scale for indexed image (all except RGB24)
   }
   else if (RomHeight == 16 && TOTAL_HEIGHT == 64)
   {
-    yoffset = 16;
-    scale = 2;
+    if (upscaling)
+    {
+      yoffset = 16;
+      scale=2;
+    }
+    else
+    {
+      // Just center the DMD.
+      xoffset = 64;
+      yoffset = 24;
+    }
   }
   else if (RomWidth == 256 && TOTAL_WIDTH == 128)
   {
@@ -479,7 +502,17 @@ void ScaleImage64() // scale for indexed image (all except RGB24)
   }
   else if (RomWidth == 128 && TOTAL_WIDTH == 256)
   {
-    scale = 2;
+    if (upscaling)
+    {
+      // Scaling doesn't look nice for real RGB tables like Diablo.
+      scale=2;
+    }
+    else
+    {
+      // Just center the DMD.
+      xoffset = 64;
+      yoffset = 16;
+    }
   }
   else
   {
@@ -1054,9 +1087,10 @@ void loop()
     mode64 = false;
 
     // Commands:
-    //  2: set rom frame size
+    //  1: set rom frame size
+    //  2: set rom frame size (only uncompressed and without (A)cknowledge, backward compatibility)
     //  3: render raw data
-    //  6: init palette (deprectated)
+    //  6: init palette (deprectated, backward compatibility)
     //  7: render 16 colors using a 4 color palette (3*4 bytes), 2 pixels per byte
     //  8: render 4 colors using a 4 color palette (3*4 bytes), 4 pixels per byte
     //  9: render 16 colors using a 16 color palette (3*16 bytes), 4 bytes per group of 8 pixels (encoded as 4*512 bytes planes)
@@ -1065,14 +1099,15 @@ void loop()
     // 12: handshake + report resolution
     // 13: set serial transfer chunk size
     // 14: enable serial transfer compression
-    // todo 20: turn off upscaling
-    // todo 21: turn on upscaling
-    // todo 22: set brightness
+    // 20: turn off upscaling
+    // 21: turn on upscaling
+    // 22: set brightness
+    // 23: set RGB order
     // 98: disable debug mode
     // 99: enable debug mode
     unsigned char c4;
     while (Serial.available()==0);
-    c4=Serial.read();
+    c4 = Serial.read();
 
     if (debugMode) {
       DisplayNombre(c4, 2, TOTAL_WIDTH - 3*4, TOTAL_HEIGHT - 8, 200, 200, 200);
@@ -1087,7 +1122,26 @@ void loop()
       Serial.write((TOTAL_HEIGHT>>8)&0xff);
       handshakeSucceeded=true;
     }
-    else if (c4 == 2) // get rom frame dimension
+    else if (c4 == 1) // set rom frame size
+    {
+      unsigned char tbuf[4];
+      if (SerialReadBuffer(tbuf, 4))
+      {
+        RomWidth=(int)(tbuf[0])+(int)(tbuf[1]<<8);
+        RomHeight=(int)(tbuf[2])+(int)(tbuf[3]<<8);
+        RomWidthPlane=RomWidth>>3;
+        if (debugMode) {
+          DisplayNombre(RomWidth, 3, TOTAL_WIDTH - 7*4, 4, 200, 200, 200);
+          DisplayNombre(RomHeight, 2, TOTAL_WIDTH - 3*4, 4, 200, 200, 200);
+        }
+        Serial.write('A');
+      }
+      else
+      {
+        Serial.write('E');
+      }
+    }
+    else if (c4 == 2) // set rom frame size (uncompressed, backward compatibility)
     {
       unsigned char tbuf[4];
       if (SerialReadBuffer(tbuf,4))
@@ -1119,6 +1173,59 @@ void loop()
       compression = true;
       // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
       Serial.write('A');
+    }
+    else if (c4 == 20) // turn off upscaling
+    {
+      upscaling = false;
+      Serial.write('A');
+    }
+    else if (c4 == 21) // turn on upscaling
+    {
+      upscaling = true;
+      Serial.write('A');
+    }
+    else if (c4 == 22) // set brightness
+    {
+      unsigned char tbuf[1];
+      if (SerialReadBuffer(tbuf, 1))
+      {
+        if (tbuf[0] > 0 && tbuf[0] < 16)
+        {
+          lumstep = tbuf[0];
+          dma_display->setBrightness8(lumval[lumstep]);
+          // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
+          Serial.write('A');
+        }
+        else
+        {
+          Serial.write('E');
+        }
+      }
+      else
+      {
+        Serial.write('E');
+      }
+    }
+    else if (c4 == 23) // enable serial transfer compression
+    {
+      unsigned char tbuf[1];
+      if (SerialReadBuffer(tbuf, 1))
+      {
+        if (tbuf[0] >= 0 && tbuf[0] < 6)
+        {
+          acordreRGB = tbuf[0];
+          // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
+          Serial.write('A');
+        }
+        else
+        {
+          Serial.write('E');
+        }
+      }
+      else
+      {
+        Serial.write('E');
+      }
     }
     else if (c4 == 98) // disable debug mode
     {
