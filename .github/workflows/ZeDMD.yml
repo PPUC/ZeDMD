@@ -71,7 +71,7 @@ jobs:
 
       - uses: actions/upload-artifact@v3
         with:
-          name: ZeDMD-${{ matrix.panels }}-${{ needs.version.outputs.tag }}
+          name: ZeDMD-${{ matrix.panels }}
           path: ZeDMD.bin
 
   post-build:
@@ -83,13 +83,13 @@ jobs:
       - name: Package
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-            zip -r ZeDMD-128x32-${{ needs.version.outputs.tag }}.zip ZeDMD-128x32-${{ needs.version.outputs.tag }}
-            zip -r ZeDMD-256x64-${{ needs.version.outputs.tag }}.zip  ZeDMD-256x64-${{ needs.version.outputs.tag }}
+            zip -r ZeDMD-128x32.zip ZeDMD-128x32
+            zip -r ZeDMD-256x64.zip ZeDMD-256x64
       - name: Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
           draft: true
           files: |
-            ZeDMD-128x32-${{ needs.version.outputs.tag }}.zip
-            ZeDMD-256x64-${{ needs.version.outputs.tag }}.zip
+            ZeDMD-128x32.zip
+            ZeDMD-256x64.zip
