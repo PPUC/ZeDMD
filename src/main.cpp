@@ -17,9 +17,10 @@
 #define SERIAL_TIMEOUT 8       // Time in milliseconds to wait for the next data chunk.
 #define SERIAL_BUFFER  8192    // Serial buffer size in byte.
 #define FRAME_TIMEOUT  10000   // Time in milliseconds to wait for a new frame.
+#define FRAME_WATCHDOG 9       // How many FRAME_TIMEOUTS might occur until a reset is performed.
 #define LOGO_TIMEOUT   20000   // Time in milliseconds before the logo vanishes.
 
-// ------------------------------------------ ZeDMD by Zedrummer (http://pincabpassion.net)---------------------------------------------
+// ------------------------------------------ ZeDMD by MK47 & Zedrummer (http://ppuc.org) --------------------------------------------------
 // - If you have blurry pictures, the display is not clean, try to reduce the input voltage of your LED matrix panels, often, 5V panels need
 //   between 4V and 4.5V to display clean pictures, you often have a screw in switch-mode power supplies to change the output voltage a little bit
 // - While the initial pattern logo is displayed, check you have red in the upper left, green in the lower left and blue in the upper right,
@@ -761,6 +762,8 @@ void SaveLum()
 
 void DisplayLogo(void)
 {
+  dma_display->setBrightness8(lumval[lumstep]);
+
   ClearScreen();
   LoadOrdreRGB();
 
@@ -800,6 +803,16 @@ void DisplayLogo(void)
 
   // Re-use this variable to save memory
   nextTime[0] = millis();
+}
+
+void ScreenSaver(void)
+{
+  ClearScreen();
+  dma_display->setBrightness8(lumval[1]);
+
+  displayOff = true;
+
+  DisplayVersion();
 }
 
 void setup()
@@ -984,10 +997,10 @@ bool wait_for_ctrl_chars(void)
       updateColorRotations();
     }
 
-    // Watchdog: "reset" the communictaion if it took too long between two frames.
+    // Watchdog: "reset" the communictaion if it took too many frame timouts happened.
     if (handshakeSucceeded && ((millis() - ms) > FRAME_TIMEOUT))
     {
-      if (++watchdogCount > 6)
+      if (++watchdogCount > FRAME_WATCHDOG)
       {
         handshakeSucceeded = false;
         DisplayLogo();
@@ -1009,6 +1022,8 @@ bool wait_for_ctrl_chars(void)
       nCtrlCharFound = 0;
     }
   }
+
+  watchdogCount = 0;
 
   return true;
 }
@@ -1057,10 +1072,9 @@ void loop()
       ClearScreen();
       MireActive = false;
     }
-    else if ((millis() - nextTime[0]) > LOGO_TIMEOUT)
+    else if (!displayOff && (millis() - nextTime[0]) > LOGO_TIMEOUT)
     {
-      ClearScreen();
-      displayOff = true;
+      ScreenSaver();
     }
   }
 
