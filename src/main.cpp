@@ -17,7 +17,6 @@
 #define SERIAL_TIMEOUT 8       // Time in milliseconds to wait for the next data chunk.
 #define SERIAL_BUFFER  8192    // Serial buffer size in byte.
 #define FRAME_TIMEOUT  10000   // Time in milliseconds to wait for a new frame.
-#define FRAME_WATCHDOG 9       // How many FRAME_TIMEOUTS might occur until a reset is performed.
 #define LOGO_TIMEOUT   20000   // Time in milliseconds before the logo vanishes.
 
 // ------------------------------------------ ZeDMD by MK47 & Zedrummer (http://ppuc.org) --------------------------------------------------
@@ -55,7 +54,7 @@
 // 23: set RGB order
 // 24: get brightness
 // 25: get RGB order
-// 26: turn off frame timeout watchdog
+// 26: turn on frame timeout
 // 30: save settings
 // 31: reset
 // 32: get version string
@@ -164,7 +163,7 @@ bool compression = false;
 int serialTransferChunkSize = 256;
 unsigned int frameCount = 0;
 unsigned int errorCount = 0;
-int watchdogCount = 0;
+bool frameTimeout = false;
 bool fastReadySent = false;
 
 void sendFastReady() {
@@ -826,7 +825,6 @@ void DisplayLogo(void)
 
   displayStatus = 1;
   MireActive = true;
-  watchdogCount = 0;
   // Re-use this variable to save memory
   nextTime[0] = millis();
 }
@@ -863,7 +861,6 @@ void DisplayUpdate(void)
 
   displayStatus = 2;
   MireActive = true;
-  watchdogCount = 0;
   // Re-use this variable to save memory
   nextTime[0] = millis() - (LOGO_TIMEOUT / 2);
 }
@@ -876,7 +873,6 @@ void ScreenSaver(void)
 
   displayStatus = 0;
   MireActive = true;
-  watchdogCount = 0;
 }
 
 void setup()
@@ -1061,20 +1057,12 @@ bool wait_for_ctrl_chars(void)
       updateColorRotations();
     }
 
-    // Watchdog: "reset" the communictaion if it took too many frame timouts happened.
-    if (watchdogCount != -1 && handshakeSucceeded && ((millis() - ms) > FRAME_TIMEOUT))
+    // Watchdog: "reset" the communictaion if a frame timout happened.
+    if (frameTimeout && handshakeSucceeded && ((millis() - ms) > FRAME_TIMEOUT))
     {
-      if (++watchdogCount > FRAME_WATCHDOG)
-      {
-        handshakeSucceeded = false;
-        DisplayLogo();
-        return false;
-      }
-
       if (debugMode)
       {
-        Say(5, watchdogCount);
-        debugLines[5] = watchdogCount;
+        Say(5, ++debugLines[5]);
       }
 
       // Send an (E)rror signal.
@@ -1085,10 +1073,6 @@ bool wait_for_ctrl_chars(void)
       ms = millis();
       nCtrlCharFound = 0;
     }
-  }
-
-  if (watchdogCount != -1) {
-    watchdogCount = 0;
   }
 
   return true;
@@ -1303,9 +1287,9 @@ void loop()
     {
       Serial.write(acordreRGB);
     }
-    else if (c4 == 26) // turn off frame timeout watchdog
+    else if (c4 == 26) // turn on frame timeout
     {
-      watchdogCount = -1;
+      frameTimeout = true;
       Serial.write('A');
     }
     else if (c4 == 30) // save settings
