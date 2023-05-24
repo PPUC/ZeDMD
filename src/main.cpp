@@ -36,7 +36,7 @@
 // 005 number of resets because of communication freezes
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // Commands:
-//  2: set rom frame size
+//  2: set rom frame size as (int16) width, (int16) height
 //  3: render raw data
 //  6: init palette (deprectated, backward compatibility)
 //  7: render 16 colors using a 4 color palette (3*4 bytes), 2 pixels per byte
@@ -44,21 +44,22 @@
 //  9: render 16 colors using a 16 color palette (3*16 bytes), 4 bytes per group of 8 pixels (encoded as 4*512 bytes planes)
 // 10: clear screen
 // 11: render 64 colors using a 64 color palette (3*64 bytes), 6 bytes per group of 8 pixels (encoded as 6*512 bytes planes)
-// 12: handshake + report resolution
-// 13: set serial transfer chunk size
+// 12: handshake + report resolution, returns (int16) width, (int16) height
+// 13: set serial transfer chunk size as (int8) value, the value will be multiplied with 256 internally
 // 14: enable serial transfer compression
 // 15: disable serial transfer compression
 // 20: turn off upscaling
 // 21: turn on upscaling
-// 22: set brightness
+// 22: set brightness as (int8) value between 1 and 15
 // 23: set RGB order
-// 24: get brightness
-// 25: get RGB order
+// 24: get brightness, returns (int8) brigtness value between 1 and 15
+// 25: get RGB order, returns (int8) major, (int8) minor, (int8) patch level
 // 26: turn on frame timeout
+// 27: turn off frame timeout
 // 30: save settings
 // 31: reset
-// 32: get version string
-// 33: get panel resolution
+// 32: get version string, returns (int8) major, (int8) minor, (int8) patch level
+// 33: get panel resolution, returns (int16) width, (int16) height
 // 98: disable debug mode
 // 99: enable debug mode
 
@@ -1286,6 +1287,12 @@ void loop()
       case 26: // turn on frame timeout
       {
         frameTimeout = true;
+        Serial.write('A');
+      }
+
+      case 27: // turn off frame timeout
+      {
+        frameTimeout = false;
         Serial.write('A');
       }
 
