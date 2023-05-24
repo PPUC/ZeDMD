@@ -157,7 +157,7 @@ int RomWidthPlane=128>>3;
 unsigned char lumstep=1;
 
 bool MireActive = false;
-bool displayOff = false;
+uint8_t displayStatus = 1;
 bool handshakeSucceeded = false;
 bool compression = false;
 // 256 is the default buffer size of the CP210x linux kernel driver, we should not exceed it as default.
@@ -824,21 +824,59 @@ void DisplayLogo(void)
   DisplayText(lumtxt, 16, TOTAL_WIDTH/2 - 16/2 - 2*4/2, TOTAL_HEIGHT-5, 255, 255, 255);
   DisplayLum();
 
-  displayOff = false;
+  displayStatus = 1;
   MireActive = true;
   watchdogCount = 0;
   // Re-use this variable to save memory
   nextTime[0] = millis();
 }
 
+void DisplayUpdate(void)
+{
+  ClearScreen();
+
+  File flogo;
+
+  if (TOTAL_HEIGHT == 64)
+  {
+     flogo = LittleFS.open("/ppucHD.raw", "r");
+  }
+  else
+  {
+    flogo=LittleFS.open("/ppuc.raw", "r");
+  }
+
+  if (!flogo) {
+    return;
+  }
+
+  renderBuffer = (unsigned char*) malloc(TOTAL_BYTES);
+  for (unsigned int tj = 0; tj < TOTAL_BYTES; tj++)
+  {
+    renderBuffer[tj] = flogo.read();
+  }
+  flogo.close();
+
+  fillPanelRaw();
+
+  free(renderBuffer);
+
+  displayStatus = 2;
+  MireActive = true;
+  watchdogCount = 0;
+  // Re-use this variable to save memory
+  nextTime[0] = millis() - (LOGO_TIMEOUT / 2);
+}
+
 void ScreenSaver(void)
 {
   ClearScreen();
   dma_display->setBrightness8(lumval[1]);
-
-  displayOff = true;
-
   DisplayVersion();
+
+  displayStatus = 0;
+  MireActive = true;
+  watchdogCount = 0;
 }
 
 void setup()
@@ -1063,7 +1101,7 @@ void loop()
     rgbOrderButton->update();
     if (rgbOrderButton->pressed())
     {
-      if (displayOff)
+      if (displayStatus != 1)
       {
         DisplayLogo();
         continue;
@@ -1081,7 +1119,7 @@ void loop()
     brightnessButton->update();
     if (brightnessButton->pressed())
     {
-      if (displayOff)
+      if (displayStatus != 1)
       {
         DisplayLogo();
         continue;
@@ -1100,9 +1138,16 @@ void loop()
       ClearScreen();
       MireActive = false;
     }
-    else if (!displayOff && (millis() - nextTime[0]) > LOGO_TIMEOUT)
+    else if ((millis() - nextTime[0]) > LOGO_TIMEOUT)
     {
-      ScreenSaver();
+      if (displayStatus == 1)
+      {
+        DisplayUpdate();
+      }
+      else if (displayStatus != 0)
+      {
+        ScreenSaver();
+      }
     }
   }
 
