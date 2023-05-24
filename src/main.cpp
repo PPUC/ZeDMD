@@ -58,6 +58,8 @@
 // 26: turn off frame timeout watchdog
 // 30: save settings
 // 31: reset
+// 32: get version string
+// 33: get panel resolution
 // 98: disable debug mode
 // 99: enable debug mode
 
@@ -1272,6 +1274,14 @@ void loop()
       handshakeSucceeded = false;
       DisplayLogo();
       Serial.write('A');
+    }
+    else if (c4 == 32) // get version string
+    {
+      Serial.print("" + ZEDMD_VERSION_MAJOR + '.' + ZEDMD_VERSION_MINOR + '.' + ZEDMD_VERSION_PATCH);
+    }
+    else if (c4 == 33) // get panel resolution
+    {
+      Serial.print("" + TOTAL_WIDTH + 'x' + TOTAL_HEIGHT);
     }
     else if (c4 == 98) // disable debug mode
     {
