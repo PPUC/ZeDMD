@@ -83,8 +83,11 @@ jobs:
       - name: Package
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-            zip ZeDMD-128x32.zip ZeDMD-128x32/ZeDMD.bin
-            zip ZeDMD-256x64.zip ZeDMD-256x64/ZeDMD.bin
+            cd ZeDMD-128x32
+            zip ../ZeDMD-128x32.zip ZeDMD.bin
+            cd ../ZeDMD-256x64
+            zip ../ZeDMD-256x64.zip ZeDMD.bin
+            cd ..
       - name: Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
