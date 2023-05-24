@@ -36,6 +36,32 @@
 // 004 number of incomplete frames
 // 005 number of resets because of communication freezes
 // -----------------------------------------------------------------------------------------------------------------------------------------
+// Commands:
+//  1: set rom frame size
+//  2: set rom frame size (only uncompressed and without (A)cknowledge, backward compatibility)
+//  3: render raw data
+//  6: init palette (deprectated, backward compatibility)
+//  7: render 16 colors using a 4 color palette (3*4 bytes), 2 pixels per byte
+//  8: render 4 colors using a 4 color palette (3*4 bytes), 4 pixels per byte
+//  9: render 16 colors using a 16 color palette (3*16 bytes), 4 bytes per group of 8 pixels (encoded as 4*512 bytes planes)
+// 10: clear screen
+// 11: render 64 colors using a 64 color palette (3*64 bytes), 6 bytes per group of 8 pixels (encoded as 6*512 bytes planes)
+// 12: handshake + report resolution
+// 13: set serial transfer chunk size
+// 14: enable serial transfer compression
+// 20: turn off upscaling
+// 21: turn on upscaling
+// 22: set brightness
+// 23: set RGB order
+// 24: get brightness
+// 25: get RGB order
+// 26: turn off frame timeout watchdog
+// 30: save settings
+// 31: reset
+// 32: get version string
+// 33: get panel resolution
+// 98: disable debug mode
+// 99: enable debug mode
 
 #define TOTAL_WIDTH (PANEL_WIDTH * PANELS_NUMBER)
 #define TOTAL_WIDTH_PLANE (TOTAL_WIDTH >> 3)
@@ -138,7 +164,7 @@ bool compression = false;
 int serialTransferChunkSize = 256;
 unsigned int frameCount = 0;
 unsigned int errorCount = 0;
-unsigned int watchdogCount = 0;
+int watchdogCount = 0;
 bool fastReadySent = false;
 
 void sendFastReady() {
@@ -800,7 +826,7 @@ void DisplayLogo(void)
 
   displayOff = false;
   MireActive = true;
-
+  watchdogCount = 0;
   // Re-use this variable to save memory
   nextTime[0] = millis();
 }
@@ -998,7 +1024,7 @@ bool wait_for_ctrl_chars(void)
     }
 
     // Watchdog: "reset" the communictaion if it took too many frame timouts happened.
-    if (handshakeSucceeded && ((millis() - ms) > FRAME_TIMEOUT))
+    if (watchdogCount != -1 && handshakeSucceeded && ((millis() - ms) > FRAME_TIMEOUT))
     {
       if (++watchdogCount > FRAME_WATCHDOG)
       {
@@ -1023,7 +1049,9 @@ bool wait_for_ctrl_chars(void)
     }
   }
 
-  watchdogCount = 0;
+  if (watchdogCount != -1) {
+    watchdogCount = 0;
+  }
 
   return true;
 }
@@ -1100,25 +1128,6 @@ void loop()
     // Updates to mode64 color rotations have been handled within wait_for_ctrl_chars(), now reset it to false.
     mode64 = false;
 
-    // Commands:
-    //  1: set rom frame size
-    //  2: set rom frame size (only uncompressed and without (A)cknowledge, backward compatibility)
-    //  3: render raw data
-    //  6: init palette (deprectated, backward compatibility)
-    //  7: render 16 colors using a 4 color palette (3*4 bytes), 2 pixels per byte
-    //  8: render 4 colors using a 4 color palette (3*4 bytes), 4 pixels per byte
-    //  9: render 16 colors using a 16 color palette (3*16 bytes), 4 bytes per group of 8 pixels (encoded as 4*512 bytes planes)
-    // 10: clear screen
-    // 11: render 64 colors using a 64 color palette (3*64 bytes), 6 bytes per group of 8 pixels (encoded as 6*512 bytes planes)
-    // 12: handshake + report resolution
-    // 13: set serial transfer chunk size
-    // 14: enable serial transfer compression
-    // 20: turn off upscaling
-    // 21: turn on upscaling
-    // 22: set brightness
-    // 23: set RGB order
-    // 98: disable debug mode
-    // 99: enable debug mode
     unsigned char c4;
     while (Serial.available()==0);
     c4 = Serial.read();
@@ -1220,7 +1229,7 @@ void loop()
         Serial.write('E');
       }
     }
-    else if (c4 == 23) // enable serial transfer compression
+    else if (c4 == 23) // set RGB order
     {
       unsigned char tbuf[1];
       if (SerialReadBuffer(tbuf, 1))
@@ -1240,6 +1249,39 @@ void loop()
       {
         Serial.write('E');
       }
+    }
+    else if (c4 == 24) // get brightness
+    {
+      Serial.write(lumstep);
+    }
+    else if (c4 == 25) // get RGB order
+    {
+      Serial.write(acordreRGB);
+    }
+    else if (c4 == 26) // turn off frame timeout watchdog
+    {
+      watchdogCount = -1;
+      Serial.write('A');
+    }
+    else if (c4 == 30) // save settings
+    {
+      SaveLum();
+      SaveOrdreRGB();
+      Serial.write('A');
+    }
+    else if (c4 == 31) // reset
+    {
+      handshakeSucceeded = false;
+      DisplayLogo();
+      Serial.write('A');
+    }
+    else if (c4 == 32) // get version string
+    {
+      Serial.print("" + ZEDMD_VERSION_MAJOR + '.' + ZEDMD_VERSION_MINOR + '.' + ZEDMD_VERSION_PATCH);
+    }
+    else if (c4 == 33) // get panel resolution
+    {
+      Serial.print("" + TOTAL_WIDTH + 'x' + TOTAL_HEIGHT);
     }
     else if (c4 == 98) // disable debug mode
     {
