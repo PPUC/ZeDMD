@@ -861,7 +861,6 @@ void DisplayUpdate(void)
   free(renderBuffer);
 
   displayStatus = 2;
-  MireActive = true;
   // Re-use this variable to save memory
   nextTime[0] = millis() - (LOGO_TIMEOUT / 2);
 }
@@ -873,7 +872,6 @@ void ScreenSaver(void)
   DisplayVersion();
 
   displayStatus = 0;
-  MireActive = true;
 }
 
 void setup()
@@ -1052,10 +1050,14 @@ bool wait_for_ctrl_chars(void)
       if (Serial.read() != CtrlCharacters[nCtrlCharFound++]) nCtrlCharFound = 0;
     }
 
-    if (mode64 && nCtrlCharFound == 0)
+    if (displayStatus == 1 && mode64 && nCtrlCharFound == 0)
     {
       // While waiting for the next frame, perform in-frame color rotations.
       updateColorRotations();
+    }
+    else if (displayStatus == 3 && (millis() - nextTime[0]) > LOGO_TIMEOUT)
+    {
+      ScreenSaver();
     }
 
     // Watchdog: "reset" the communictaion if a frame timout happened.
@@ -1169,8 +1171,9 @@ void loop()
     if (displayStatus == 0)
     {
       // Exit screen saver.
+      ClearScreen();
       dma_display->setBrightness8(lumval[lumstep]);
-      displayStatus == 1;
+      displayStatus = 1;
     }
 
     switch (c4)
@@ -1314,6 +1317,7 @@ void loop()
       {
         handshakeSucceeded = false;
         DisplayLogo();
+        for (int ti=0;ti<64;ti++) rotCols[ti]=ti;
         Serial.write('A');
         break;
       }
@@ -1359,6 +1363,9 @@ void loop()
       case 10: // clear screen
       {
         ClearScreen();
+        displayStatus = 3;
+        for (int ti=0;ti<64;ti++) rotCols[ti]=ti;
+        nextTime[0] = millis();
         Serial.write('A');
         break;
       }
