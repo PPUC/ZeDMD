@@ -1,5 +1,5 @@
-# ZeDMD_ESP32
-Arduino code for the ZeDMD ESP32.
+# ZeDMD
+ESP32 firmware code for ZeDMD.
 
 The code is now half the credit of David Lafarge (aka "Zed") and half the credit of Markus Kalkbrenner as he made so many outstanding improvements in the serial communication code that the display on the device is way more smooth and stable than before. Thanks Markus.
 
