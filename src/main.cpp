@@ -1,6 +1,6 @@
 #define ZEDMD_VERSION_MAJOR 3  // X Digits
 #define ZEDMD_VERSION_MINOR 2  // Max 2 Digits
-#define ZEDMD_VERSION_PATCH 3  // Max 2 Digits
+#define ZEDMD_VERSION_PATCH 4  // Max 2 Digits
 
 #ifdef ZEDMD_128_64_2
     #define PANEL_WIDTH    128 // Width: number of LEDs for 1 panel.
@@ -209,7 +209,7 @@ void DisplayChiffre(unsigned int chf, int x,int y,int R, int G, int B)
   }
 }
 
-void DisplayNombre(unsigned int chf,unsigned char nc,int x,int y,int R,int G,int B)
+void DisplayNombre(unsigned int chf, unsigned char nc, int x, int y, int R, int G, int B)
 {
   // affiche un nombre verticalement
   unsigned int acc=chf,acd=1;
@@ -1166,6 +1166,12 @@ void loop()
       DisplayNombre(c4, 2, TOTAL_WIDTH - 3*4, TOTAL_HEIGHT - 8, 200, 200, 200);
     }
 
+    if (displayStatus == 0)
+    {
+      // Exit screen saver.
+      dma_display->setBrightness8(lumval[lumstep]);
+      displayStatus == 1;
+    }
 
     switch (c4)
     {
