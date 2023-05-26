@@ -273,224 +273,31 @@ void ClearScreen()
 #endif
 }
 
-bool CmpColor(unsigned char* px1, unsigned char* px2)
+bool CmpColor(uint8_t* px1, uint8_t* px2, uint8_t colors)
 {
-  return
-    (px1[0] == px2[0]) &&
-    (px1[1] == px2[1]) &&
-    (px1[2] == px2[2]);
+  if (colors == 3)
+  {
+    return
+      (px1[0] == px2[0]) &&
+      (px1[1] == px2[1]) &&
+      (px1[2] == px2[2]);
+  }
+
+    return px1[0] == px2[0];
 }
 
-void SetColor(unsigned char* px1, unsigned char* px2)
+void SetColor(unsigned char* px1, unsigned char* px2, uint8_t colors)
 {
   px1[0] = px2[0];
-  px1[1] = px2[1];
-  px1[2] = px2[2];
+
+  if (colors == 3)
+  {
+    px1[1] = px2[1];
+    px1[2] = px2[2];
+  }
 }
 
-void ScaleImage() // scale for non indexed image (RGB24)
-{
-  int xoffset = 0;
-  int yoffset = 0;
-  int scale = 0; // 0 - no scale, 1 - half scale, 2 - twice scale
-
-  if ((RomWidth==192)&&(TOTAL_WIDTH==256))
-  {
-    xoffset = 32*3;
-  }
-  else if (RomWidth==192)
-  {
-    xoffset = 16*3;
-    scale = 1;
-  }
-  else if (RomHeight == 16 && TOTAL_HEIGHT == 32)
-  {
-    yoffset = 8;
-  }
-  else if (RomHeight == 16 && TOTAL_HEIGHT == 64)
-  {
-    if (upscaling)
-    {
-      yoffset = 16*3;
-      scale=2;
-    }
-    else
-    {
-      // Just center the DMD.
-      xoffset = 64*3;
-      yoffset = 24*3;
-    }
-  }
-  else if ((RomWidth==256)&&(TOTAL_WIDTH==128))
-  {
-    scale = 1;
-  }
-  else if ((RomWidth==128)&&(TOTAL_WIDTH==256))
-  {
-    if (upscaling)
-    {
-      // Scaling doesn't look nice for real RGB tables like Diablo.
-      scale=2;
-    }
-    else
-    {
-      // Just center the DMD.
-      xoffset = 64*3;
-      yoffset = 16*3;
-    }
-  }
-  else
-  {
-    return;
-  }
-
-  unsigned char* panel = (unsigned char*) malloc(RomWidth * RomHeight * 3);
-  memcpy(panel, renderBuffer, RomWidth * RomHeight * 3);
-  memset(renderBuffer, 0, TOTAL_BYTES);
-
-
-  if (scale==1)
-  {
-    // for half scaling we take the 4 points and look if there is one colour repeated
-    for (int ti=0;ti<RomHeight;ti+=2)
-    {
-      for (int tj=0;tj<RomWidth;tj+=2)
-      {
-        unsigned char* pp = &panel[ti * RomWidth * 3 + tj*3];
-        if (CmpColor(pp, &pp[3]) || CmpColor(pp, &pp[3*RomWidth]) || CmpColor(pp, &pp[3*RomWidth+3]))
-        {
-          SetColor(&renderBuffer[xoffset + 3*(tj>>1+(ti>>1)*TOTAL_WIDTH)], pp);
-        }
-        else if (CmpColor(&pp[3], &pp[3*RomWidth]) || CmpColor(&pp[3], &pp[3*RomWidth+3]))
-        {
-          SetColor(&renderBuffer[xoffset + 3*(tj>>1+(ti>>1)*TOTAL_WIDTH)], &pp[3]);
-        }
-        else if (CmpColor(&pp[3*RomWidth], &pp[3*RomWidth+3]))
-        {
-          SetColor(&renderBuffer[xoffset + 3*(tj>>1+(ti>>1)*TOTAL_WIDTH)], &pp[3*RomWidth]);
-        }
-        else
-        {
-          SetColor(&renderBuffer[xoffset + 3*(tj>>1+(ti>>1)*TOTAL_WIDTH)], pp);
-        }
-      }
-    }
-  }
-  else if (scale==2)
-  {
-    // we implement scale2x http://www.scale2x.it/algorithm
-    for (int tj=0;tj<RomHeight;tj++)
-    {
-      for (int ti=0;ti<RomWidth;ti++)
-      {
-        unsigned char *a, *b, *c, *d, *e, *f, *g, *h, *i;
-        if ((ti==0)&&(tj==0))
-        {
-          a=b=d=e=panel;
-          c=f=&panel[3];
-          g=h=&panel[3*RomWidth];
-          i=&panel[3*(RomWidth+1)];
-        }
-        else if ((ti==0)&&(tj==RomHeight-1))
-        {
-          a=b=&panel[3*(tj-1)*RomWidth];
-          c=&panel[3*((tj-1)*RomWidth+1)];
-          d=g=h=e=&panel[3*tj*RomWidth];
-          f=i=&panel[3*(tj*RomWidth+1)];
-        }
-        else if ((ti==RomWidth-1)&&(tj==0))
-        {
-          a=d=&panel[3*(ti-1)];
-          b=c=f=e=&panel[3*ti];
-          g=&panel[3*(RomWidth+ti-1)];
-          h=i=&panel[3*(RomWidth+ti)];
-        }
-        else if ((ti==RomWidth-1)&&(tj==RomHeight-1))
-        {
-          a=&panel[3*(tj*RomWidth-2)];
-          b=c=&panel[3*(tj*RomWidth-1)];
-          d=g=&panel[3*(RomHeight*RomWidth-2)];
-          e=f=h=i=&panel[3*(RomHeight*RomWidth-1)];
-        }
-        else if (ti==0)
-        {
-          a=b=&panel[3*((tj-1)*RomWidth)];
-          c=&panel[3*((tj-1)*RomWidth+1)];
-          d=e=&panel[3*(tj*RomWidth)];
-          f=&panel[3*(tj*RomWidth+1)];
-          g=h=&panel[3*((tj+1)*RomWidth)];
-          i=&panel[3*((tj+1)*RomWidth+1)];
-        }
-        else if (ti==RomWidth-1)
-        {
-          a=&panel[3*(tj*RomWidth-2)];
-          b=c=&panel[3*(tj*RomWidth-1)];
-          d=&panel[3*((tj+1)*RomWidth-2)];
-          e=f=&panel[3*((tj+1)*RomWidth-1)];
-          g=&panel[3*((tj+2)*RomWidth-2)];
-          h=i=&panel[3*((tj+2)*RomWidth-1)];
-        }
-        else if (tj==0)
-        {
-          a=d=&panel[3*(ti-1)];
-          b=e=&panel[3*ti];
-          c=f=&panel[3*(ti+1)];
-          g=&panel[3*(RomWidth+ti-1)];
-          h=&panel[3*(RomWidth+ti)];
-          i=&panel[3*(RomWidth+ti+1)];
-        }
-        else if (tj==RomHeight-1)
-        {
-          a=&panel[3*((tj-1)*RomWidth+ti-1)];
-          b=&panel[3*((tj-1)*RomWidth+ti)];
-          c=&panel[3*((tj-1)*RomWidth+ti+1)];
-          d=g=&panel[3*(tj*RomWidth+ti-1)];
-          e=h=&panel[3*(tj*RomWidth+ti)];
-          f=i=&panel[3*(tj*RomWidth+ti+1)];
-        }
-        else
-        {
-          a=&panel[3*((tj-1)*RomWidth+ti-1)];
-          b=&panel[3*((tj-1)*RomWidth+ti)];
-          c=&panel[3*((tj-1)*RomWidth+ti+1)];
-          d=&panel[3*(tj*RomWidth+ti-1)];
-          e=&panel[3*(tj*RomWidth+ti)];
-          f=&panel[3*(tj*RomWidth+ti+1)];
-          g=&panel[3*((tj+1)*RomWidth+ti-1)];
-          h=&panel[3*((tj+1)*RomWidth+ti)];
-          i=&panel[3*((tj+1)*RomWidth+ti+1)];
-        }
-        if (b != h && d != f) {
-          if (CmpColor(d,b)) SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*(tj*2*TOTAL_WIDTH+ti*2)+ 3 * xoffset],d); else SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*(tj*2*TOTAL_WIDTH+ti*2)+ 3 * xoffset],e);
-          if (CmpColor(b,f)) SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*(tj*2*TOTAL_WIDTH+ti*2+1)+ 3 * xoffset], f); else SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*(tj*2*TOTAL_WIDTH+ti*2+1)+ 3 * xoffset], e);
-          if (CmpColor(b,h)) SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*((tj*2+1)*TOTAL_WIDTH+ti*2)+ 3 * xoffset],d); else SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*((tj*2+1)*TOTAL_WIDTH+ti*2)+ 3 * xoffset],e);
-          if (CmpColor(h,f)) SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*((tj*2+1)*TOTAL_WIDTH+ti*2+1)+ 3 * xoffset],f); else SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*((tj*2+1)*TOTAL_WIDTH+ti*2+1)+ 3 * xoffset],e);
-        } else {
-          SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*(tj*2*TOTAL_WIDTH+ti*2)+ 3 * xoffset],e);
-          SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*(tj*2*TOTAL_WIDTH+ti*2+1)+ 3 * xoffset], e);
-          SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*((tj*2+1)*TOTAL_WIDTH+ti*2)+ 3 * xoffset],e);
-          SetColor(&renderBuffer[3 * yoffset * TOTAL_WIDTH + 3*((tj*2+1)*TOTAL_WIDTH+ti*2+1)+ 3 * xoffset],e);
-        }
-       }
-    }
-  }
-  else // offset
-  {
-    for (int tj=0; tj<RomHeight; tj++)
-    {
-      for (int ti=0; ti<RomWidth; ti++)
-      {
-        for (int i=0; i <= 2; i++) {
-          renderBuffer[3 * yoffset * TOTAL_WIDTH + 3 * (tj * TOTAL_WIDTH + ti) + xoffset + i] = panel[3 * (tj * RomWidth + ti) + i];
-        }
-      }
-    }
-  }
-
-  free(panel);
-}
-
-void ScaleImage64() // scale for indexed image (all except RGB24)
+void ScaleImage(uint8_t colors)
 {
   int xoffset = 0;
   int yoffset = 0;
@@ -546,33 +353,105 @@ void ScaleImage64() // scale for indexed image (all except RGB24)
     return;
   }
 
-  unsigned char* panel = (unsigned char*) malloc(RomWidth * RomHeight);
-  memcpy(panel, renderBuffer, RomWidth * RomHeight);
+  unsigned char* panel = (unsigned char*) malloc(RomWidth * RomHeight * colors);
+  memcpy(panel, renderBuffer, RomWidth * RomHeight * colors);
   memset(renderBuffer, 0, TOTAL_WIDTH * TOTAL_HEIGHT);
 
   if (scale == 1)
   {
     // for half scaling we take the 4 points and look if there is one colour repeated
-    for (int ti = 0; ti < RomHeight; ti += 2)
+    for (int y = 0; y < RomHeight; y += 2)
     {
-      for (int tj = 0; tj < RomWidth; tj += 2)
+      for (int x = 0; x < RomWidth; x += 2)
       {
-        unsigned char* pp = &panel[ti*RomWidth+tj];
-        if (pp[0]==pp[1] || pp[0]==pp[RomWidth] || pp[0]==pp[RomWidth+1])
+        uint16_t upper_left = y * RomWidth * colors + x * colors;
+        uint16_t upper_right = upper_left + colors;
+        uint16_t lower_left = upper_left + RomWidth * colors;
+        uint16_t lower_right = lower_left + colors;
+        uint16_t target = (xoffset + (x/2) + (y/2) * TOTAL_WIDTH) * colors;
+
+        // Prefer most outer upper_lefts.
+        if (x < RomWidth/2)
         {
-          renderBuffer[xoffset + (tj/2 ) + (ti/2) * TOTAL_WIDTH] = pp[0];
-        }
-        else if (pp[1]==pp[RomWidth] || pp[1]==pp[RomWidth+1])
-        {
-          renderBuffer[xoffset+ (tj/2) + (ti/2) * TOTAL_WIDTH] = pp[1];
-        }
-        else if (pp[RomWidth]==pp[RomWidth+1])
-        {
-          renderBuffer[xoffset + (tj/2) + (ti/2) * TOTAL_WIDTH] = pp[RomWidth];
+          if (y < RomHeight/2)
+          {
+            if (CmpColor(&panel[upper_left], &panel[upper_right], colors) || CmpColor(&panel[upper_left], &panel[lower_left], colors) || CmpColor(&panel[upper_left], &panel[lower_right], colors))
+            {
+              SetColor(&renderBuffer[target], &panel[upper_left], colors);
+            }
+            else if (CmpColor(&panel[upper_right], &panel[lower_left], colors) || CmpColor(&panel[upper_right], &panel[lower_right], colors))
+            {
+              SetColor(&renderBuffer[target], &panel[upper_right], colors);
+            }
+            else if (CmpColor(&panel[lower_left], &panel[lower_right], colors))
+            {
+              SetColor(&renderBuffer[target], &panel[lower_left], colors);
+            }
+            else
+            {
+              SetColor(&renderBuffer[target], &panel[upper_left], colors);
+            }
+          }
+          else
+          {
+            if (CmpColor(&panel[lower_left], &panel[lower_right], colors) || CmpColor(&panel[lower_left], &panel[upper_left], colors) || CmpColor(&panel[lower_left], &panel[upper_right], colors))
+            {
+              SetColor(&renderBuffer[target], &panel[lower_left], colors);
+            }
+            else if (CmpColor(&panel[lower_right], &panel[upper_left], colors) || CmpColor(&panel[lower_right], &panel[upper_right], colors))
+            {
+              SetColor(&renderBuffer[target], &panel[lower_right], colors);
+            }
+            else if (CmpColor(&panel[upper_left], &panel[upper_right], colors))
+            {
+              SetColor(&renderBuffer[target], &panel[upper_left], colors);
+            }
+            else
+            {
+              SetColor(&renderBuffer[target], &panel[lower_left], colors);
+            }
+          }
         }
         else
         {
-          renderBuffer[xoffset + (tj/2) + (ti/2) * TOTAL_WIDTH] = pp[0];
+          if (y < RomHeight/2)
+          {
+            if (CmpColor(&panel[upper_right], &panel[upper_left], colors) || CmpColor(&panel[upper_right], &panel[lower_right], colors) || CmpColor(&panel[upper_right], &panel[lower_left], colors))
+            {
+              SetColor(&renderBuffer[target], &panel[upper_right], colors);
+            }
+            else if (CmpColor(&panel[upper_left], &panel[lower_right], colors) || CmpColor(&panel[upper_left], &panel[lower_left], colors))
+            {
+              SetColor(&renderBuffer[target], &panel[upper_left], colors);
+            }
+            else if (CmpColor(&panel[lower_right], &panel[lower_left], colors))
+            {
+              SetColor(&renderBuffer[target], &panel[lower_right], colors);
+            }
+            else
+            {
+              SetColor(&renderBuffer[target], &panel[upper_right], colors);
+            }
+          }
+          else
+          {
+            if (CmpColor(&panel[lower_right], &panel[lower_left], colors) || CmpColor(&panel[lower_right], &panel[upper_right], colors) || CmpColor(&panel[lower_right], &panel[upper_left], colors))
+            {
+              SetColor(&renderBuffer[target], &panel[lower_right], colors);
+            }
+            else if (CmpColor(&panel[lower_left], &panel[upper_right], colors) || CmpColor(&panel[lower_left], &panel[upper_left], colors))
+            {
+              SetColor(&renderBuffer[target], &panel[lower_left], colors);
+            }
+            else if (CmpColor(&panel[upper_right], &panel[upper_left], colors))
+            {
+              SetColor(&renderBuffer[target], &panel[upper_right], colors);
+            }
+            else
+            {
+              SetColor(&renderBuffer[target], &panel[lower_right], colors);
+            }
+          }
         }
       }
     }
@@ -580,97 +459,103 @@ void ScaleImage64() // scale for indexed image (all except RGB24)
   else if (scale == 2)
   {
     // we implement scale2x http://www.scale2x.it/algorithm
-    for (int tj = 0; tj < RomHeight; tj++)
+    uint16_t row = RomWidth * colors;
+    for (int x = 0; x < RomHeight; x++)
     {
-      for (int ti = 0; ti < RomWidth; ti++)
+      for (int y = 0; y < RomWidth; y++)
       {
-        unsigned int a, b, c, d, e, f, g, h, i;
-        if (ti == 0 && tj == 0)
+        uint8_t a[colors], b[colors], c[colors], d[colors], e[colors], f[colors], g[colors], h[colors], i[colors];
+        for (uint8_t tc = 0; tc < colors; tc++)
         {
-          a=b=d=e=panel[0];
-          c=f=panel[1];
-          g=h=panel[RomWidth];
-          i=panel[RomWidth+1];
+          if (y == 0 && x == 0)
+          {
+            a[tc] = b[tc] = d[tc] = e[tc] = panel[tc];
+            c[tc] = f[tc] =                 panel[colors + tc];
+            g[tc] = h[tc] =                 panel[row + tc];
+            i[tc] =                         panel[row + colors + tc];
+          }
+          else if ((y==0) && (x==RomHeight-1))
+          {
+            a[tc] = b[tc] =                 panel[(x-1) * row + tc];
+            c[tc] =                         panel[(x-1) * row + colors + tc];
+            d[tc] = g[tc] = h[tc] = e[tc] = panel[x * row + tc];
+            f[tc] = i[tc] =                 panel[x * row + colors + tc];
+          }
+          else if ((y==RomWidth-1) && (x==0))
+          {
+            a[tc] = d[tc] =                 panel[y * colors - colors + tc];
+            b[tc] = c[tc] = f[tc] = e[tc] = panel[y * colors + tc];
+            g[tc] =                         panel[row + y * colors - colors + tc];
+            h[tc] = i[tc] =                 panel[row + y * colors + tc];
+          }
+          else if ((y==RomWidth-1) && (x==RomHeight-1))
+          {
+            a[tc] =                         panel[x * row - 2 * colors + tc];
+            b[tc] = c[tc] =                 panel[x * row - colors + tc];
+            d[tc] = g[tc] =                 panel[RomHeight * row - 2 * colors + tc];
+            e[tc] = f[tc] = h[tc] = i[tc] = panel[RomHeight * row - colors + tc];
+          }
+          else if (y==0)
+          {
+            a[tc] = b[tc] = panel[(x-1) * row + tc];
+            c[tc] =         panel[(x-1) * row + colors + tc];
+            d[tc] = e[tc] = panel[x * row + tc];
+            f[tc] =         panel[x * row + colors + tc];
+            g[tc] = h[tc] = panel[(x+1) * row + tc];
+            i[tc] =         panel[(x+1) * row + colors + tc];
+          }
+          else if (y == RomWidth-1)
+          {
+            a[tc] =         panel[x * row - 2 * colors + tc];
+            b[tc] = c[tc] = panel[x * row - colors + tc];
+            d[tc] =         panel[(x+1) * row - 2 * colors + tc];
+            e[tc] = f[tc] = panel[(x+1) * row - colors + tc];
+            g[tc] =         panel[(x+2) * row - 2 * colors + tc];
+            h[tc] = i[tc] = panel[(x+2) * row - colors + tc];
+          }
+          else if (x==0)
+          {
+            a[tc] = d[tc] = panel[y * colors - colors + tc];
+            b[tc] = e[tc] = panel[y * colors + tc];
+            c[tc] = f[tc] = panel[y * colors + colors + tc];
+            g[tc] =         panel[row + y * colors - colors + tc];
+            h[tc] =         panel[row + y * colors + tc];
+            i[tc] =         panel[row + y * colors + colors + tc];
+          }
+          else if (x==RomHeight-1)
+          {
+            a[tc] =         panel[(x-1) * row + y * colors - colors + tc];
+            b[tc] =         panel[(x-1) * row + y * colors + tc];
+            c[tc] =         panel[(x-1) * row + y * colors + colors + tc];
+            d[tc] = g[tc] = panel[x * row + y * colors - colors + tc];
+            e[tc] = h[tc] = panel[x * row + y * colors + tc];
+            f[tc] = i[tc] = panel[x * row + y * colors + colors + tc];
+          }
+          else
+          {
+            a[tc] = panel[(x-1) * row + y * colors - colors + tc];
+            b[tc] = panel[(x-1) * row + y * colors + tc];
+            c[tc] = panel[(x-1) * row + y * colors + colors + tc];
+            d[tc] = panel[x * row + y * colors - colors + tc];
+            e[tc] = panel[x * row + y * colors + tc];
+            f[tc] = panel[x * row + y * colors + colors + tc];
+            g[tc] = panel[(x+1) * row + y * colors - colors + tc];
+            h[tc] = panel[(x+1) * row + y * colors + tc];
+            i[tc] = panel[(x+1) * row + y * colors + colors + tc];
+          }
         }
-        else if ((ti==0)&&(tj==RomHeight-1))
+
+        if (!CmpColor(b, h, colors) && !CmpColor(d, f, colors))
         {
-          a=b=panel[(tj-1)*RomWidth];
-          c=panel[(tj-1)*RomWidth+1];
-          d=g=h=e=panel[tj*RomWidth];
-          f=i=panel[tj*RomWidth+1];
-        }
-        else if ((ti==RomWidth-1)&&(tj==0))
-        {
-          a=d=panel[ti-1];
-          b=c=f=e=panel[ti];
-          g=panel[RomWidth+ti-1];
-          h=i=panel[RomWidth+ti];
-        }
-        else if ((ti==RomWidth-1)&&(tj==RomHeight-1))
-        {
-          a=panel[tj*RomWidth-2];
-          b=c=panel[tj*RomWidth-1];
-          d=g=panel[RomHeight*RomWidth-2];
-          e=f=h=i=panel[RomHeight*RomWidth-1];
-        }
-        else if (ti==0)
-        {
-          a=b=panel[(tj-1)*RomWidth];
-          c=panel[(tj-1)*RomWidth+1];
-          d=e=panel[tj*RomWidth];
-          f=panel[tj*RomWidth+1];
-          g=h=panel[(tj+1)*RomWidth];
-          i=panel[(tj+1)*RomWidth+1];
-        }
-        else if (ti==RomWidth-1)
-        {
-          a=panel[tj*RomWidth-2];
-          b=c=panel[tj*RomWidth-1];
-          d=panel[(tj+1)*RomWidth-2];
-          e=f=panel[(tj+1)*RomWidth-1];
-          g=panel[(tj+2)*RomWidth-2];
-          h=i=panel[(tj+2)*RomWidth-1];
-        }
-        else if (tj==0)
-        {
-          a=d=panel[ti-1];
-          b=e=panel[ti];
-          c=f=panel[ti+1];
-          g=panel[RomWidth+ti-1];
-          h=panel[RomWidth+ti];
-          i=panel[RomWidth+ti+1];
-        }
-        else if (tj==RomHeight-1)
-        {
-          a=panel[(tj-1)*RomWidth+ti-1];
-          b=panel[(tj-1)*RomWidth+ti];
-          c=panel[(tj-1)*RomWidth+ti+1];
-          d=g=panel[tj*RomWidth+ti-1];
-          e=h=panel[tj*RomWidth+ti];
-          f=i=panel[tj*RomWidth+ti+1];
-        }
-        else
-        {
-          a=panel[(tj-1)*RomWidth+ti-1];
-          b=panel[(tj-1)*RomWidth+ti];
-          c=panel[(tj-1)*RomWidth+ti+1];
-          d=panel[tj*RomWidth+ti-1];
-          e=panel[tj*RomWidth+ti];
-          f=panel[tj*RomWidth+ti+1];
-          g=panel[(tj+1)*RomWidth+ti-1];
-          h=panel[(tj+1)*RomWidth+ti];
-          i=panel[(tj+1)*RomWidth+ti+1];
-        }
-        if (b != h && d != f) {
-          renderBuffer[yoffset * TOTAL_WIDTH + tj*2*TOTAL_WIDTH+ti*2+xoffset] = d == b ? d : e;
-          renderBuffer[yoffset * TOTAL_WIDTH + tj*2*TOTAL_WIDTH+ti*2+1+xoffset] = b == f ? f : e;
-          renderBuffer[yoffset * TOTAL_WIDTH + (tj*2+1)*TOTAL_WIDTH+ti*2+xoffset] = d == h ? d : e;
-          renderBuffer[yoffset * TOTAL_WIDTH + (tj*2+1)*TOTAL_WIDTH+ti*2+1+xoffset] = h == f ? f : e;
+          SetColor(&renderBuffer[(yoffset * TOTAL_WIDTH + x*2*TOTAL_WIDTH+y*2+xoffset) * colors], CmpColor(d, b, colors) ? d : e, colors);
+          SetColor(&renderBuffer[(yoffset * TOTAL_WIDTH + x*2*TOTAL_WIDTH+y*2+1+xoffset) * colors], CmpColor(b, f, colors) ? f : e, colors);
+          SetColor(&renderBuffer[(yoffset * TOTAL_WIDTH + (x*2+1)*TOTAL_WIDTH+y*2+xoffset) * colors], CmpColor(d, h, colors) ? d : e, colors);
+          SetColor(&renderBuffer[(yoffset * TOTAL_WIDTH + (x*2+1)*TOTAL_WIDTH+y*2+1+xoffset) * colors], CmpColor(h, f, colors) ? f : e, colors);
         } else {
-          renderBuffer[yoffset * TOTAL_WIDTH + tj*2*TOTAL_WIDTH+ti*2+xoffset] = e;
-          renderBuffer[yoffset * TOTAL_WIDTH + tj*2*TOTAL_WIDTH+ti*2+1+xoffset] = e;
-          renderBuffer[yoffset * TOTAL_WIDTH + (tj*2+1)*TOTAL_WIDTH+ti*2+xoffset] = e;
-          renderBuffer[yoffset * TOTAL_WIDTH + (tj*2+1)*TOTAL_WIDTH+ti*2+1+xoffset] = e;
+          SetColor(&renderBuffer[(yoffset * TOTAL_WIDTH + x*2*TOTAL_WIDTH+y*2+xoffset) * colors], e, colors);
+          SetColor(&renderBuffer[(yoffset * TOTAL_WIDTH + x*2*TOTAL_WIDTH+y*2+1+xoffset) * colors], e, colors);
+          SetColor(&renderBuffer[(yoffset * TOTAL_WIDTH + (x*2+1)*TOTAL_WIDTH+y*2+xoffset) * colors], e, colors);
+          SetColor(&renderBuffer[(yoffset * TOTAL_WIDTH + (x*2+1)*TOTAL_WIDTH+y*2+1+xoffset) * colors], e, colors);
         }
       }
     }
@@ -681,7 +566,10 @@ void ScaleImage64() // scale for indexed image (all except RGB24)
     {
       for (int x = 0; x < RomWidth; x++)
       {
-        renderBuffer[(yoffset + y) * TOTAL_WIDTH + xoffset + x] = panel[y * RomWidth + x];
+        for (uint8_t c = 0; c < colors; c++)
+        {
+          renderBuffer[((yoffset + y) * TOTAL_WIDTH + xoffset + x) * colors + c] = panel[(y * RomWidth + x) * colors + c];
+        }
       }
     }
   }
@@ -1380,7 +1268,7 @@ void loop()
         if (SerialReadBuffer(renderBuffer, RomHeight * RomWidth * 3))
         {
           mode64=false;
-          ScaleImage();
+          ScaleImage(3);
           fillPanelRaw();
         }
 
@@ -1432,7 +1320,7 @@ void loop()
           mode64=false;
           for (int ti=0;ti<64;ti++) rotCols[ti]=ti;
 
-          ScaleImage64();
+          ScaleImage(1);
           fillPanelUsingPalette();
 
           free(renderBuffer);
@@ -1531,7 +1419,7 @@ void loop()
           mode64=false;
           for (int ti=0;ti<64;ti++) rotCols[ti]=ti;
 
-          ScaleImage64();
+          ScaleImage(1);
           fillPanelUsingPalette();
 
           free(renderBuffer);
@@ -1593,7 +1481,7 @@ void loop()
           mode64=false;
           for (int ti=0;ti<64;ti++) rotCols[ti]=ti;
 
-          ScaleImage64();
+          ScaleImage(1);
           fillPanelUsingPalette();
 
           free(renderBuffer);
@@ -1670,7 +1558,7 @@ void loop()
 
           mode64=true;
 
-          ScaleImage64();
+          ScaleImage(1);
           fillPanelUsingPalette();
 
           free(renderBuffer);
