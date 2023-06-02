@@ -1,6 +1,6 @@
 #define ZEDMD_VERSION_MAJOR 3  // X Digits
 #define ZEDMD_VERSION_MINOR 2  // Max 2 Digits
-#define ZEDMD_VERSION_PATCH 4  // Max 2 Digits
+#define ZEDMD_VERSION_PATCH 5  // Max 2 Digits
 
 #ifdef ZEDMD_128_64_2
     #define PANEL_WIDTH    128 // Width: number of LEDs for 1 panel.
@@ -16,8 +16,8 @@
 #define SERIAL_BAUD    921600  // Serial baud rate.
 #define SERIAL_TIMEOUT 8       // Time in milliseconds to wait for the next data chunk.
 #define SERIAL_BUFFER  8192    // Serial buffer size in byte.
-#define FRAME_TIMEOUT  10000   // Time in milliseconds to wait for a new frame.
 #define LOGO_TIMEOUT   20000   // Time in milliseconds before the logo vanishes.
+#define FLOW_CONTROL_TIMEOUT 1 // Time in milliseconds to wait before sensinf a new ready signal.
 
 // ------------------------------------------ ZeDMD by MK47 & Zedrummer (http://ppuc.org) --------------------------------------------------
 // - If you have blurry pictures, the display is not clean, try to reduce the input voltage of your LED matrix panels, often, 5V panels need
@@ -37,7 +37,7 @@
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // Commands:
 //  2: set rom frame size as (int16) width, (int16) height
-//  3: render raw data
+//  3: render raw data, RGB24
 //  6: init palette (deprectated, backward compatibility)
 //  7: render 16 colors using a 4 color palette (3*4 bytes), 2 pixels per byte
 //  8: render 4 colors using a 4 color palette (3*4 bytes), 4 pixels per byte
@@ -54,8 +54,7 @@
 // 23: set RGB order
 // 24: get brightness, returns (int8) brigtness value between 1 and 15
 // 25: get RGB order, returns (int8) major, (int8) minor, (int8) patch level
-// 26: turn on frame timeout
-// 27: turn off frame timeout
+// 26: turn on flow control version 2
 // 30: save settings
 // 31: reset
 // 32: get version string, returns (int8) major, (int8) minor, (int8) patch level
@@ -164,15 +163,7 @@ bool compression = false;
 int serialTransferChunkSize = 256;
 unsigned int frameCount = 0;
 unsigned int errorCount = 0;
-bool frameTimeout = false;
-bool fastReadySent = false;
-
-void sendFastReady() {
-  // Indicate (R)eady, even if the frame isn't rendered yet.
-  // That would allow to get the buffer filled with the next frame already.
-  Serial.write('R');
-  fastReadySent = true;
-}
+unsigned char flowControlCounter = 0;
 
 void DisplayChiffre(unsigned int chf, int x,int y,int R, int G, int B)
 {
@@ -842,10 +833,13 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
     {
       if (debugMode)
       {
+        debugLines[4] = ++errorCount;
+#ifdef ZEDMD_128_64_2
         Say(9, remainingBytes);
         Say(10, chunkSize);
         Say(11, receivedBytes);
-        debugLines[4] = ++errorCount;
+        sleep(3);
+#endif
       }
 
       // Send an (E)rror signal to tell the client that no more chunks should be send or to repeat the entire frame from the beginning.
@@ -856,7 +850,9 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
 
     // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
     Serial.write('A');
-    remainingBytes -= chunkSize;
+
+    remainingBytes -= receivedBytes;
+
     // From now on read full amount of byte chunks.
     chunkSize = serialTransferChunkSize;
   }
@@ -874,15 +870,14 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
     }
 
     if ((MZ_OK == status) && (uncompressed_buffer_size == BufferSize)) {
-      // Some HD panels take too long too render. The small ZeDMD seems to be fast enough to send a fast (R)eady signal here.
-      if (TOTAL_WIDTH <= 128) {
-        //sendFastReady();
-      }
-
       if (debugMode)
       {
         Say(3, 0);
         debugLines[3] = 0;
+      }
+
+      while (Serial.available()) {
+        Serial.read();
       }
 
       return true;
@@ -895,11 +890,18 @@ bool SerialReadBuffer(unsigned char* pBuffer, unsigned int BufferSize)
       debugLines[3] = 99;
     }
 
+    while (Serial.available()) {
+      Serial.read();
+    }
+
     Serial.write('E');
     return false;
   }
 
-  sendFastReady();
+  while (Serial.available()) {
+    Serial.read();
+  }
+
   return true;
 }
 
@@ -948,21 +950,19 @@ bool wait_for_ctrl_chars(void)
       ScreenSaver();
     }
 
-    // Watchdog: "reset" the communictaion if a frame timout happened.
-    if (frameTimeout && handshakeSucceeded && ((millis() - ms) > FRAME_TIMEOUT))
+    if (flowControlCounter > 0 && handshakeSucceeded && ((millis() - ms) > FLOW_CONTROL_TIMEOUT))
     {
-      if (debugMode)
-      {
-        Say(5, ++debugLines[5]);
-      }
-
-      // Send an (E)rror signal.
-      Serial.write('E');
-      // Send a (R)eady signal to tell the client to send the next command.
-      Serial.write('R');
-
+      Serial.write(flowControlCounter);
       ms = millis();
-      nCtrlCharFound = 0;
+    }
+  }
+
+  if (flowControlCounter > 0) {
+    if (flowControlCounter < 32) {
+      flowControlCounter++;
+    }
+    else {
+      flowControlCounter = 1;
     }
   }
 
@@ -1008,7 +1008,7 @@ void loop()
       SaveLum();
     }
 
-    if (Serial.available()>0)
+    if (Serial.available() > 0)
     {
       ClearScreen();
       MireActive = false;
@@ -1033,14 +1033,9 @@ void loop()
   }
 
   // After handshake, send a (R)eady signal to indicate that a new command could be sent.
-  // The client has to wait for it to avoid buffer issues. The handshake it self works without it.
-  if (handshakeSucceeded) {
-    if (!fastReadySent) {
-      Serial.write('R');
-    }
-    else {
-      fastReadySent = false;
-    }
+  // The client has to wait for it to avoid buffer issues. The handshake itself works without it.
+  if (handshakeSucceeded && flowControlCounter == 0) {
+    Serial.write('R');
   }
 
   if (wait_for_ctrl_chars())
@@ -1068,7 +1063,9 @@ void loop()
     {
       case 12: // ask for resolution (and shake hands)
       {
-        for (int ti=0;ti<N_INTERMEDIATE_CTR_CHARS;ti++) Serial.write(CtrlCharacters[ti]);
+        for (int i = 0; i < N_INTERMEDIATE_CTR_CHARS; i++) {
+          Serial.write(CtrlCharacters[i]);
+        }
         Serial.write(TOTAL_WIDTH&0xff);
         Serial.write((TOTAL_WIDTH>>8)&0xff);
         Serial.write(TOTAL_HEIGHT&0xff);
@@ -1079,7 +1076,7 @@ void loop()
 
       case 2: // set rom frame size
       {
-         unsigned char tbuf[4];
+        unsigned char tbuf[4];
         if (SerialReadBuffer(tbuf, 4))
         {
           RomWidth=(int)(tbuf[0])+(int)(tbuf[1]<<8);
@@ -1181,16 +1178,11 @@ void loop()
         break;
       }
 
-      case 26: // turn on frame timeout
+      case 26: // turn on flow control version 2
       {
-        frameTimeout = true;
+        flowControlCounter = 1;
         Serial.write('A');
-      }
-
-      case 27: // turn off frame timeout
-      {
-        frameTimeout = false;
-        Serial.write('A');
+        break;
       }
 
       case 30: // save settings
@@ -1581,6 +1573,7 @@ void loop()
     {
       DisplayNombre(RomWidth, 3, TOTAL_WIDTH - 7*4, 4, 200, 200, 200);
       DisplayNombre(RomHeight, 2, TOTAL_WIDTH - 3*4, 4, 200, 200, 200);
+      DisplayNombre(flowControlCounter, 2, TOTAL_WIDTH - 6*4, TOTAL_HEIGHT - 8, 200, 200, 200);
       DisplayNombre(c4, 2, TOTAL_WIDTH - 3*4, TOTAL_HEIGHT - 8, 200, 200, 200);
 
       // An overflow of the unsigned int counters should not be an issue, they just reset to 0.
