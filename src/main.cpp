@@ -77,19 +77,15 @@
 
 #ifdef ZEDMD_WIFI
 #include <WiFi.h>
-#include <WiFiUdp.h>
+#include <AsyncUDP.h>
 
-const char *ssid = "";
-const char *pwd = "";
+const char *ssid = "****";
+const char *pwd = "****";
 
-uint8_t updPacket[TOTAL_WIDTH * 3 + 3] = {0};
-uint8_t udpCurrentFrameId = 0;
-int udpPayloadSize = 0;
-int udpRgbWidth = 0;
+uint8_t udpCurrentFrameId = 255;
 
-WiFiUDP udp;
+AsyncUDP udp;
 IPAddress ip;
-WiFiServer server(80);
 #endif
 
 // Pinout derived from ESP32-HUB75-MatrixPanel-I2S-DMA.h
@@ -149,16 +145,13 @@ int acordreRGB = 0;
 
 unsigned char *palette;
 unsigned char *renderBuffer;
+uint8_t renderBufferInUse = 0; // 0: not used; 1: USB; 2: WiFi
 
-#ifdef ZEDMD_WIFI
-uint8_t doubleBuffer[TOTAL_BYTES] = {0};
-#else
 #ifdef ZEDMD_128_64_2
 uint8_t doubleBuffer[TOTAL_HEIGHT][TOTAL_WIDTH] = {0};
 uint8_t existsBuffer[TOTAL_HEIGHT][TOTAL_WIDTH / 2] = {0};
 #else
 uint8_t doubleBuffer[TOTAL_BYTES] = {0};
-#endif
 #endif
 
 // for color rotation
@@ -296,16 +289,13 @@ void Say(unsigned char where, unsigned int what)
 void ClearScreen()
 {
   dma_display->clearScreen();
+  dma_display->setBrightness8(lumval[lumstep]);
 
-#ifdef ZEDMD_WIFI
-  memset(doubleBuffer, 0, TOTAL_BYTES);
-#else
 #ifdef ZEDMD_128_64_2
   memset(doubleBuffer, 0, TOTAL_HEIGHT * TOTAL_WIDTH);
   memset(existsBuffer, 0, TOTAL_HEIGHT * TOTAL_WIDTH / 2);
 #else
   memset(doubleBuffer, 0, TOTAL_BYTES);
-#endif
 #endif
 }
 
@@ -616,7 +606,6 @@ void ScaleImage(uint8_t colors)
 
 void DrawPixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
 {
-#ifndef ZEDMD_WIFI
 #ifdef ZEDMD_128_64_2
   uint8_t colors = ((r >> 5) << 5) + ((g >> 5) << 2) + (b >> 6);
   uint8_t colorsExist = (r ? 8 : 0) + (g ? 4 : 0) + (b ? 2 : 0) + ((r || g || b) ? 1 : 0);
@@ -638,7 +627,6 @@ void DrawPixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
 
     dma_display->drawPixelRGB888(x, y, r, g, b);
   }
-#endif
 }
 
 void fillPanelRaw()
@@ -651,15 +639,6 @@ void fillPanelRaw()
     {
       pos = x * 3 + y * 3 * TOTAL_WIDTH;
 
-#ifdef ZEDMD_WIFI
-      dma_display->drawPixelRGB888(
-          x,
-          y,
-          doubleBuffer[pos + ordreRGB[acordreRGB * 3]],
-          doubleBuffer[pos + ordreRGB[acordreRGB * 3 + 1]],
-          doubleBuffer[pos + ordreRGB[acordreRGB * 3 + 2]]);
-    }
-#else
       DrawPixel(
           x,
           y,
@@ -667,7 +646,6 @@ void fillPanelRaw()
           renderBuffer[pos + ordreRGB[acordreRGB * 3 + 1]],
           renderBuffer[pos + ordreRGB[acordreRGB * 3 + 2]]);
     }
-#endif
   }
 }
 
@@ -725,8 +703,6 @@ void SaveLum()
 
 void DisplayLogo(void)
 {
-  dma_display->setBrightness8(lumval[lumstep]);
-
   ClearScreen();
   LoadOrdreRGB();
 
@@ -747,18 +723,11 @@ void DisplayLogo(void)
     return;
   }
 
-#ifdef ZEDMD_WIFI
-  for (unsigned int tj = 0; tj < TOTAL_BYTES; tj++)
-  {
-    doubleBuffer[tj] = flogo.read();
-  }
-#else
   renderBuffer = (unsigned char *)malloc(TOTAL_BYTES);
   for (unsigned int tj = 0; tj < TOTAL_BYTES; tj++)
   {
     renderBuffer[tj] = flogo.read();
   }
-#endif
   flogo.close();
 
   fillPanelRaw();
@@ -802,18 +771,11 @@ void DisplayUpdate(void)
     return;
   }
 
-#ifdef ZEDMD_WIFI
-  for (unsigned int tj = 0; tj < TOTAL_BYTES; tj++)
-  {
-    doubleBuffer[tj] = flogo.read();
-  }
-#else
   renderBuffer = (unsigned char *)malloc(TOTAL_BYTES);
   for (unsigned int tj = 0; tj < TOTAL_BYTES; tj++)
   {
     renderBuffer[tj] = flogo.read();
   }
-#endif
   flogo.close();
 
   fillPanelRaw();
@@ -883,11 +845,8 @@ void setup()
   while (!Serial)
     ;
 
-  ClearScreen();
   LoadLum();
-
-  dma_display->setBrightness8(lumval[lumstep]); // range is 0-255, 0 - 0%, 255 - 100%
-
+  ClearScreen();
   DisplayLogo();
 
 #ifdef ZEDMD_WIFI
@@ -899,7 +858,67 @@ void setup()
   WiFi.begin(ssid, pwd);
 
   uint8_t result = WiFi.waitForConnectResult();
-  udp.begin(WiFi.localIP(), 3333);
+
+  if(udp.listen(3333)) {
+    udp.onPacket([](AsyncUDPPacket packet) {
+      if (packet.length() >= 2) {
+        if (MireActive) {
+          ClearScreen();
+          MireActive = false;
+        }
+
+        if (renderBufferInUse == 0) {
+          renderBuffer = (uint8_t*)malloc(TOTAL_BYTES);
+          memset(renderBuffer, 0, TOTAL_BYTES);
+          renderBufferInUse = 2;
+        }
+        else if (renderBufferInUse == 1) {
+          // Blocked by rendering over USB.
+          return;
+        }
+
+        uint8_t *pPacket = packet.data();
+        uint8_t compressed = pPacket[1] & 128;
+        uint8_t render = pPacket[1] & 64;
+        uint8_t frameId = pPacket[1] & 63;
+
+        if (render == 64) {
+          if (frameId == udpCurrentFrameId) {
+            fillPanelRaw();
+            udpCurrentFrameId++;
+            if (udpCurrentFrameId >= 64) {
+              udpCurrentFrameId = 0;
+            }
+          }
+          return;
+        }
+        else if (frameId != udpCurrentFrameId) {
+          fillPanelRaw();
+          udpCurrentFrameId = frameId;
+        }
+
+        if (frameId == udpCurrentFrameId)
+        {
+          if (compressed == 128)
+          {
+            mz_ulong uncompressedBufferSize;
+            mz_ulong udpPayloadSize = packet.length() - 3;
+
+            int status = mz_uncompress2(&renderBuffer[pPacket[2] * TOTAL_WIDTH * 3], &uncompressedBufferSize, pPacket + 3, (mz_ulong *)&udpPayloadSize);
+            if (status != MZ_OK)
+            {
+              int tmp_status = (status >= 0) ? status : (-1 * status) + 100;
+              Say(0, tmp_status);
+            }
+          }
+          else
+          {
+            memcpy(&renderBuffer[pPacket[2] * TOTAL_WIDTH * 3], pPacket + 3, packet.length() - 3);
+          }
+        }
+      }
+    });
+  }
 #endif
 }
 
@@ -1051,39 +1070,19 @@ void updateColorRotations(void)
     fillPanelUsingPalette();
 }
 
-unsigned char wait_for_ctrl_chars(void)
+bool wait_for_ctrl_chars(void)
 {
   unsigned long ms = millis();
   unsigned char nCtrlCharFound = 0;
-int counter = 0;
-  while (true)
+
+  while (nCtrlCharFound < N_CTRL_CHARS)
   {
     if (Serial.available())
     {
-      if (nCtrlCharFound < N_CTRL_CHARS) {
-        if (Serial.read() != CtrlCharacters[nCtrlCharFound++]) {
+      if (Serial.read() != CtrlCharacters[nCtrlCharFound++])
           nCtrlCharFound = 0;
         }
-      }
-      else {
-        // Read the command byte.
-        return Serial.read();
-      }
-    }
 
-#ifdef ZEDMD_WIFI
-    int packetSize = udp.parsePacket();
-    if (packetSize > 0)
-    {
-      udpPayloadSize = udp.read(updPacket, packetSize) - 3;
-      return updPacket[0];
-    }
-    if (counter++ > 10000) {
-      udp.stop();
-      udp.begin(WiFi.localIP(), 3333);
-    }
-#endif
-Say(10, counter);
     if (displayStatus == 1 && mode64 && nCtrlCharFound == 0)
     {
       // While waiting for the next frame, perform in-frame color rotations.
@@ -1118,8 +1117,6 @@ Say(10, counter);
 
 void loop()
 {
-  unsigned char c4 = 0;
-
   while (MireActive)
   {
     rgbOrderButton->update();
@@ -1159,20 +1156,8 @@ void loop()
       SaveLum();
     }
 
-    int packetSize =  0;
-#ifdef ZEDMD_WIFI
-    packetSize = udp.parsePacket();
-#endif
-
-    if (Serial.available() > 0 || packetSize > 0) {
-#ifdef ZEDMD_WIFI
-      if (packetSize)
-      {
-        udpPayloadSize = udp.read(updPacket, packetSize) - 3;
-        c4 = updPacket[0];
-      }
-#endif
-
+    if (Serial.available() > 0)
+    {
       ClearScreen();
       MireActive = false;
     }
@@ -1202,14 +1187,14 @@ void loop()
     Serial.write('R');
   }
 
-  if (c4 == 0) {
-    c4 = wait_for_ctrl_chars();
-  }
-
-  if (c4 > 0)
+  if (wait_for_ctrl_chars())
   {
     // Updates to mode64 color rotations have been handled within wait_for_ctrl_chars(), now reset it to false.
     mode64 = false;
+
+    unsigned char c4;
+    while (Serial.available() == 0);
+    c4 = Serial.read();
 
     if (debugMode)
     {
@@ -1220,7 +1205,6 @@ void loop()
     {
       // Exit screen saver.
       ClearScreen();
-      dma_display->setBrightness8(lumval[lumstep]);
       displayStatus = 1;
     }
 
@@ -1422,49 +1406,14 @@ void loop()
         break;
       }
 
-#ifdef ZEDMD_WIFI
-      case 40:
-      {
-        uint8_t compressed = updPacket[1] & 128;
-        uint8_t frameId = updPacket[1] & 127;
-
-        if (frameId == 127)
-        {
-          fillPanelRaw();
-          break;
-        }
-        else if (frameId > udpCurrentFrameId || (frameId == 0 && udpCurrentFrameId != 0)) {
-          fillPanelRaw();
-          udpCurrentFrameId = frameId;
-        }
-
-        if (frameId == udpCurrentFrameId)
-        {
-          udpRgbWidth = 0;
-
-          if (compressed == 128)
-          {
-            mz_ulong uncompressedBufferSize;
-            int status = mz_uncompress2(&doubleBuffer[updPacket[2] * TOTAL_WIDTH * 3], &uncompressedBufferSize, &updPacket[3], (mz_ulong *)&udpPayloadSize);
-            if (status == MZ_OK)
-            {
-              udpRgbWidth = uncompressedBufferSize;
-            }
-            // int tmp_status = (status >= 0) ? status : (-1 * status) + 100;
-            // Say(8, tmp_status);
-          }
-          else
-          {
-            udpRgbWidth = udpPayloadSize;
-            memcpy(&doubleBuffer[updPacket[2] * TOTAL_WIDTH * 3], &updPacket[3], udpRgbWidth);
-          }
-        }
-      }
-#else
       case 3: // mode RGB24
       {
         // We need to cover downscaling, too.
         int renderBufferSize = (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT) ? TOTAL_BYTES : RomWidth * RomHeight * 3;
+        if (renderBufferInUse == 2) {
+          renderBufferInUse = 1;
+          free(renderBuffer);
+        }
         renderBuffer = (unsigned char *)malloc(renderBufferSize);
         memset(renderBuffer, 0, renderBufferSize);
 
@@ -1476,6 +1425,7 @@ void loop()
         }
 
         free(renderBuffer);
+        renderBufferInUse = 0;
         break;
       }
 
@@ -1488,6 +1438,10 @@ void loop()
         {
           // We need to cover downscaling, too.
           int renderBufferSize = (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT) ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
+          if (renderBufferInUse == 2) {
+            renderBufferInUse = 1;
+            free(renderBuffer);
+          }
           renderBuffer = (unsigned char *)malloc(renderBufferSize);
           memset(renderBuffer, 0, renderBufferSize);
           palette = (unsigned char *)malloc(3 * 4);
@@ -1530,6 +1484,7 @@ void loop()
           fillPanelUsingPalette();
 
           free(renderBuffer);
+          renderBufferInUse = 0;
           free(palette);
         }
         else
@@ -1548,6 +1503,10 @@ void loop()
         {
           // We need to cover downscaling, too.
           int renderBufferSize = (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT) ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
+          if (renderBufferInUse == 2) {
+            renderBufferInUse = 1;
+            free(renderBuffer);
+          }
           renderBuffer = (unsigned char *)malloc(renderBufferSize);
           memset(renderBuffer, 0, renderBufferSize);
           palette = (unsigned char *)malloc(48);
@@ -1634,6 +1593,7 @@ void loop()
           fillPanelUsingPalette();
 
           free(renderBuffer);
+          renderBufferInUse = 0;
           free(palette);
         }
         else
@@ -1652,6 +1612,10 @@ void loop()
         {
           // We need to cover downscaling, too.
           int renderBufferSize = (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT) ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
+          if (renderBufferInUse == 2) {
+            renderBufferInUse = 1;
+            free(renderBuffer);
+          }
           renderBuffer = (unsigned char *)malloc(renderBufferSize);
           memset(renderBuffer, 0, renderBufferSize);
           palette = (unsigned char *)malloc(3 * 16);
@@ -1701,6 +1665,7 @@ void loop()
           fillPanelUsingPalette();
 
           free(renderBuffer);
+          renderBufferInUse = 0;
           free(palette);
         }
         else
@@ -1719,6 +1684,10 @@ void loop()
         {
           // We need to cover downscaling, too.
           int renderBufferSize = (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT) ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
+          if (renderBufferInUse == 2) {
+            renderBufferInUse = 1;
+            free(renderBuffer);
+          }
           renderBuffer = (unsigned char *)malloc(renderBufferSize);
           memset(renderBuffer, 0, renderBufferSize);
           palette = (unsigned char *)malloc(3 * 64);
@@ -1786,6 +1755,7 @@ void loop()
           fillPanelUsingPalette();
 
           free(renderBuffer);
+          renderBufferInUse = 0;
           free(palette);
         }
         else
@@ -1794,7 +1764,6 @@ void loop()
         }
         break;
       }
-  #endif
 
     default:
     {
