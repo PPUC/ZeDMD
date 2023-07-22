@@ -1,6 +1,6 @@
 #define ZEDMD_VERSION_MAJOR 3 // X Digits
-#define ZEDMD_VERSION_MINOR 2 // Max 2 Digits
-#define ZEDMD_VERSION_PATCH 5 // Max 2 Digits
+#define ZEDMD_VERSION_MINOR 3 // Max 2 Digits
+#define ZEDMD_VERSION_PATCH 0 // Max 2 Digits
 
 #ifdef ZEDMD_128_64_2
 #define PANEL_WIDTH 128 // Width: number of LEDs for 1 panel.
@@ -48,6 +48,7 @@
 // 13: set serial transfer chunk size as (int8) value, the value will be multiplied with 256 internally
 // 14: enable serial transfer compression
 // 15: disable serial transfer compression
+// 16: panel LED check, screen full red, then full green, then full blue
 // 20: turn off upscaling
 // 21: turn on upscaling
 // 22: set brightness as (int8) value between 1 and 15
@@ -68,6 +69,7 @@
 #define TOTAL_BYTES (TOTAL_WIDTH * TOTAL_HEIGHT * 3)
 #define MAX_COLOR_ROTATIONS 8
 #define MIN_SPAN_ROT 60
+#define LED_CHECK_DELAY 1000 //ms per color
 
 #include <Arduino.h>
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
@@ -701,6 +703,20 @@ void SaveLum()
   flum.close();
 }
 
+void ledTester(void)
+{
+    dma_display->fillScreenRGB888(255, 0, 0);
+    delay(LED_CHECK_DELAY);
+
+    dma_display->fillScreenRGB888(0, 255, 0);
+    delay(LED_CHECK_DELAY);
+
+    dma_display->fillScreenRGB888(0, 0, 255);
+    delay(LED_CHECK_DELAY);
+
+    dma_display->clearScreen();
+}
+
 void DisplayLogo(void)
 {
   ClearScreen();
@@ -1271,6 +1287,12 @@ void loop()
         compression = false;
         Serial.write('A');
         break;
+      }
+
+      case 16:
+      {
+          ledTester();
+          break;
       }
 
       case 20: // turn off upscaling
