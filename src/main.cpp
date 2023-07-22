@@ -48,6 +48,7 @@
 // 13: set serial transfer chunk size as (int8) value, the value will be multiplied with 256 internally
 // 14: enable serial transfer compression
 // 15: disable serial transfer compression
+// 16: panel LED check, screen full red, then full green, then full blue
 // 20: turn off upscaling
 // 21: turn on upscaling
 // 22: set brightness as (int8) value between 1 and 15
@@ -68,6 +69,7 @@
 #define TOTAL_BYTES (TOTAL_WIDTH * TOTAL_HEIGHT * 3)
 #define MAX_COLOR_ROTATIONS 8
 #define MIN_SPAN_ROT 60
+#define LED_CHECK_DELAY 1000 //ms per color
 
 #include <Arduino.h>
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
@@ -685,12 +687,45 @@ void SaveLum()
   flum.close();
 }
 
+void ledTester(void)
+{
+    uint8_t col[3] = { 255,0,0 };
+    for (int j = 0; j < TOTAL_HEIGHT; j++)
+    {
+        for (int i = 0; i < TOTAL_WIDTH; i++)
+        {
+            dma_display->drawPixelRGB888(i, j, col[ordreRGB[acordreRGB * 3]], col[ordreRGB[acordreRGB * 3 + 1]], col[ordreRGB[acordreRGB * 3 + 2]]);
+        }
+    }
+    col[0] = 0;
+    col[1] = 255;
+    delay(LED_CHECK_DELAY);
+    for (int j = 0; j < TOTAL_HEIGHT; j++)
+    {
+        for (int i = 0; i < TOTAL_WIDTH; i++)
+        {
+            dma_display->drawPixelRGB888(i, j, col[ordreRGB[acordreRGB * 3]], col[ordreRGB[acordreRGB * 3 + 1]], col[ordreRGB[acordreRGB * 3 + 2]]);
+        }
+    }
+    col[1] = 0;
+    col[2] = 255;
+    delay(LED_CHECK_DELAY);
+    for (int j = 0; j < TOTAL_HEIGHT; j++)
+    {
+        for (int i = 0; i < TOTAL_WIDTH; i++)
+        {
+            dma_display->drawPixelRGB888(i, j, col[ordreRGB[acordreRGB * 3]], col[ordreRGB[acordreRGB * 3 + 1]], col[ordreRGB[acordreRGB * 3 + 2]]);
+        }
+    }
+    delay(LED_CHECK_DELAY);
+    dma_display->clearScreen();
+}
+
 void DisplayLogo(void)
 {
   dma_display->setBrightness8(lumval[lumstep]);
 
   ClearScreen();
-  LoadOrdreRGB();
 
   File flogo;
 
@@ -768,9 +803,9 @@ void DisplayUpdate(void)
 
 void ScreenSaver(void)
 {
-  ClearScreen();
-  dma_display->setBrightness8(lumval[1]);
-  DisplayVersion();
+    ClearScreen();
+    dma_display->setBrightness8(lumval[1]);
+    DisplayVersion();
 
   displayStatus = 0;
 }
@@ -808,6 +843,8 @@ void setup()
 
   dma_display->setBrightness8(lumval[lumstep]); // range is 0-255, 0 - 0%, 255 - 100%
 
+  LoadOrdreRGB();
+  
   DisplayLogo();
 }
 
@@ -1629,6 +1666,11 @@ void loop()
         free(buffer);
       }
       break;
+    }
+    case 16:
+    {
+        ledTester();
+        break;
     }
 
     default:
