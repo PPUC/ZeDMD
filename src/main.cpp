@@ -1,6 +1,6 @@
 #define ZEDMD_VERSION_MAJOR 3 // X Digits
-#define ZEDMD_VERSION_MINOR 2 // Max 2 Digits
-#define ZEDMD_VERSION_PATCH 5 // Max 2 Digits
+#define ZEDMD_VERSION_MINOR 3 // Max 2 Digits
+#define ZEDMD_VERSION_PATCH 0 // Max 2 Digits
 
 #ifdef ZEDMD_128_64_2
 #define PANEL_WIDTH 128 // Width: number of LEDs for 1 panel.
