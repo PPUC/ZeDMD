@@ -705,41 +705,22 @@ void SaveLum()
 
 void ledTester(void)
 {
-    uint8_t col[3] = { 255,0,0 };
-    for (int j = 0; j < TOTAL_HEIGHT; j++)
-    {
-        for (int i = 0; i < TOTAL_WIDTH; i++)
-        {
-            dma_display->drawPixelRGB888(i, j, col[ordreRGB[acordreRGB * 3]], col[ordreRGB[acordreRGB * 3 + 1]], col[ordreRGB[acordreRGB * 3 + 2]]);
-        }
-    }
-    col[0] = 0;
-    col[1] = 255;
+    dma_display->fillScreenRGB888(255, 0, 0);
     delay(LED_CHECK_DELAY);
-    for (int j = 0; j < TOTAL_HEIGHT; j++)
-    {
-        for (int i = 0; i < TOTAL_WIDTH; i++)
-        {
-            dma_display->drawPixelRGB888(i, j, col[ordreRGB[acordreRGB * 3]], col[ordreRGB[acordreRGB * 3 + 1]], col[ordreRGB[acordreRGB * 3 + 2]]);
-        }
-    }
-    col[1] = 0;
-    col[2] = 255;
+
+    dma_display->fillScreenRGB888(0, 255, 0);
     delay(LED_CHECK_DELAY);
-    for (int j = 0; j < TOTAL_HEIGHT; j++)
-    {
-        for (int i = 0; i < TOTAL_WIDTH; i++)
-        {
-            dma_display->drawPixelRGB888(i, j, col[ordreRGB[acordreRGB * 3]], col[ordreRGB[acordreRGB * 3 + 1]], col[ordreRGB[acordreRGB * 3 + 2]]);
-        }
-    }
+
+    dma_display->fillScreenRGB888(0, 0, 255);
     delay(LED_CHECK_DELAY);
+
     dma_display->clearScreen();
 }
 
 void DisplayLogo(void)
 {
   ClearScreen();
+  LoadOrdreRGB();
 
   File flogo;
 
