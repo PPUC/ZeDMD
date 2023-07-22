@@ -805,9 +805,9 @@ void DisplayUpdate(void)
 
 void ScreenSaver(void)
 {
-    ClearScreen();
-    dma_display->setBrightness8(lumval[1]);
-    DisplayVersion();
+  ClearScreen();
+  dma_display->setBrightness8(lumval[1]);
+  DisplayVersion();
 
   displayStatus = 0;
 }
