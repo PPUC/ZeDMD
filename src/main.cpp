@@ -1096,8 +1096,10 @@ bool wait_for_ctrl_chars(void)
     if (Serial.available())
     {
       if (Serial.read() != CtrlCharacters[nCtrlCharFound++])
-          nCtrlCharFound = 0;
-        }
+      {
+        nCtrlCharFound = 0;
+      }
+    }
 
     if (displayStatus == 1 && mode64 && nCtrlCharFound == 0)
     {
@@ -1291,8 +1293,8 @@ void loop()
 
       case 16:
       {
-          ledTester();
-          break;
+        ledTester();
+        break;
       }
 
       case 20: // turn off upscaling
@@ -1787,25 +1789,25 @@ void loop()
         break;
       }
 
-    default:
+      default:
+      {
+        Serial.write('E');
+      }
+    }
+
+    if (debugMode)
     {
-      Serial.write('E');
+      DisplayNombre(RomWidth, 3, TOTAL_WIDTH - 7 * 4, 4, 200, 200, 200);
+      DisplayNombre(RomHeight, 2, TOTAL_WIDTH - 3 * 4, 4, 200, 200, 200);
+      DisplayNombre(flowControlCounter, 2, TOTAL_WIDTH - 6 * 4, TOTAL_HEIGHT - 8, 200, 200, 200);
+      DisplayNombre(c4, 2, TOTAL_WIDTH - 3 * 4, TOTAL_HEIGHT - 8, 200, 200, 200);
+
+      // An overflow of the unsigned int counters should not be an issue, they just reset to 0.
+      debugLines[0] = ++frameCount;
+      for (int i = 0; i < 6; i++)
+      {
+        Say((unsigned char)i, debugLines[i]);
+      }
     }
   }
-
-  if (debugMode)
-  {
-    DisplayNombre(RomWidth, 3, TOTAL_WIDTH - 7 * 4, 4, 200, 200, 200);
-    DisplayNombre(RomHeight, 2, TOTAL_WIDTH - 3 * 4, 4, 200, 200, 200);
-    DisplayNombre(flowControlCounter, 2, TOTAL_WIDTH - 6 * 4, TOTAL_HEIGHT - 8, 200, 200, 200);
-    DisplayNombre(c4, 2, TOTAL_WIDTH - 3 * 4, TOTAL_HEIGHT - 8, 200, 200, 200);
-
-    // An overflow of the unsigned int counters should not be an issue, they just reset to 0.
-    debugLines[0] = ++frameCount;
-    for (int i = 0; i < 6; i++)
-    {
-      Say((unsigned char)i, debugLines[i]);
-    }
-  }
-}
 }
