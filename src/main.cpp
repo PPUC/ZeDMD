@@ -56,6 +56,8 @@
 // 24: get brightness, returns (int8) brigtness value between 1 and 15
 // 25: get RGB order, returns (int8) major, (int8) minor, (int8) patch level
 // 26: turn on flow control version 2
+// 27: set WiFi SSID
+// 28: set WiFi password
 // 30: save settings
 // 31: reset
 // 32: get version string, returns (int8) major, (int8) minor, (int8) patch level
