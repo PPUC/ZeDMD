@@ -29,7 +29,7 @@ jobs:
     needs: [ version ]
     strategy:
       matrix:
-        panels: ['128x32', '256x64']
+        panels: ['128x32', '256x64', '256x64_7bit']
 
     name: ZeDMD ${{ matrix.panels }}
 
@@ -89,6 +89,9 @@ jobs:
             cd ../ZeDMD-256x64
             echo "${{ needs.version.outputs.tag }}" > version.txt
             zip ../ZeDMD-256x64.zip ZeDMD.bin version.txt
+            cd ../ZeDMD-256x64_7bit
+            echo "${{ needs.version.outputs.tag }}" > version.txt
+            zip ../ZeDMD-256x64_7bit.zip ZeDMD.bin version.txt
             cd ..
       - name: Release
         uses: softprops/action-gh-release@v1
@@ -98,3 +101,4 @@ jobs:
           files: |
             ZeDMD-128x32.zip
             ZeDMD-256x64.zip
+            ZeDMD-256x64_7bit.zip
