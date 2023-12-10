@@ -174,6 +174,10 @@ int RomWidthPlane = 128 >> 3;
 unsigned char lumstep = 1;
 
 bool MireActive = false;
+// 0: screen saver
+// 1: normal operation mode
+// 2: PPUC info screen
+// 3: clear screen (command received)
 uint8_t displayStatus = 1;
 bool handshakeSucceeded = false;
 bool compression = false;
@@ -1250,7 +1254,7 @@ void loop()
       DisplayNombre(c4, 2, TOTAL_WIDTH - 3 * 4, TOTAL_HEIGHT - 8, 200, 200, 200);
     }
 
-    if (displayStatus == 0)
+    if (displayStatus != 1)
     {
       // Exit screen saver.
       ClearScreen();
