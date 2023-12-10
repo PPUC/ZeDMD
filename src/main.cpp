@@ -70,7 +70,6 @@
 #define TOTAL_HEIGHT PANEL_HEIGHT
 #define TOTAL_BYTES (TOTAL_WIDTH * TOTAL_HEIGHT * 3)
 #define MAX_COLOR_ROTATIONS 8
-#define MIN_COLOR_ROTATION_STEP_TIME 10 // ms between color rotations
 #define LED_CHECK_DELAY 1000 // ms per color
 
 #include <Arduino.h>
@@ -620,7 +619,7 @@ void DrawPixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
     doubleBuffer[y][x] = colors;
     existsBuffer[y][x / 2] = (x % 2) ? (((existsBuffer[y][x / 2] << 4) >> 4) + (colorsExist << 4)) : (((existsBuffer[y][x / 2] >> 4) << 4) + colorsExist);
 #else
-  int pos = 3 * y * TOTAL_WIDTH + 3 * x;
+  int pos = (y * TOTAL_WIDTH + x) * 3;
 
   if (r != doubleBuffer[pos] || g != doubleBuffer[pos + 1] || b != doubleBuffer[pos + 2])
   {
@@ -641,7 +640,7 @@ void fillPanelRaw()
   {
     for (int x = 0; x < TOTAL_WIDTH; x++)
     {
-      pos = x * 3 + y * 3 * TOTAL_WIDTH;
+      pos = (y * TOTAL_WIDTH + x) * 3;
 
       DrawPixel(
           x,
@@ -661,14 +660,14 @@ void fillPanelUsingPalette()
   {
     for (int x = 0; x < TOTAL_WIDTH; x++)
     {
-      pos = (y * TOTAL_WIDTH + x) * 3;
+      pos = renderBuffer[y * TOTAL_WIDTH + x] * 3;
 
       DrawPixel(
           x,
           y,
-          palette[renderBuffer[pos] + ordreRGB[acordreRGB * 3]],
-          palette[renderBuffer[pos] + ordreRGB[acordreRGB * 3 + 1]],
-          palette[renderBuffer[pos] + ordreRGB[acordreRGB * 3 + 2]]);
+          palette[pos + ordreRGB[acordreRGB * 3]],
+          palette[pos + ordreRGB[acordreRGB * 3 + 1]],
+          palette[pos + ordreRGB[acordreRGB * 3 + 2]]);
     }
   }
 }
@@ -681,15 +680,16 @@ void fillPanelUsingChangedPalette(bool *paletteAffected)
   {
     for (int x = 0; x < TOTAL_WIDTH; x++)
     {
-      pos = (y * TOTAL_WIDTH + x) * 3;
-      if (paletteAffected[renderBuffer[pos]])
+      pos = renderBuffer[y * TOTAL_WIDTH + x];
+      if (paletteAffected[pos])
       {
+        pos *= 3;
         DrawPixel(
             x,
             y,
-            palette[renderBuffer[pos] + ordreRGB[acordreRGB * 3]],
-            palette[renderBuffer[pos] + ordreRGB[acordreRGB * 3 + 1]],
-            palette[renderBuffer[pos] + ordreRGB[acordreRGB * 3 + 2]]);
+            palette[pos + ordreRGB[acordreRGB * 3]],
+            palette[pos + ordreRGB[acordreRGB * 3 + 1]],
+            palette[pos + ordreRGB[acordreRGB * 3 + 2]]);
       }
     }
   }
@@ -1100,12 +1100,16 @@ void updateColorRotations(void)
 
     if (actime >= rotNextRotationTime[ti])
     {
-      rotNextRotationTime[ti] = actime + rotStepDurationTime[ti];
       memcpy(tmpColor, &palette[rotFirstColor[ti] * 3], 3);
-      memmove(&palette[rotFirstColor[ti] * 3], &palette[rotFirstColor[ti] * 3 + 3], rotAmountColors[ti] * 3 - 1);
-      memcpy(&palette[rotFirstColor[ti] * 3 + rotAmountColors[ti] * 3], tmpColor, 3);
-      memset(&rotPaletteAffected[rotFirstColor[ti]], 1, rotAmountColors[ti]);
+      memmove(&palette[rotFirstColor[ti] * 3], &palette[(rotFirstColor[ti] + 1) * 3], (rotAmountColors[ti] - 1) * 3);
+      memcpy(&palette[(rotFirstColor[ti] + rotAmountColors[ti] - 1) * 3], tmpColor, 3);
+      for (int tj = rotFirstColor[ti]; tj < (rotFirstColor[ti] + rotAmountColors[ti]); tj++)
+      {
+        rotPaletteAffected[tj] = true;
+      }
+
       rotfound = true;
+      rotNextRotationTime[ti] += rotStepDurationTime[ti];
     }
   }
 
@@ -1763,9 +1767,6 @@ void loop()
             rotFirstColor[ti] = pBuffer[ti * 3];
             rotAmountColors[ti] = pBuffer[ti * 3 + 1];
             rotStepDurationTime[ti] = 10 * pBuffer[ti * 3 + 2];
-            if (rotStepDurationTime[ti] < MIN_COLOR_ROTATION_STEP_TIME)
-              rotStepDurationTime[ti] = MIN_COLOR_ROTATION_STEP_TIME;
-
             rotNextRotationTime[ti] = actime + rotStepDurationTime[ti];
           }
 
