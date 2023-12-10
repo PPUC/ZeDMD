@@ -1,6 +1,6 @@
 #define ZEDMD_VERSION_MAJOR 3 // X Digits
 #define ZEDMD_VERSION_MINOR 3 // Max 2 Digits
-#define ZEDMD_VERSION_PATCH 0 // Max 2 Digits
+#define ZEDMD_VERSION_PATCH 1 // Max 2 Digits
 
 #ifdef ZEDMD_128_64_2
 #define PANEL_WIDTH 128 // Width: number of LEDs for 1 panel.
@@ -70,8 +70,8 @@
 #define TOTAL_HEIGHT PANEL_HEIGHT
 #define TOTAL_BYTES (TOTAL_WIDTH * TOTAL_HEIGHT * 3)
 #define MAX_COLOR_ROTATIONS 8
-#define MIN_SPAN_ROT 60
-#define LED_CHECK_DELAY 1000 //ms per color
+#define MIN_COLOR_ROTATION_STEP_TIME 10 // ms between color rotations
+#define LED_CHECK_DELAY 1000 // ms per color
 
 #include <Arduino.h>
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
@@ -158,13 +158,13 @@ uint8_t existsBuffer[TOTAL_HEIGHT][TOTAL_WIDTH / 2] = {0};
 uint8_t doubleBuffer[TOTAL_BYTES] = {0};
 #endif
 
-// for color rotation
-unsigned char rotCols[64];
-unsigned long nextTime[MAX_COLOR_ROTATIONS];
-unsigned char firstCol[MAX_COLOR_ROTATIONS];
-unsigned char nCol[MAX_COLOR_ROTATIONS];
-unsigned char acFirst[MAX_COLOR_ROTATIONS];
-unsigned long timeSpan[MAX_COLOR_ROTATIONS];
+// color rotation
+unsigned char rotFirstColor[MAX_COLOR_ROTATIONS];
+unsigned char rotAmountColors[MAX_COLOR_ROTATIONS];
+unsigned int rotStepDurationTime[MAX_COLOR_ROTATIONS];
+unsigned long rotNextRotationTime[MAX_COLOR_ROTATIONS];
+unsigned char tmpColor[3] = { 0 };
+
 
 bool mode64 = false;
 bool upscaling = true;
@@ -661,14 +661,36 @@ void fillPanelUsingPalette()
   {
     for (int x = 0; x < TOTAL_WIDTH; x++)
     {
-      pos = y * TOTAL_WIDTH + x;
+      pos = (y * TOTAL_WIDTH + x) * 3;
 
       DrawPixel(
           x,
           y,
-          palette[rotCols[renderBuffer[pos]] * 3 + ordreRGB[acordreRGB * 3]],
-          palette[rotCols[renderBuffer[pos]] * 3 + ordreRGB[acordreRGB * 3 + 1]],
-          palette[rotCols[renderBuffer[pos]] * 3 + ordreRGB[acordreRGB * 3 + 2]]);
+          palette[renderBuffer[pos] + ordreRGB[acordreRGB * 3]],
+          palette[renderBuffer[pos] + ordreRGB[acordreRGB * 3 + 1]],
+          palette[renderBuffer[pos] + ordreRGB[acordreRGB * 3 + 2]]);
+    }
+  }
+}
+
+void fillPanelUsingChangedPalette(bool *paletteAffected)
+{
+  int pos;
+
+  for (int y = 0; y < TOTAL_HEIGHT; y++)
+  {
+    for (int x = 0; x < TOTAL_WIDTH; x++)
+    {
+      pos = (y * TOTAL_WIDTH + x) * 3;
+      if (paletteAffected[renderBuffer[pos]])
+      {
+        DrawPixel(
+            x,
+            y,
+            palette[renderBuffer[pos] + ordreRGB[acordreRGB * 3]],
+            palette[renderBuffer[pos] + ordreRGB[acordreRGB * 3 + 1]],
+            palette[renderBuffer[pos] + ordreRGB[acordreRGB * 3 + 2]]);
+      }
     }
   }
 }
@@ -771,7 +793,7 @@ void DisplayLogo(void)
   displayStatus = 1;
   MireActive = true;
   // Re-use this variable to save memory
-  nextTime[0] = millis();
+  rotNextRotationTime[0] = millis();
 }
 
 void DisplayUpdate(void)
@@ -807,7 +829,7 @@ void DisplayUpdate(void)
 
   displayStatus = 2;
   // Re-use this variable to save memory
-  nextTime[0] = millis() - (LOGO_TIMEOUT / 2);
+  rotNextRotationTime[0] = millis() - (LOGO_TIMEOUT / 2);
 }
 
 void ScreenSaver(void)
@@ -1068,29 +1090,27 @@ bool SerialReadBuffer(unsigned char *pBuffer, unsigned int BufferSize)
 
 void updateColorRotations(void)
 {
+  bool rotPaletteAffected[64] = { 0 };
   unsigned long actime = millis();
   bool rotfound = false;
   for (int ti = 0; ti < MAX_COLOR_ROTATIONS; ti++)
   {
-    if (firstCol[ti] == 255)
+    if (rotFirstColor[ti] == 255)
       continue;
-    if (actime >= nextTime[ti])
+
+    if (actime >= rotNextRotationTime[ti])
     {
-      nextTime[ti] = actime + timeSpan[ti];
-      acFirst[ti]++;
-      if (acFirst[ti] == nCol[ti])
-        acFirst[ti] = 0;
+      rotNextRotationTime[ti] = actime + rotStepDurationTime[ti];
+      memcpy(tmpColor, &palette[rotFirstColor[ti] * 3], 3);
+      memmove(&palette[rotFirstColor[ti] * 3], &palette[rotFirstColor[ti] * 3 + 3], rotAmountColors[ti] * 3 - 1);
+      memcpy(&palette[rotFirstColor[ti] * 3 + rotAmountColors[ti] * 3], tmpColor, 3);
+      memset(&rotPaletteAffected[rotFirstColor[ti]], 1, rotAmountColors[ti]);
       rotfound = true;
-      for (unsigned char tj = 0; tj < nCol[ti]; tj++)
-      {
-        rotCols[tj + firstCol[ti]] = tj + firstCol[ti] + acFirst[ti];
-        if (rotCols[tj + firstCol[ti]] >= firstCol[ti] + nCol[ti])
-          rotCols[tj + firstCol[ti]] -= nCol[ti];
-      }
     }
   }
+
   if (rotfound == true)
-    fillPanelUsingPalette();
+    fillPanelUsingChangedPalette(rotPaletteAffected);
 }
 
 bool wait_for_ctrl_chars(void)
@@ -1113,7 +1133,7 @@ bool wait_for_ctrl_chars(void)
       // While waiting for the next frame, perform in-frame color rotations.
       updateColorRotations();
     }
-    else if (displayStatus == 3 && (millis() - nextTime[0]) > LOGO_TIMEOUT)
+    else if (displayStatus == 3 && (millis() - rotNextRotationTime[0]) > LOGO_TIMEOUT)
     {
       ScreenSaver();
     }
@@ -1153,7 +1173,7 @@ void loop()
         continue;
       }
 
-      nextTime[0] = millis();
+      rotNextRotationTime[0] = millis();
       acordreRGB++;
       if (acordreRGB >= 6)
         acordreRGB = 0;
@@ -1172,7 +1192,7 @@ void loop()
         continue;
       }
 
-      nextTime[0] = millis();
+      rotNextRotationTime[0] = millis();
       lumstep++;
       if (lumstep >= 16)
         lumstep = 1;
@@ -1186,7 +1206,7 @@ void loop()
       ClearScreen();
       MireActive = false;
     }
-    else if ((millis() - nextTime[0]) > LOGO_TIMEOUT)
+    else if ((millis() - rotNextRotationTime[0]) > LOGO_TIMEOUT)
     {
       if (displayStatus == 1)
       {
@@ -1382,8 +1402,6 @@ void loop()
       {
         handshakeSucceeded = false;
         DisplayLogo();
-        for (int ti = 0; ti < 64; ti++)
-          rotCols[ti] = ti;
         Serial.write('A');
         break;
       }
@@ -1430,9 +1448,7 @@ void loop()
       {
         ClearScreen();
         displayStatus = 3;
-        for (int ti = 0; ti < 64; ti++)
-          rotCols[ti] = ti;
-        nextTime[0] = millis();
+        rotNextRotationTime[0] = millis();
         Serial.write('A');
         break;
       }
@@ -1462,7 +1478,7 @@ void loop()
 
       case 8: // mode 4 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 4 pixels par byte
       {
-        int bufferSize = 3 * 4 + 2 * RomWidthPlane * RomHeight;
+        int bufferSize = 12 + 2 * RomWidthPlane * RomHeight;
         unsigned char *buffer = (unsigned char *)malloc(bufferSize);
 
         if (SerialReadBuffer(buffer, bufferSize))
@@ -1475,16 +1491,10 @@ void loop()
           }
           renderBuffer = (unsigned char *)malloc(renderBufferSize);
           memset(renderBuffer, 0, renderBufferSize);
-          palette = (unsigned char *)malloc(3 * 4);
-          memset(palette, 0, 3 * 4);
+          palette = (unsigned char *)malloc(12);
+          memcpy(palette, buffer, 12);
 
-          for (int ti = 3; ti >= 0; ti--)
-          {
-            palette[ti * 3] = buffer[ti * 3];
-            palette[ti * 3 + 1] = buffer[ti * 3 + 1];
-            palette[ti * 3 + 2] = buffer[ti * 3 + 2];
-          }
-          unsigned char *frame = &buffer[3 * 4];
+          unsigned char *frame = &buffer[12];
           for (int tj = 0; tj < RomHeight; tj++)
           {
             for (int ti = 0; ti < RomWidthPlane; ti++)
@@ -1508,8 +1518,6 @@ void loop()
           free(buffer);
 
           mode64 = false;
-          for (int ti = 0; ti < 64; ti++)
-            rotCols[ti] = ti;
 
           ScaleImage(1);
           fillPanelUsingPalette();
@@ -1527,7 +1535,7 @@ void loop()
 
       case 7: // mode 16 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 2 pixels par byte
       {
-        int bufferSize = 3 * 4 + 4 * RomWidthPlane * RomHeight;
+        int bufferSize = 12 + 4 * RomWidthPlane * RomHeight;
         unsigned char *buffer = (unsigned char *)malloc(bufferSize);
 
         if (SerialReadBuffer(buffer, bufferSize))
@@ -1541,14 +1549,8 @@ void loop()
           renderBuffer = (unsigned char *)malloc(renderBufferSize);
           memset(renderBuffer, 0, renderBufferSize);
           palette = (unsigned char *)malloc(48);
-          memset(palette, 0, 48);
+          memcpy(palette, buffer, 48);
 
-          for (int ti = 3; ti >= 0; ti--)
-          {
-            palette[(4 * ti + 3) * 3] = buffer[ti * 3];
-            palette[(4 * ti + 3) * 3 + 1] = buffer[ti * 3 + 1];
-            palette[(4 * ti + 3) * 3 + 2] = buffer[ti * 3 + 2];
-          }
           palette[0] = palette[1] = palette[2] = 0;
           palette[3] = palette[3 * 3] / 3;
           palette[4] = palette[3 * 3 + 1] / 3;
@@ -1587,17 +1589,17 @@ void loop()
           palette[43] = palette[11 * 3 + 1] + 3 * ((palette[15 * 3 + 1] - palette[11 * 3 + 1]) / 4);
           palette[44] = palette[11 * 3 + 2] + 3 * ((palette[15 * 3 + 2] - palette[11 * 3 + 2]) / 4);
 
-          unsigned char *img = &buffer[3 * 4];
+          unsigned char *pBuffer = &buffer[12];
           for (int tj = 0; tj < RomHeight; tj++)
           {
             for (int ti = 0; ti < RomWidthPlane; ti++)
             {
               unsigned char mask = 1;
               unsigned char planes[4];
-              planes[0] = img[ti + tj * RomWidthPlane];
-              planes[1] = img[RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              planes[2] = img[2 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              planes[3] = img[3 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
+              planes[0] = pBuffer[ti + tj * RomWidthPlane];
+              planes[1] = pBuffer[RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
+              planes[2] = pBuffer[2 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
+              planes[3] = pBuffer[3 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
               for (int tk = 0; tk < 8; tk++)
               {
                 unsigned char idx = 0;
@@ -1617,8 +1619,6 @@ void loop()
           free(buffer);
 
           mode64 = false;
-          for (int ti = 0; ti < 64; ti++)
-            rotCols[ti] = ti;
 
           ScaleImage(1);
           fillPanelUsingPalette();
@@ -1636,7 +1636,7 @@ void loop()
 
       case 9: // mode 16 couleurs avec 1 palette 16 couleurs (16*3 bytes) suivis de 4 bytes par groupe de 8 points (séparés en plans de bits 4*512 bytes)
       {
-        int bufferSize = 3 * 16 + 4 * RomWidthPlane * RomHeight;
+        int bufferSize = 48 + 4 * RomWidthPlane * RomHeight;
         unsigned char *buffer = (unsigned char *)malloc(bufferSize);
 
         if (SerialReadBuffer(buffer, bufferSize))
@@ -1649,16 +1649,10 @@ void loop()
           }
           renderBuffer = (unsigned char *)malloc(renderBufferSize);
           memset(renderBuffer, 0, renderBufferSize);
-          palette = (unsigned char *)malloc(3 * 16);
-          memset(palette, 0, 3 * 16);
+          palette = (unsigned char *)malloc(48);
+          memcpy(palette, buffer, 48);
 
-          for (int ti = 15; ti >= 0; ti--)
-          {
-            palette[ti * 3] = buffer[ti * 3];
-            palette[ti * 3 + 1] = buffer[ti * 3 + 1];
-            palette[ti * 3 + 2] = buffer[ti * 3 + 2];
-          }
-          unsigned char *img = &buffer[3 * 16];
+          unsigned char *pBuffer = &buffer[48];
           for (int tj = 0; tj < RomHeight; tj++)
           {
             for (int ti = 0; ti < RomWidthPlane; ti++)
@@ -1666,10 +1660,10 @@ void loop()
               // on reconstitue un indice à partir des plans puis une couleur à partir de la palette
               unsigned char mask = 1;
               unsigned char planes[4];
-              planes[0] = img[ti + tj * RomWidthPlane];
-              planes[1] = img[RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              planes[2] = img[2 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              planes[3] = img[3 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
+              planes[0] = pBuffer[ti + tj * RomWidthPlane];
+              planes[1] = pBuffer[RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
+              planes[2] = pBuffer[2 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
+              planes[3] = pBuffer[3 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
               for (int tk = 0; tk < 8; tk++)
               {
                 unsigned char idx = 0;
@@ -1689,8 +1683,6 @@ void loop()
           free(buffer);
 
           mode64 = false;
-          for (int ti = 0; ti < 64; ti++)
-            rotCols[ti] = ti;
 
           ScaleImage(1);
           fillPanelUsingPalette();
@@ -1708,7 +1700,7 @@ void loop()
 
       case 11: // mode 64 couleurs avec 1 palette 64 couleurs (64*3 bytes) suivis de 6 bytes par groupe de 8 points (séparés en plans de bits 6*512 bytes) suivis de 3*8 bytes de rotations de couleurs
       {
-        int bufferSize = 3 * 64 + 6 * RomWidthPlane * RomHeight + 3 * MAX_COLOR_ROTATIONS;
+        int bufferSize = 192 + 6 * RomWidthPlane * RomHeight + 3 * MAX_COLOR_ROTATIONS;
         unsigned char *buffer = (unsigned char *)malloc(bufferSize);
 
         if (SerialReadBuffer(buffer, bufferSize))
@@ -1721,16 +1713,10 @@ void loop()
           }
           renderBuffer = (unsigned char *)malloc(renderBufferSize);
           memset(renderBuffer, 0, renderBufferSize);
-          palette = (unsigned char *)malloc(3 * 64);
-          memset(palette, 0, 3 * 64);
+          palette = (unsigned char *)malloc(192);
+          memcpy(palette, buffer, 192);
 
-          for (int ti = 63; ti >= 0; ti--)
-          {
-            palette[ti * 3] = buffer[ti * 3];
-            palette[ti * 3 + 1] = buffer[ti * 3 + 1];
-            palette[ti * 3 + 2] = buffer[ti * 3 + 2];
-          }
-          unsigned char *img = &buffer[3 * 64];
+          unsigned char *pBuffer = &buffer[192];
           for (int tj = 0; tj < RomHeight; tj++)
           {
             for (int ti = 0; ti < RomWidthPlane; ti++)
@@ -1738,12 +1724,12 @@ void loop()
               // on reconstitue un indice à partir des plans puis une couleur à partir de la palette
               unsigned char mask = 1;
               unsigned char planes[6];
-              planes[0] = img[ti + tj * RomWidthPlane];
-              planes[1] = img[RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              planes[2] = img[2 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              planes[3] = img[3 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              planes[4] = img[4 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              planes[5] = img[5 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
+              planes[0] = pBuffer[ti + tj * RomWidthPlane];
+              planes[1] = pBuffer[RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
+              planes[2] = pBuffer[2 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
+              planes[3] = pBuffer[3 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
+              planes[4] = pBuffer[4 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
+              planes[5] = pBuffer[5 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
               for (int tk = 0; tk < 8; tk++)
               {
                 unsigned char idx = 0;
@@ -1764,20 +1750,25 @@ void loop()
               }
             }
           }
-          img = &buffer[3 * 64 + 6 * RomWidthPlane * RomHeight];
+
+          // Handle up to 8 different rotations for each frame.
+          // first byte: first color in the rotation
+          // second byte: number of contiguous colors in the rotation
+          // third byte: delay between 2 rotations (5 -> 50ms, 12 -> 120ms)
+          pBuffer = &buffer[192 + 6 * RomWidthPlane * RomHeight];
           unsigned long actime = millis();
-          for (int ti = 0; ti < 64; ti++)
-            rotCols[ti] = ti;
+
           for (int ti = 0; ti < MAX_COLOR_ROTATIONS; ti++)
           {
-            firstCol[ti] = img[ti * 3];
-            nCol[ti] = img[ti * 3 + 1];
-            // acFirst[ti]=0;
-            timeSpan[ti] = 10 * img[ti * 3 + 2];
-            if (timeSpan[ti] < MIN_SPAN_ROT)
-              timeSpan[ti] = MIN_SPAN_ROT;
-            nextTime[ti] = actime + timeSpan[ti];
+            rotFirstColor[ti] = pBuffer[ti * 3];
+            rotAmountColors[ti] = pBuffer[ti * 3 + 1];
+            rotStepDurationTime[ti] = 10 * pBuffer[ti * 3 + 2];
+            if (rotStepDurationTime[ti] < MIN_COLOR_ROTATION_STEP_TIME)
+              rotStepDurationTime[ti] = MIN_COLOR_ROTATION_STEP_TIME;
+
+            rotNextRotationTime[ti] = actime + rotStepDurationTime[ti];
           }
+
           free(buffer);
 
           mode64 = true;
