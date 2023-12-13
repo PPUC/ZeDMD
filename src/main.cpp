@@ -1,8 +1,8 @@
 #define ZEDMD_VERSION_MAJOR 3 // X Digits
-#define ZEDMD_VERSION_MINOR 3 // Max 2 Digits
-#define ZEDMD_VERSION_PATCH 2 // Max 2 Digits
+#define ZEDMD_VERSION_MINOR 4 // Max 2 Digits
+#define ZEDMD_VERSION_PATCH 0 // Max 2 Digits
 
-#ifdef ZEDMD_128_64_2
+#ifdef ZEDMD_HD
 #define PANEL_WIDTH 128 // Width: number of LEDs for 1 panel.
 #define PANEL_HEIGHT 64 // Height: number of LEDs.
 #define PANELS_NUMBER 2 // Number of horizontally chained panels.
@@ -92,12 +92,10 @@ IPAddress ip;
 
 unsigned long rotNextRotationTime[1];
 #else
-#ifdef ZEDMD_128_64_2
-uint8_t doubleBuffer[TOTAL_HEIGHT][TOTAL_WIDTH] = {0};
-uint8_t existsBuffer[TOTAL_HEIGHT][TOTAL_WIDTH / 2] = {0};
+#ifdef ZEDMD_HD
+unsigned long rotNextRotationTime[1];
 #else
 uint8_t doubleBuffer[TOTAL_BYTES] = {0};
-#endif
 
 // color rotation
 unsigned char rotFirstColor[MAX_COLOR_ROTATIONS];
@@ -107,6 +105,7 @@ unsigned long rotNextRotationTime[MAX_COLOR_ROTATIONS];
 unsigned char tmpColor[3] = {0};
 
 bool upscaling = true;
+#endif
 #endif
 
 // Pinout derived from ESP32-HUB75-MatrixPanel-I2S-DMA.h
@@ -299,17 +298,12 @@ void ClearScreen()
 {
   dma_display->clearScreen();
   dma_display->setBrightness8(lumval[lumstep]);
-#ifndef ZEDMD_WIFI
-#ifdef ZEDMD_128_64_2
-  memset(doubleBuffer, 0, TOTAL_HEIGHT * TOTAL_WIDTH);
-  memset(existsBuffer, 0, TOTAL_HEIGHT * TOTAL_WIDTH / 2);
-#else
+#if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
   memset(doubleBuffer, 0, TOTAL_BYTES);
-#endif
 #endif
 }
 
-#ifndef ZEDMD_WIFI
+#if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
 bool CmpColor(uint8_t *px1, uint8_t *px2, uint8_t colors)
 {
   if (colors == 3)
@@ -618,17 +612,7 @@ void ScaleImage(uint8_t colors)
 
 void DrawPixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
 {
-#ifndef ZEDMD_WIFI
-#ifdef ZEDMD_128_64_2
-  uint8_t colors = ((r >> 5) << 5) + ((g >> 5) << 2) + (b >> 6);
-  uint8_t colorsExist = (r ? 8 : 0) + (g ? 4 : 0) + (b ? 2 : 0) + ((r || g || b) ? 1 : 0);
-  uint8_t buf = (x % 2) ? (existsBuffer[y][x / 2] >> 4) : ((existsBuffer[y][x / 2] << 4) >> 4);
-
-  if (colors != doubleBuffer[y][x] || colorsExist != buf)
-  {
-    doubleBuffer[y][x] = colors;
-    existsBuffer[y][x / 2] = (x % 2) ? (((existsBuffer[y][x / 2] << 4) >> 4) + (colorsExist << 4)) : (((existsBuffer[y][x / 2] >> 4) << 4) + colorsExist);
-#else
+#if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
   int pos = (y * TOTAL_WIDTH + x) * 3;
 
   if (r != doubleBuffer[pos] || g != doubleBuffer[pos + 1] || b != doubleBuffer[pos + 2])
@@ -637,14 +621,13 @@ void DrawPixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
     doubleBuffer[pos + 1] = g;
     doubleBuffer[pos + 2] = b;
 #endif
-#endif
     dma_display->drawPixelRGB888(x, y, r, g, b);
-#ifndef ZEDMD_WIFI
+#if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
   }
 #endif
 }
 
-void fillZoneRaw(uint8_t idx)
+void fillZoneRaw(uint8_t idx, uint8_t *pBuffer)
 {
   uint8_t yOffset = idx / (TOTAL_WIDTH / 16) * 8;
   uint8_t xOffset = (idx % (TOTAL_WIDTH / 16)) * 16;
@@ -658,9 +641,9 @@ void fillZoneRaw(uint8_t idx)
       DrawPixel(
           x + xOffset,
           y + yOffset,
-          renderBuffer[pos + ordreRGB[acordreRGB * 3]],
-          renderBuffer[pos + ordreRGB[acordreRGB * 3 + 1]],
-          renderBuffer[pos + ordreRGB[acordreRGB * 3 + 2]]);
+          pBuffer[pos + ordreRGB[acordreRGB * 3]],
+          pBuffer[pos + ordreRGB[acordreRGB * 3 + 1]],
+          pBuffer[pos + ordreRGB[acordreRGB * 3 + 2]]);
     }
   }
 }
@@ -705,7 +688,7 @@ void fillPanelUsingPalette()
   }
 }
 
-#ifndef ZEDMD_WIFI
+#if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
 void fillPanelUsingChangedPalette(bool *paletteAffected)
 {
   int pos;
@@ -1027,7 +1010,7 @@ void setup()
                 memcpy(renderBuffer, &pPacket[4], size);
               }
 
-              fillZoneRaw(idx);
+              fillZoneRaw(idx, renderBuffer);
               free(renderBuffer);
               break;
             }
@@ -1083,7 +1066,7 @@ bool SerialReadBuffer(unsigned char *pBuffer, unsigned int BufferSize)
       if (debugMode)
       {
         debugLines[4] = ++errorCount;
-#ifdef ZEDMD_128_64_2
+#ifdef ZEDMD_HD
         Say(9, remainingBytes);
         Say(10, chunkSize);
         Say(11, receivedBytes);
@@ -1161,7 +1144,7 @@ bool SerialReadBuffer(unsigned char *pBuffer, unsigned int BufferSize)
 
 void updateColorRotations(void)
 {
-#ifndef ZEDMD_WIFI
+#if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
   bool rotPaletteAffected[64] = {0};
   unsigned long actime = millis();
   bool rotfound = false;
@@ -1403,7 +1386,7 @@ void loop()
       break;
     }
 
-#ifndef ZEDMD_WIFI
+#if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
     case 20: // turn off upscaling
     {
       upscaling = false;
@@ -1596,7 +1579,29 @@ void loop()
       break;
     }
 
-#ifndef ZEDMD_WIFI
+#ifdef ZEDMD_HD
+    case 3: // mode RGB24
+    {
+      if (renderBufferInUse == 2)
+      {
+        renderBufferInUse = 1;
+        free(renderBuffer);
+      }
+
+      renderBuffer = (uint8_t *)malloc(16 * 8 * 3 + 1);
+
+      if (SerialReadBuffer(renderBuffer, 16 * 8 * 3))
+      {
+        fillZoneRaw(renderBuffer[0], &renderBuffer[1]);
+        free(renderBuffer);
+      }
+
+      renderBufferInUse = 0;
+      break;
+    }
+#endif
+
+#if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
     case 3: // mode RGB24
     {
       // We need to cover downscaling, too.
