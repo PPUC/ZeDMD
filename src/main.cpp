@@ -961,14 +961,17 @@ void setup()
       udp.onPacket([](AsyncUDPPacket packet)
       {
         if (packet.length() >= 1) {
+          if (MireActive)
+          {
+            MireActive = false;
+            ClearScreen();
+          }
+
           uint8_t *pPacket = packet.data();
           switch (pPacket[0])
           {
             case 10: // clear screen
             {
-              if (MireActive) {
-                MireActive = false;
-              }
               ClearScreen();
               break;
             }
