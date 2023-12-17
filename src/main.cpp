@@ -38,6 +38,7 @@
 // Commands:
 //  2: set rom frame size as (int16) width, (int16) height
 //  3: render raw data, RGB24
+//  4: render raw data, RGB24 zones streaming
 //  6: init palette (deprectated, backward compatibility)
 //  7: render 16 colors using a 4 color palette (3*4 bytes), 2 pixels per byte
 //  8: render 4 colors using a 4 color palette (3*4 bytes), 4 pixels per byte
@@ -70,6 +71,9 @@
 #define TOTAL_WIDTH_PLANE (TOTAL_WIDTH >> 3)
 #define TOTAL_HEIGHT PANEL_HEIGHT
 #define TOTAL_BYTES (TOTAL_WIDTH * TOTAL_HEIGHT * 3)
+#define ZONES_PER_ROW (TOTAL_WIDTH / 16)
+#define TOTAL_ZONES ((TOTAL_HEIGHT / 8) * ZONES_PER_ROW)
+#define ZONE_SIZE (16 * 8 * 3)
 #define MAX_COLOR_ROTATIONS 8
 #define LED_CHECK_DELAY 1000 // ms per color
 
@@ -95,8 +99,6 @@ unsigned long rotNextRotationTime[1];
 #ifdef ZEDMD_HD
 unsigned long rotNextRotationTime[1];
 #else
-uint8_t doubleBuffer[TOTAL_BYTES] = {0};
-
 // color rotation
 uint8_t rotFirstColor[MAX_COLOR_ROTATIONS];
 uint8_t rotAmountColors[MAX_COLOR_ROTATIONS];
@@ -297,9 +299,6 @@ void ClearScreen()
 {
   dma_display->clearScreen();
   dma_display->setBrightness8(lumval[lumstep]);
-#if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
-  memset(doubleBuffer, 0, TOTAL_BYTES);
-#endif
 }
 
 #if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
@@ -609,27 +608,10 @@ void ScaleImage(uint8_t colors)
 }
 #endif
 
-void DrawPixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
-{
-#if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
-  int pos = (y * TOTAL_WIDTH + x) * 3;
-
-  if (r != doubleBuffer[pos] || g != doubleBuffer[pos + 1] || b != doubleBuffer[pos + 2])
-  {
-    doubleBuffer[pos] = r;
-    doubleBuffer[pos + 1] = g;
-    doubleBuffer[pos + 2] = b;
-#endif
-    dma_display->drawPixelRGB888(x, y, r, g, b);
-#if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
-  }
-#endif
-}
-
 void fillZoneRaw(uint8_t idx, uint8_t *pBuffer)
 {
-  uint8_t yOffset = idx / (TOTAL_WIDTH / 16) * 8;
-  uint8_t xOffset = (idx % (TOTAL_WIDTH / 16)) * 16;
+  uint8_t yOffset = (idx / ZONES_PER_ROW) * 8;
+  uint8_t xOffset = (idx % ZONES_PER_ROW) * 16;
 
   for (uint8_t y = 0; y < 8; y++)
   {
@@ -637,7 +619,7 @@ void fillZoneRaw(uint8_t idx, uint8_t *pBuffer)
     {
       uint16_t pos = (y * 16 + x) * 3;
 
-      DrawPixel(
+      dma_display->drawPixelRGB888(
           x + xOffset,
           y + yOffset,
           pBuffer[pos + ordreRGB[acordreRGB * 3]],
@@ -657,7 +639,7 @@ void fillPanelRaw()
     {
       pos = (y * TOTAL_WIDTH + x) * 3;
 
-      DrawPixel(
+      dma_display->drawPixelRGB888(
           x,
           y,
           renderBuffer[pos + ordreRGB[acordreRGB * 3]],
@@ -677,7 +659,7 @@ void fillPanelUsingPalette()
     {
       pos = renderBuffer[y * TOTAL_WIDTH + x] * 3;
 
-      DrawPixel(
+      dma_display->drawPixelRGB888(
           x,
           y,
           palette[pos + ordreRGB[acordreRGB * 3]],
@@ -700,7 +682,7 @@ void fillPanelUsingChangedPalette(bool *paletteAffected)
       if (paletteAffected[pos])
       {
         pos *= 3;
-        DrawPixel(
+        dma_display->drawPixelRGB888(
             x,
             y,
             palette[pos + ordreRGB[acordreRGB * 3]],
@@ -1014,7 +996,7 @@ void setup()
 #endif
 }
 
-bool SerialReadBuffer(uint8_t *pBuffer, unsigned int BufferSize)
+bool SerialReadBuffer(uint8_t *pBuffer, unsigned int BufferSize, bool fixedSize = true)
 {
   memset(pBuffer, 0, BufferSize);
 
@@ -1095,17 +1077,12 @@ bool SerialReadBuffer(uint8_t *pBuffer, unsigned int BufferSize)
       debugLines[3] = tmp_status;
     }
 
-    if ((MZ_OK == status) && (uncompressed_buffer_size == BufferSize))
+    if ((MZ_OK == status) && (!fixedSize || (fixedSize  && uncompressed_buffer_size == BufferSize)))
     {
       if (debugMode)
       {
         Say(3, 0);
         debugLines[3] = 0;
-      }
-
-      while (Serial.available())
-      {
-        Serial.read();
       }
 
       return true;
@@ -1118,18 +1095,8 @@ bool SerialReadBuffer(uint8_t *pBuffer, unsigned int BufferSize)
       debugLines[3] = 99;
     }
 
-    while (Serial.available())
-    {
-      Serial.read();
-    }
-
     Serial.write('E');
     return false;
-  }
-
-  while (Serial.available())
-  {
-    Serial.read();
   }
 
   return true;
@@ -1178,6 +1145,12 @@ bool wait_for_ctrl_chars(void)
       if (Serial.read() != CtrlCharacters[nCtrlCharFound++])
       {
         nCtrlCharFound = 0;
+        if (debugMode)
+        {
+          // There's garbage on the line.
+          Say(3, 666);
+          debugLines[3] = 666;
+        }
       }
     }
 
@@ -1572,20 +1545,24 @@ void loop()
       break;
     }
 
-#if !defined(ZEDMD_WIFI) && defined(ZEDMD_HD)
-    case 3: // mode RGB24
+    case 4: // mode RGB24 zones streaming
     {
-      renderBuffer = (uint8_t *)malloc(16 * 8 * 3 + 1);
-
-      if (SerialReadBuffer(renderBuffer, 16 * 8 * 3 + 1))
+      renderBuffer = (uint8_t *)malloc(TOTAL_ZONES * ZONE_SIZE + ZONES_PER_ROW);
+      if (SerialReadBuffer(renderBuffer, TOTAL_ZONES * ZONE_SIZE + ZONES_PER_ROW, false))
       {
-        fillZoneRaw(renderBuffer[0], &renderBuffer[1]);
+        uint16_t idx = 0;
+        // SerialReadBuffer prefills buffer with zeros. That will fill Zone 0 black if buffer is not used entirely.
+        // Ensure that Zone 0 is only allowed at the beginning of the buffer.
+        while (idx <= ((TOTAL_ZONES * ZONE_SIZE + ZONES_PER_ROW) - (ZONE_SIZE + 1)) && (renderBuffer[idx] < TOTAL_ZONES) && (idx == 0 || renderBuffer[idx] > 0))
+        {
+          fillZoneRaw(renderBuffer[idx], &renderBuffer[++idx]);
+          idx += ZONE_SIZE;
+        }
       }
       
       free(renderBuffer);
       break;
     }
-#endif
 
 #if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
     case 3: // mode RGB24
