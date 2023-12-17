@@ -17,7 +17,7 @@
 #define SERIAL_TIMEOUT 8       // Time in milliseconds to wait for the next data chunk.
 #define SERIAL_BUFFER 8192     // Serial buffer size in byte.
 #define LOGO_TIMEOUT 20000     // Time in milliseconds before the logo vanishes.
-#define FLOW_CONTROL_TIMEOUT 1 // Time in milliseconds to wait before sensinf a new ready signal.
+#define FLOW_CONTROL_TIMEOUT 1 // Time in milliseconds to wait before sending a new ready signal.
 
 // ------------------------------------------ ZeDMD by MK47 & Zedrummer (http://ppuc.org) --------------------------------------------------
 // - If you have blurry pictures, the display is not clean, try to reduce the input voltage of your LED matrix panels, often, 5V panels need
