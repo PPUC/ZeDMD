@@ -1,8 +1,8 @@
 #define ZEDMD_VERSION_MAJOR 3 // X Digits
-#define ZEDMD_VERSION_MINOR 3 // Max 2 Digits
-#define ZEDMD_VERSION_PATCH 1 // Max 2 Digits
+#define ZEDMD_VERSION_MINOR 4 // Max 2 Digits
+#define ZEDMD_VERSION_PATCH 0 // Max 2 Digits
 
-#ifdef ZEDMD_128_64_2
+#ifdef ZEDMD_HD
 #define PANEL_WIDTH 128 // Width: number of LEDs for 1 panel.
 #define PANEL_HEIGHT 64 // Height: number of LEDs.
 #define PANELS_NUMBER 2 // Number of horizontally chained panels.
@@ -17,7 +17,7 @@
 #define SERIAL_TIMEOUT 8       // Time in milliseconds to wait for the next data chunk.
 #define SERIAL_BUFFER 8192     // Serial buffer size in byte.
 #define LOGO_TIMEOUT 20000     // Time in milliseconds before the logo vanishes.
-#define FLOW_CONTROL_TIMEOUT 1 // Time in milliseconds to wait before sensinf a new ready signal.
+#define FLOW_CONTROL_TIMEOUT 1 // Time in milliseconds to wait before sending a new ready signal.
 
 // ------------------------------------------ ZeDMD by MK47 & Zedrummer (http://ppuc.org) --------------------------------------------------
 // - If you have blurry pictures, the display is not clean, try to reduce the input voltage of your LED matrix panels, often, 5V panels need
@@ -38,6 +38,7 @@
 // Commands:
 //  2: set rom frame size as (int16) width, (int16) height
 //  3: render raw data, RGB24
+//  4: render raw data, RGB24 zones streaming
 //  6: init palette (deprectated, backward compatibility)
 //  7: render 16 colors using a 4 color palette (3*4 bytes), 2 pixels per byte
 //  8: render 4 colors using a 4 color palette (3*4 bytes), 4 pixels per byte
@@ -58,6 +59,7 @@
 // 26: turn on flow control version 2
 // 27: set WiFi SSID
 // 28: set WiFi password
+// 29: set WiFi port
 // 30: save settings
 // 31: reset
 // 32: get version string, returns (int8) major, (int8) minor, (int8) patch level
@@ -69,6 +71,9 @@
 #define TOTAL_WIDTH_PLANE (TOTAL_WIDTH >> 3)
 #define TOTAL_HEIGHT PANEL_HEIGHT
 #define TOTAL_BYTES (TOTAL_WIDTH * TOTAL_HEIGHT * 3)
+#define ZONES_PER_ROW (TOTAL_WIDTH / 16)
+#define TOTAL_ZONES ((TOTAL_HEIGHT / 8) * ZONES_PER_ROW)
+#define ZONE_SIZE (16 * 8 * 3)
 #define MAX_COLOR_ROTATIONS 8
 #define LED_CHECK_DELAY 1000 // ms per color
 
@@ -82,13 +87,27 @@
 #include <WiFi.h>
 #include <AsyncUDP.h>
 
-const char *ssid = "****";
-const char *pwd = "****";
-
-uint8_t udpCurrentFrameId = 255;
+String ssid;
+String pwd;
+uint16_t port;
 
 AsyncUDP udp;
 IPAddress ip;
+
+unsigned long rotNextRotationTime[1];
+#else
+#ifdef ZEDMD_HD
+unsigned long rotNextRotationTime[1];
+#else
+// color rotation
+uint8_t rotFirstColor[MAX_COLOR_ROTATIONS];
+uint8_t rotAmountColors[MAX_COLOR_ROTATIONS];
+unsigned int rotStepDurationTime[MAX_COLOR_ROTATIONS];
+unsigned long rotNextRotationTime[MAX_COLOR_ROTATIONS];
+uint8_t tmpColor[3] = {0};
+
+bool upscaling = true;
+#endif
 #endif
 
 // Pinout derived from ESP32-HUB75-MatrixPanel-I2S-DMA.h
@@ -120,7 +139,7 @@ bool debugMode = false;
 unsigned int debugLines[6] = {0};
 
 // !!!!! NE METTRE AUCUNE VALEURE IDENTIQUE !!!!!
-unsigned char CtrlCharacters[6] = {0x5a, 0x65, 0x64, 0x72, 0x75, 0x6d};
+uint8_t CtrlCharacters[6] = {0x5a, 0x65, 0x64, 0x72, 0x75, 0x6d};
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 bool lumtxt[16 * 5] = {0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0,
@@ -129,7 +148,7 @@ bool lumtxt[16 * 5] = {0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0,
                        0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0,
                        0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 0, 1, 0};
 
-unsigned char lumval[16] = {0, 2, 4, 7, 11, 18, 30, 40, 50, 65, 80, 100, 125, 160, 200, 255}; // Non-linear brightness progression
+uint8_t lumval[16] = {0, 2, 4, 7, 11, 18, 30, 40, 50, 65, 80, 100, 125, 160, 200, 255}; // Non-linear brightness progression
 
 HUB75_I2S_CFG::i2s_pins _pins = {R1_PIN, G1_PIN, B1_PIN, R2_PIN, G2_PIN, B2_PIN, A_PIN, B_PIN, C_PIN, D_PIN, E_PIN, LAT_PIN, OE_PIN, CLK_PIN};
 HUB75_I2S_CFG mxconfig(
@@ -146,32 +165,15 @@ int ordreRGB[3 * 6] = {0, 1, 2, 2, 0, 1, 1, 2, 0,
                        0, 2, 1, 1, 0, 2, 2, 1, 0};
 int acordreRGB = 0;
 
-unsigned char *palette;
-unsigned char *renderBuffer;
-uint8_t renderBufferInUse = 0; // 0: not used; 1: USB; 2: WiFi
-
-#ifdef ZEDMD_128_64_2
-uint8_t doubleBuffer[TOTAL_HEIGHT][TOTAL_WIDTH] = {0};
-uint8_t existsBuffer[TOTAL_HEIGHT][TOTAL_WIDTH / 2] = {0};
-#else
-uint8_t doubleBuffer[TOTAL_BYTES] = {0};
-#endif
-
-// color rotation
-unsigned char rotFirstColor[MAX_COLOR_ROTATIONS];
-unsigned char rotAmountColors[MAX_COLOR_ROTATIONS];
-unsigned int rotStepDurationTime[MAX_COLOR_ROTATIONS];
-unsigned long rotNextRotationTime[MAX_COLOR_ROTATIONS];
-unsigned char tmpColor[3] = { 0 };
-
+uint8_t *palette;
+uint8_t *renderBuffer;
 
 bool mode64 = false;
-bool upscaling = true;
 
 int RomWidth = 128, RomHeight = 32;
 int RomWidthPlane = 128 >> 3;
 
-unsigned char lumstep = 1;
+uint8_t lumstep = 1;
 
 bool MireActive = false;
 // 0: screen saver
@@ -185,7 +187,7 @@ bool compression = false;
 int serialTransferChunkSize = 256;
 unsigned int frameCount = 0;
 unsigned int errorCount = 0;
-unsigned char flowControlCounter = 0;
+uint8_t flowControlCounter = 0;
 
 void DisplayChiffre(unsigned int chf, int x, int y, int R, int G, int B)
 {
@@ -222,7 +224,7 @@ void DisplayChiffre(unsigned int chf, int x, int y, int R, int G, int B)
   }
 }
 
-void DisplayNombre(unsigned int chf, unsigned char nc, int x, int y, int R, int G, int B)
+void DisplayNombre(unsigned int chf, uint8_t nc, int x, int y, int R, int G, int B)
 {
   // affiche un nombre verticalement
   unsigned int acc = chf, acd = 1;
@@ -286,7 +288,7 @@ void DisplayText(bool *text, int width, int x, int y, int R, int G, int B)
   }
 }
 
-void Say(unsigned char where, unsigned int what)
+void Say(uint8_t where, unsigned int what)
 {
   DisplayNombre(where, 3, 0, where * 5, 255, 255, 255);
   if (what != (unsigned int)-1)
@@ -297,15 +299,9 @@ void ClearScreen()
 {
   dma_display->clearScreen();
   dma_display->setBrightness8(lumval[lumstep]);
-
-#ifdef ZEDMD_128_64_2
-  memset(doubleBuffer, 0, TOTAL_HEIGHT * TOTAL_WIDTH);
-  memset(existsBuffer, 0, TOTAL_HEIGHT * TOTAL_WIDTH / 2);
-#else
-  memset(doubleBuffer, 0, TOTAL_BYTES);
-#endif
 }
 
+#if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
 bool CmpColor(uint8_t *px1, uint8_t *px2, uint8_t colors)
 {
   if (colors == 3)
@@ -318,7 +314,7 @@ bool CmpColor(uint8_t *px1, uint8_t *px2, uint8_t colors)
   return px1[0] == px2[0];
 }
 
-void SetColor(unsigned char *px1, unsigned char *px2, uint8_t colors)
+void SetColor(uint8_t *px1, uint8_t *px2, uint8_t colors)
 {
   px1[0] = px2[0];
 
@@ -385,7 +381,7 @@ void ScaleImage(uint8_t colors)
     return;
   }
 
-  unsigned char *panel = (unsigned char *)malloc(RomWidth * RomHeight * colors);
+  uint8_t *panel = (uint8_t *)malloc(RomWidth * RomHeight * colors);
   memcpy(panel, renderBuffer, RomWidth * RomHeight * colors);
   memset(renderBuffer, 0, TOTAL_WIDTH * TOTAL_HEIGHT);
 
@@ -610,29 +606,26 @@ void ScaleImage(uint8_t colors)
 
   free(panel);
 }
-
-void DrawPixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
-{
-#ifdef ZEDMD_128_64_2
-  uint8_t colors = ((r >> 5) << 5) + ((g >> 5) << 2) + (b >> 6);
-  uint8_t colorsExist = (r ? 8 : 0) + (g ? 4 : 0) + (b ? 2 : 0) + ((r || g || b) ? 1 : 0);
-  uint8_t buf = (x % 2) ? (existsBuffer[y][x / 2] >> 4) : ((existsBuffer[y][x / 2] << 4) >> 4);
-
-  if (colors != doubleBuffer[y][x] || colorsExist != buf)
-  {
-    doubleBuffer[y][x] = colors;
-    existsBuffer[y][x / 2] = (x % 2) ? (((existsBuffer[y][x / 2] << 4) >> 4) + (colorsExist << 4)) : (((existsBuffer[y][x / 2] >> 4) << 4) + colorsExist);
-#else
-  int pos = (y * TOTAL_WIDTH + x) * 3;
-
-  if (r != doubleBuffer[pos] || g != doubleBuffer[pos + 1] || b != doubleBuffer[pos + 2])
-  {
-    doubleBuffer[pos] = r;
-    doubleBuffer[pos + 1] = g;
-    doubleBuffer[pos + 2] = b;
 #endif
 
-    dma_display->drawPixelRGB888(x, y, r, g, b);
+void fillZoneRaw(uint8_t idx, uint8_t *pBuffer)
+{
+  uint8_t yOffset = (idx / ZONES_PER_ROW) * 8;
+  uint8_t xOffset = (idx % ZONES_PER_ROW) * 16;
+
+  for (uint8_t y = 0; y < 8; y++)
+  {
+    for (uint8_t x = 0; x < 16; x++)
+    {
+      uint16_t pos = (y * 16 + x) * 3;
+
+      dma_display->drawPixelRGB888(
+          x + xOffset,
+          y + yOffset,
+          pBuffer[pos + ordreRGB[acordreRGB * 3]],
+          pBuffer[pos + ordreRGB[acordreRGB * 3 + 1]],
+          pBuffer[pos + ordreRGB[acordreRGB * 3 + 2]]);
+    }
   }
 }
 
@@ -646,7 +639,7 @@ void fillPanelRaw()
     {
       pos = (y * TOTAL_WIDTH + x) * 3;
 
-      DrawPixel(
+      dma_display->drawPixelRGB888(
           x,
           y,
           renderBuffer[pos + ordreRGB[acordreRGB * 3]],
@@ -666,7 +659,7 @@ void fillPanelUsingPalette()
     {
       pos = renderBuffer[y * TOTAL_WIDTH + x] * 3;
 
-      DrawPixel(
+      dma_display->drawPixelRGB888(
           x,
           y,
           palette[pos + ordreRGB[acordreRGB * 3]],
@@ -676,6 +669,7 @@ void fillPanelUsingPalette()
   }
 }
 
+#if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
 void fillPanelUsingChangedPalette(bool *paletteAffected)
 {
   int pos;
@@ -688,7 +682,7 @@ void fillPanelUsingChangedPalette(bool *paletteAffected)
       if (paletteAffected[pos])
       {
         pos *= 3;
-        DrawPixel(
+        dma_display->drawPixelRGB888(
             x,
             y,
             palette[pos + ordreRGB[acordreRGB * 3]],
@@ -698,6 +692,7 @@ void fillPanelUsingChangedPalette(bool *paletteAffected)
     }
   }
 }
+#endif
 
 void LoadOrdreRGB()
 {
@@ -731,9 +726,40 @@ void SaveLum()
   flum.close();
 }
 
+#ifdef ZEDMD_WIFI
+bool LoadWiFiConfig()
+{
+  File wifiConfig = LittleFS.open("/wifi_config.txt", "r");
+  if (!wifiConfig)
+    return false;
+
+  while (wifiConfig.available())
+  {
+    ssid = wifiConfig.readStringUntil('\n');
+    pwd = wifiConfig.readStringUntil('\n');
+    port = wifiConfig.read();
+  }
+  wifiConfig.close();
+  return true;
+}
+
+bool SaveWiFiConfig()
+{
+  File wifiConfig = LittleFS.open("/wifi_config.txt", "w");
+  if (!wifiConfig)
+    return false;
+
+  wifiConfig.println(ssid);
+  wifiConfig.println(pwd);
+  wifiConfig.write(port);
+  wifiConfig.close();
+  return true;
+}
+#endif
+
 void ledTester(void)
 {
-  uint8_t col[3] = { 255,0,0 };
+  uint8_t col[3] = {255, 0, 0};
   dma_display->fillScreenRGB888(col[ordreRGB[acordreRGB * 3]], col[ordreRGB[acordreRGB * 3 + 1]], col[ordreRGB[acordreRGB * 3 + 2]]);
   delay(LED_CHECK_DELAY);
 
@@ -772,7 +798,7 @@ void DisplayLogo(void)
     return;
   }
 
-  renderBuffer = (unsigned char *)malloc(TOTAL_BYTES);
+  renderBuffer = (uint8_t *)malloc(TOTAL_BYTES);
   for (unsigned int tj = 0; tj < TOTAL_BYTES; tj++)
   {
     renderBuffer[tj] = flogo.read();
@@ -787,8 +813,10 @@ void DisplayLogo(void)
   DisplayText(lumtxt, 16, TOTAL_WIDTH / 2 - 16 / 2 - 2 * 4 / 2, TOTAL_HEIGHT - 5, 255, 255, 255);
   DisplayLum();
 #ifdef ZEDMD_WIFI
-  if (ip = WiFi.localIP()) {
-    for (int i = 0; i < 4; i++) {
+  if (ip = WiFi.localIP())
+  {
+    for (int i = 0; i < 4; i++)
+    {
       DisplayNombre(ip[i], 3, i * 3 * 4 + i, 0, 200, 200, 200);
     }
   }
@@ -820,7 +848,7 @@ void DisplayUpdate(void)
     return;
   }
 
-  renderBuffer = (unsigned char *)malloc(TOTAL_BYTES);
+  renderBuffer = (uint8_t *)malloc(TOTAL_BYTES);
   for (unsigned int tj = 0; tj < TOTAL_BYTES; tj++)
   {
     renderBuffer[tj] = flogo.read();
@@ -853,7 +881,8 @@ void WiFiEvent(WiFiEvent_t event)
   {
   case ARDUINO_EVENT_WIFI_STA_GOT_IP:
     ip = WiFi.localIP();
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++)
+    {
       DisplayNombre(ip[i], 3, i * 3 * 4 + i, 0, 200, 200, 200);
     }
     break;
@@ -899,84 +928,80 @@ void setup()
   DisplayLogo();
 
 #ifdef ZEDMD_WIFI
-  WiFi.disconnect(true);
-  // register event handler
-  WiFi.onEvent(WiFiEvent);
+  if (LoadWiFiConfig())
+  {
+    WiFi.disconnect(true);
+    // register event handler
+    WiFi.onEvent(WiFiEvent);
 
-  // Initiate connection
-  WiFi.begin(ssid, pwd);
+    // Initiate connection
+    WiFi.begin(ssid.c_str(), pwd.c_str());
 
-  uint8_t result = WiFi.waitForConnectResult();
-
-  if(udp.listen(3333)) {
-    udp.onPacket([](AsyncUDPPacket packet) {
-      if (packet.length() >= 2) {
-        if (MireActive) {
-          ClearScreen();
-          MireActive = false;
-        }
-
-        if (renderBufferInUse == 0) {
-          renderBuffer = (uint8_t*)malloc(TOTAL_BYTES);
-          memset(renderBuffer, 0, TOTAL_BYTES);
-          renderBufferInUse = 2;
-        }
-        else if (renderBufferInUse == 1) {
-          // Blocked by rendering over USB.
-          return;
-        }
-
-        uint8_t *pPacket = packet.data();
-        uint8_t compressed = pPacket[1] & 128;
-        uint8_t render = pPacket[1] & 64;
-        uint8_t frameId = pPacket[1] & 63;
-
-        if (render == 64) {
-          if (frameId == udpCurrentFrameId) {
-            fillPanelRaw();
-            udpCurrentFrameId++;
-            if (udpCurrentFrameId >= 64) {
-              udpCurrentFrameId = 0;
-            }
-          }
-          return;
-        }
-        else if (frameId != udpCurrentFrameId) {
-          fillPanelRaw();
-          udpCurrentFrameId = frameId;
-        }
-
-        if (frameId == udpCurrentFrameId)
-        {
-          if (compressed == 128)
+    uint8_t result = WiFi.waitForConnectResult();
+    if (udp.listen(port))
+    {
+      udp.onPacket([](AsyncUDPPacket packet)
+      {
+        if (packet.length() >= 1) {
+          if (MireActive)
           {
-            mz_ulong uncompressedBufferSize;
-            mz_ulong udpPayloadSize = packet.length() - 3;
+            MireActive = false;
+            ClearScreen();
+          }
 
-            int status = mz_uncompress2(&renderBuffer[pPacket[2] * TOTAL_WIDTH * 3], &uncompressedBufferSize, pPacket + 3, (mz_ulong *)&udpPayloadSize);
-            if (status != MZ_OK)
+          uint8_t *pPacket = packet.data();
+          switch (pPacket[0])
+          {
+            case 10: // clear screen
             {
-              int tmp_status = (status >= 0) ? status : (-1 * status) + 100;
-              Say(0, tmp_status);
+              ClearScreen();
+              break;
+            }
+
+            case 3: // RGB24
+            {
+              uint8_t compressed = pPacket[1] & 128;
+              uint8_t idx = pPacket[1] & 127;
+              int size = (int)(pPacket[3]) + (((int)pPacket[2]) << 8);
+
+              renderBuffer = (uint8_t*)malloc(16 * 8 * 3);
+
+              if (compressed == 128)
+              {
+                mz_ulong uncompressedBufferSize = 16 * 8 * 3;
+                mz_ulong udpPayloadSize = (mz_ulong) size;
+
+                int status = mz_uncompress2(renderBuffer, &uncompressedBufferSize, &pPacket[4], (mz_ulong *)&udpPayloadSize);
+                if (status != MZ_OK || uncompressedBufferSize != 16 * 8 * 3)
+                {
+                  int tmp_status = (status >= 0) ? status : (-1 * status) + 100;
+                  if (debugMode) Say(0, tmp_status);
+                  return;
+                }
+              }
+              else
+              {
+                memcpy(renderBuffer, &pPacket[4], size);
+              }
+
+              fillZoneRaw(idx, renderBuffer);
+              free(renderBuffer);
+              break;
             }
           }
-          else
-          {
-            memcpy(&renderBuffer[pPacket[2] * TOTAL_WIDTH * 3], pPacket + 3, packet.length() - 3);
-          }
         }
-      }
-    });
+      });
+    }
   }
 #endif
 }
 
-bool SerialReadBuffer(unsigned char *pBuffer, unsigned int BufferSize)
+bool SerialReadBuffer(uint8_t *pBuffer, unsigned int BufferSize, bool fixedSize = true)
 {
   memset(pBuffer, 0, BufferSize);
 
   unsigned int transferBufferSize = BufferSize;
-  unsigned char *transferBuffer;
+  uint8_t *transferBuffer;
 
   if (compression)
   {
@@ -985,7 +1010,7 @@ bool SerialReadBuffer(unsigned char *pBuffer, unsigned int BufferSize)
     transferBufferSize = ((((unsigned int)byteArray[0]) << 8) +
                           ((unsigned int)byteArray[1]));
 
-    transferBuffer = (unsigned char *)malloc(transferBufferSize);
+    transferBuffer = (uint8_t *)malloc(transferBufferSize);
   }
   else
   {
@@ -1016,7 +1041,7 @@ bool SerialReadBuffer(unsigned char *pBuffer, unsigned int BufferSize)
       if (debugMode)
       {
         debugLines[4] = ++errorCount;
-#ifdef ZEDMD_128_64_2
+#ifdef ZEDMD_HD
         Say(9, remainingBytes);
         Say(10, chunkSize);
         Say(11, receivedBytes);
@@ -1052,17 +1077,12 @@ bool SerialReadBuffer(unsigned char *pBuffer, unsigned int BufferSize)
       debugLines[3] = tmp_status;
     }
 
-    if ((MZ_OK == status) && (uncompressed_buffer_size == BufferSize))
+    if ((MZ_OK == status) && (!fixedSize || (fixedSize  && uncompressed_buffer_size == BufferSize)))
     {
       if (debugMode)
       {
         Say(3, 0);
         debugLines[3] = 0;
-      }
-
-      while (Serial.available())
-      {
-        Serial.read();
       }
 
       return true;
@@ -1075,18 +1095,8 @@ bool SerialReadBuffer(unsigned char *pBuffer, unsigned int BufferSize)
       debugLines[3] = 99;
     }
 
-    while (Serial.available())
-    {
-      Serial.read();
-    }
-
     Serial.write('E');
     return false;
-  }
-
-  while (Serial.available())
-  {
-    Serial.read();
   }
 
   return true;
@@ -1094,7 +1104,8 @@ bool SerialReadBuffer(unsigned char *pBuffer, unsigned int BufferSize)
 
 void updateColorRotations(void)
 {
-  bool rotPaletteAffected[64] = { 0 };
+#if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
+  bool rotPaletteAffected[64] = {0};
   unsigned long actime = millis();
   bool rotfound = false;
   for (int ti = 0; ti < MAX_COLOR_ROTATIONS; ti++)
@@ -1119,12 +1130,13 @@ void updateColorRotations(void)
 
   if (rotfound == true)
     fillPanelUsingChangedPalette(rotPaletteAffected);
+#endif
 }
 
 bool wait_for_ctrl_chars(void)
 {
   unsigned long ms = millis();
-  unsigned char nCtrlCharFound = 0;
+  uint8_t nCtrlCharFound = 0;
 
   while (nCtrlCharFound < N_CTRL_CHARS)
   {
@@ -1133,6 +1145,12 @@ bool wait_for_ctrl_chars(void)
       if (Serial.read() != CtrlCharacters[nCtrlCharFound++])
       {
         nCtrlCharFound = 0;
+        if (debugMode)
+        {
+          // There's garbage on the line.
+          Say(3, 666);
+          debugLines[3] = 666;
+        }
       }
     }
 
@@ -1245,8 +1263,9 @@ void loop()
     // Updates to mode64 color rotations have been handled within wait_for_ctrl_chars(), now reset it to false.
     mode64 = false;
 
-    unsigned char c4;
-    while (Serial.available() == 0);
+    uint8_t c4;
+    while (Serial.available() == 0)
+      ;
     c4 = Serial.read();
 
     if (debugMode)
@@ -1263,539 +1282,599 @@ void loop()
 
     switch (c4)
     {
-      case 12: // ask for resolution (and shake hands)
+    case 12: // ask for resolution (and shake hands)
+    {
+      for (int i = 0; i < N_INTERMEDIATE_CTR_CHARS; i++)
       {
-        for (int i = 0; i < N_INTERMEDIATE_CTR_CHARS; i++)
-        {
-          Serial.write(CtrlCharacters[i]);
-        }
-        Serial.write(TOTAL_WIDTH & 0xff);
-        Serial.write((TOTAL_WIDTH >> 8) & 0xff);
-        Serial.write(TOTAL_HEIGHT & 0xff);
-        Serial.write((TOTAL_HEIGHT >> 8) & 0xff);
-        handshakeSucceeded = true;
-        break;
+        Serial.write(CtrlCharacters[i]);
       }
+      Serial.write(TOTAL_WIDTH & 0xff);
+      Serial.write((TOTAL_WIDTH >> 8) & 0xff);
+      Serial.write(TOTAL_HEIGHT & 0xff);
+      Serial.write((TOTAL_HEIGHT >> 8) & 0xff);
+      handshakeSucceeded = true;
+      break;
+    }
 
-      case 2: // set rom frame size
+    case 2: // set rom frame size
+    {
+      uint8_t tbuf[4];
+      if (SerialReadBuffer(tbuf, 4))
       {
-        unsigned char tbuf[4];
-        if (SerialReadBuffer(tbuf, 4))
+        RomWidth = (int)(tbuf[0]) + (int)(tbuf[1] << 8);
+        RomHeight = (int)(tbuf[2]) + (int)(tbuf[3] << 8);
+        RomWidthPlane = RomWidth >> 3;
+        if (debugMode)
         {
-          RomWidth = (int)(tbuf[0]) + (int)(tbuf[1] << 8);
-          RomHeight = (int)(tbuf[2]) + (int)(tbuf[3] << 8);
-          RomWidthPlane = RomWidth >> 3;
-          if (debugMode)
-          {
-            DisplayNombre(RomWidth, 3, TOTAL_WIDTH - 7 * 4, 4, 200, 200, 200);
-            DisplayNombre(RomHeight, 2, TOTAL_WIDTH - 3 * 4, 4, 200, 200, 200);
-          }
+          DisplayNombre(RomWidth, 3, TOTAL_WIDTH - 7 * 4, 4, 200, 200, 200);
+          DisplayNombre(RomHeight, 2, TOTAL_WIDTH - 3 * 4, 4, 200, 200, 200);
         }
-        break;
       }
+      break;
+    }
 
-      case 13: // set serial transfer chunk size
+    case 13: // set serial transfer chunk size
+    {
+      while (Serial.available() == 0)
+        ;
+      int tmpSerialTransferChunkSize = ((int)Serial.read()) * 256;
+      if (tmpSerialTransferChunkSize <= SERIAL_BUFFER)
       {
-        while (Serial.available() == 0)
-          ;
-        int tmpSerialTransferChunkSize = ((int)Serial.read()) * 256;
-        if (tmpSerialTransferChunkSize <= SERIAL_BUFFER)
+        serialTransferChunkSize = tmpSerialTransferChunkSize;
+        // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
+        Serial.write('A');
+      }
+      else
+      {
+        Serial.write('E');
+      }
+      break;
+    }
+
+    case 14: // enable serial transfer compression
+    {
+      compression = true;
+      Serial.write('A');
+      break;
+    }
+
+    case 15: // disable serial transfer compression
+    {
+      compression = false;
+      Serial.write('A');
+      break;
+    }
+
+    case 16:
+    {
+      Serial.write('A');
+      ledTester();
+      break;
+    }
+
+#if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
+    case 20: // turn off upscaling
+    {
+      upscaling = false;
+      Serial.write('A');
+      break;
+    }
+
+    case 21: // turn on upscaling
+      upscaling = true;
+      Serial.write('A');
+      break;
+#endif
+
+    case 22: // set brightness
+    {
+      uint8_t tbuf[1];
+      if (SerialReadBuffer(tbuf, 1))
+      {
+        if (tbuf[0] > 0 && tbuf[0] < 16)
         {
-          serialTransferChunkSize = tmpSerialTransferChunkSize;
-          // Send an (A)cknowledge signal to tell the client that we successfully read the chunk.
+          lumstep = tbuf[0];
+          dma_display->setBrightness8(lumval[lumstep]);
           Serial.write('A');
         }
         else
         {
           Serial.write('E');
         }
-        break;
       }
+      break;
+    }
 
-      case 14: // enable serial transfer compression
+    case 23: // set RGB order
+    {
+      uint8_t tbuf[1];
+      if (SerialReadBuffer(tbuf, 1))
       {
-        compression = true;
-        Serial.write('A');
-        break;
-      }
-
-      case 15: // disable serial transfer compression
-      {
-        compression = false;
-        Serial.write('A');
-        break;
-      }
-
-      case 16:
-      {
-        ledTester();
-        break;
-      }
-
-      case 20: // turn off upscaling
-      {
-        upscaling = false;
-        Serial.write('A');
-        break;
-      }
-
-      case 21: // turn on upscaling
-        upscaling = true;
-        Serial.write('A');
-        break;
-
-      case 22: // set brightness
-      {
-        unsigned char tbuf[1];
-        if (SerialReadBuffer(tbuf, 1))
+        if (tbuf[0] >= 0 && tbuf[0] < 6)
         {
-          if (tbuf[0] > 0 && tbuf[0] < 16)
-          {
-            lumstep = tbuf[0];
-            dma_display->setBrightness8(lumval[lumstep]);
-          }
-          else
-          {
-            Serial.write('E');
-          }
-        }
-        break;
-      }
-
-      case 23: // set RGB order
-      {
-        unsigned char tbuf[1];
-        if (SerialReadBuffer(tbuf, 1))
-        {
-          if (tbuf[0] >= 0 && tbuf[0] < 6)
-          {
-            acordreRGB = tbuf[0];
-          }
-          else
-          {
-            Serial.write('E');
-          }
-        }
-        break;
-      }
-
-      case 24: // get brightness
-      {
-        Serial.write(lumstep);
-        break;
-      }
-
-      case 25: // get RGB order
-      {
-        Serial.write(acordreRGB);
-        break;
-      }
-
-      case 26: // turn on flow control version 2
-      {
-        flowControlCounter = 1;
-        Serial.write('A');
-        break;
-      }
-
-      case 30: // save settings
-      {
-        SaveLum();
-        SaveOrdreRGB();
-        Serial.write('A');
-        break;
-      }
-
-      case 31: // reset
-      {
-        handshakeSucceeded = false;
-        DisplayLogo();
-        Serial.write('A');
-        break;
-      }
-
-      case 32: // get version
-      {
-        Serial.write(ZEDMD_VERSION_MAJOR);
-        Serial.write(ZEDMD_VERSION_MINOR);
-        Serial.write(ZEDMD_VERSION_PATCH);
-        break;
-      }
-
-      case 33: // get panel resolution
-      {
-        Serial.write(TOTAL_WIDTH & 0xff);
-        Serial.write((TOTAL_WIDTH >> 8) & 0xff);
-        Serial.write(TOTAL_HEIGHT & 0xff);
-        Serial.write((TOTAL_HEIGHT >> 8) & 0xff);
-        break;
-      }
-
-      case 98: // disable debug mode
-      {
-        debugMode = false;
-        Serial.write('A');
-        break;
-      }
-
-      case 99: // enable debug mode
-      {
-        debugMode = true;
-        Serial.write('A');
-        break;
-      }
-
-      case 6: // reinit palette (deprecated)
-      {
-        // Just backward compatibility. We don't need that command anymore.
-        Serial.write('A');
-        break;
-      }
-
-      case 10: // clear screen
-      {
-        ClearScreen();
-        displayStatus = 3;
-        rotNextRotationTime[0] = millis();
-        Serial.write('A');
-        break;
-      }
-
-      case 3: // mode RGB24
-      {
-        // We need to cover downscaling, too.
-        int renderBufferSize = (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT) ? TOTAL_BYTES : RomWidth * RomHeight * 3;
-        if (renderBufferInUse == 2) {
-          renderBufferInUse = 1;
-          free(renderBuffer);
-        }
-        renderBuffer = (unsigned char *)malloc(renderBufferSize);
-        memset(renderBuffer, 0, renderBufferSize);
-
-        if (SerialReadBuffer(renderBuffer, RomHeight * RomWidth * 3))
-        {
-          mode64 = false;
-          ScaleImage(3);
-          fillPanelRaw();
-        }
-
-        free(renderBuffer);
-        renderBufferInUse = 0;
-        break;
-      }
-
-      case 8: // mode 4 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 4 pixels par byte
-      {
-        int bufferSize = 12 + 2 * RomWidthPlane * RomHeight;
-        unsigned char *buffer = (unsigned char *)malloc(bufferSize);
-
-        if (SerialReadBuffer(buffer, bufferSize))
-        {
-          // We need to cover downscaling, too.
-          int renderBufferSize = (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT) ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
-          if (renderBufferInUse == 2) {
-            renderBufferInUse = 1;
-            free(renderBuffer);
-          }
-          renderBuffer = (unsigned char *)malloc(renderBufferSize);
-          memset(renderBuffer, 0, renderBufferSize);
-          palette = (unsigned char *)malloc(12);
-          memcpy(palette, buffer, 12);
-
-          unsigned char *frame = &buffer[12];
-          for (int tj = 0; tj < RomHeight; tj++)
-          {
-            for (int ti = 0; ti < RomWidthPlane; ti++)
-            {
-              unsigned char mask = 1;
-              unsigned char planes[2];
-              planes[0] = frame[ti + tj * RomWidthPlane];
-              planes[1] = frame[RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              for (int tk = 0; tk < 8; tk++)
-              {
-                unsigned char idx = 0;
-                if ((planes[0] & mask) > 0)
-                  idx |= 1;
-                if ((planes[1] & mask) > 0)
-                  idx |= 2;
-                renderBuffer[(ti * 8 + tk) + tj * RomWidth] = idx;
-                mask <<= 1;
-              }
-            }
-          }
-          free(buffer);
-
-          mode64 = false;
-
-          ScaleImage(1);
-          fillPanelUsingPalette();
-
-          free(renderBuffer);
-          renderBufferInUse = 0;
-          free(palette);
+          acordreRGB = tbuf[0];
+          Serial.write('A');
         }
         else
         {
-          free(buffer);
+          Serial.write('E');
         }
-        break;
       }
+      break;
+    }
 
-      case 7: // mode 16 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 2 pixels par byte
+    case 24: // get brightness
+    {
+      Serial.write(lumstep);
+      break;
+    }
+
+    case 25: // get RGB order
+    {
+      Serial.write(acordreRGB);
+      break;
+    }
+
+    case 26: // turn on flow control version 2
+    {
+      flowControlCounter = 1;
+      Serial.write('A');
+      break;
+    }
+
+#ifdef ZEDMD_WIFI
+    // These are one time programmig options over USB until ZeDMD could establish
+    // the WiFi Connection at startup. When WiFi is finally active, USB is turned off.
+    case 27: // set WiFi SSID
+    {
+      uint8_t tbuf[129];
+      if (SerialReadBuffer(tbuf, 129))
       {
-        int bufferSize = 12 + 4 * RomWidthPlane * RomHeight;
-        unsigned char *buffer = (unsigned char *)malloc(bufferSize);
-
-        if (SerialReadBuffer(buffer, bufferSize))
-        {
-          // We need to cover downscaling, too.
-          int renderBufferSize = (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT) ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
-          if (renderBufferInUse == 2) {
-            renderBufferInUse = 1;
-            free(renderBuffer);
-          }
-          renderBuffer = (unsigned char *)malloc(renderBufferSize);
-          memset(renderBuffer, 0, renderBufferSize);
-          palette = (unsigned char *)malloc(48);
-          memcpy(palette, buffer, 48);
-
-          palette[0] = palette[1] = palette[2] = 0;
-          palette[3] = palette[3 * 3] / 3;
-          palette[4] = palette[3 * 3 + 1] / 3;
-          palette[5] = palette[3 * 3 + 2] / 3;
-          palette[6] = 2 * (palette[3 * 3] / 3);
-          palette[7] = 2 * (palette[3 * 3 + 1] / 3);
-          palette[8] = 2 * (palette[3 * 3 + 2] / 3);
-
-          palette[12] = palette[3 * 3] + (palette[7 * 3] - palette[3 * 3]) / 4;
-          palette[13] = palette[3 * 3 + 1] + (palette[7 * 3 + 1] - palette[3 * 3 + 1]) / 4;
-          palette[14] = palette[3 * 3 + 2] + (palette[7 * 3 + 2] - palette[3 * 3 + 2]) / 4;
-          palette[15] = palette[3 * 3] + 2 * ((palette[7 * 3] - palette[3 * 3]) / 4);
-          palette[16] = palette[3 * 3 + 1] + 2 * ((palette[7 * 3 + 1] - palette[3 * 3 + 1]) / 4);
-          palette[17] = palette[3 * 3 + 2] + 2 * ((palette[7 * 3 + 2] - palette[3 * 3 + 2]) / 4);
-          palette[18] = palette[3 * 3] + 3 * ((palette[7 * 3] - palette[3 * 3]) / 4);
-          palette[19] = palette[3 * 3 + 1] + 3 * ((palette[7 * 3 + 1] - palette[3 * 3 + 1]) / 4);
-          palette[20] = palette[3 * 3 + 2] + 3 * ((palette[7 * 3 + 2] - palette[3 * 3 + 2]) / 4);
-
-          palette[24] = palette[7 * 3] + (palette[11 * 3] - palette[7 * 3]) / 4;
-          palette[25] = palette[7 * 3 + 1] + (palette[11 * 3 + 1] - palette[7 * 3 + 1]) / 4;
-          palette[26] = palette[7 * 3 + 2] + (palette[11 * 3 + 2] - palette[7 * 3 + 2]) / 4;
-          palette[27] = palette[7 * 3] + 2 * ((palette[11 * 3] - palette[7 * 3]) / 4);
-          palette[28] = palette[7 * 3 + 1] + 2 * ((palette[11 * 3 + 1] - palette[7 * 3 + 1]) / 4);
-          palette[29] = palette[7 * 3 + 2] + 2 * ((palette[11 * 3 + 2] - palette[7 * 3 + 2]) / 4);
-          palette[30] = palette[7 * 3] + 3 * ((palette[11 * 3] - palette[7 * 3]) / 4);
-          palette[31] = palette[7 * 3 + 1] + 3 * ((palette[11 * 3 + 1] - palette[7 * 3 + 1]) / 4);
-          palette[32] = palette[7 * 3 + 2] + 3 * ((palette[11 * 3 + 2] - palette[7 * 3 + 2]) / 4);
-
-          palette[36] = palette[11 * 3] + (palette[15 * 3] - palette[11 * 3]) / 4;
-          palette[37] = palette[11 * 3 + 1] + (palette[15 * 3 + 1] - palette[11 * 3 + 1]) / 4;
-          palette[38] = palette[11 * 3 + 2] + (palette[15 * 3 + 2] - palette[11 * 3 + 2]) / 4;
-          palette[39] = palette[11 * 3] + 2 * ((palette[15 * 3] - palette[11 * 3]) / 4);
-          palette[40] = palette[11 * 3 + 1] + 2 * ((palette[15 * 3 + 1] - palette[11 * 3 + 1]) / 4);
-          palette[41] = palette[11 * 3 + 2] + 2 * ((palette[15 * 3 + 2] - palette[11 * 3 + 2]) / 4);
-          palette[42] = palette[11 * 3] + 3 * ((palette[15 * 3] - palette[11 * 3]) / 4);
-          palette[43] = palette[11 * 3 + 1] + 3 * ((palette[15 * 3 + 1] - palette[11 * 3 + 1]) / 4);
-          palette[44] = palette[11 * 3 + 2] + 3 * ((palette[15 * 3 + 2] - palette[11 * 3 + 2]) / 4);
-
-          unsigned char *pBuffer = &buffer[12];
-          for (int tj = 0; tj < RomHeight; tj++)
-          {
-            for (int ti = 0; ti < RomWidthPlane; ti++)
-            {
-              unsigned char mask = 1;
-              unsigned char planes[4];
-              planes[0] = pBuffer[ti + tj * RomWidthPlane];
-              planes[1] = pBuffer[RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              planes[2] = pBuffer[2 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              planes[3] = pBuffer[3 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              for (int tk = 0; tk < 8; tk++)
-              {
-                unsigned char idx = 0;
-                if ((planes[0] & mask) > 0)
-                  idx |= 1;
-                if ((planes[1] & mask) > 0)
-                  idx |= 2;
-                if ((planes[2] & mask) > 0)
-                  idx |= 4;
-                if ((planes[3] & mask) > 0)
-                  idx |= 8;
-                renderBuffer[(ti * 8 + tk) + tj * RomWidth] = idx;
-                mask <<= 1;
-              }
-            }
-          }
-          free(buffer);
-
-          mode64 = false;
-
-          ScaleImage(1);
-          fillPanelUsingPalette();
-
-          free(renderBuffer);
-          renderBufferInUse = 0;
-          free(palette);
-        }
-        else
-        {
-          free(buffer);
-        }
-        break;
+        // tbuf[0] now contains the length of the string
+        uint8_t *tmp = (uint8_t *)malloc(tbuf[0]);
+        memcpy(tmp, &tbuf[1], tbuf[0]);
+        ssid = (const char *)tmp;
+        free(tmp);
+        Serial.write('A');
       }
-
-      case 9: // mode 16 couleurs avec 1 palette 16 couleurs (16*3 bytes) suivis de 4 bytes par groupe de 8 points (séparés en plans de bits 4*512 bytes)
-      {
-        int bufferSize = 48 + 4 * RomWidthPlane * RomHeight;
-        unsigned char *buffer = (unsigned char *)malloc(bufferSize);
-
-        if (SerialReadBuffer(buffer, bufferSize))
-        {
-          // We need to cover downscaling, too.
-          int renderBufferSize = (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT) ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
-          if (renderBufferInUse == 2) {
-            renderBufferInUse = 1;
-            free(renderBuffer);
-          }
-          renderBuffer = (unsigned char *)malloc(renderBufferSize);
-          memset(renderBuffer, 0, renderBufferSize);
-          palette = (unsigned char *)malloc(48);
-          memcpy(palette, buffer, 48);
-
-          unsigned char *pBuffer = &buffer[48];
-          for (int tj = 0; tj < RomHeight; tj++)
-          {
-            for (int ti = 0; ti < RomWidthPlane; ti++)
-            {
-              // on reconstitue un indice à partir des plans puis une couleur à partir de la palette
-              unsigned char mask = 1;
-              unsigned char planes[4];
-              planes[0] = pBuffer[ti + tj * RomWidthPlane];
-              planes[1] = pBuffer[RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              planes[2] = pBuffer[2 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              planes[3] = pBuffer[3 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              for (int tk = 0; tk < 8; tk++)
-              {
-                unsigned char idx = 0;
-                if ((planes[0] & mask) > 0)
-                  idx |= 1;
-                if ((planes[1] & mask) > 0)
-                  idx |= 2;
-                if ((planes[2] & mask) > 0)
-                  idx |= 4;
-                if ((planes[3] & mask) > 0)
-                  idx |= 8;
-                renderBuffer[(ti * 8 + tk) + tj * RomWidth] = idx;
-                mask <<= 1;
-              }
-            }
-          }
-          free(buffer);
-
-          mode64 = false;
-
-          ScaleImage(1);
-          fillPanelUsingPalette();
-
-          free(renderBuffer);
-          renderBufferInUse = 0;
-          free(palette);
-        }
-        else
-        {
-          free(buffer);
-        }
-        break;
-      }
-
-      case 11: // mode 64 couleurs avec 1 palette 64 couleurs (64*3 bytes) suivis de 6 bytes par groupe de 8 points (séparés en plans de bits 6*512 bytes) suivis de 3*8 bytes de rotations de couleurs
-      {
-        int bufferSize = 192 + 6 * RomWidthPlane * RomHeight + 3 * MAX_COLOR_ROTATIONS;
-        unsigned char *buffer = (unsigned char *)malloc(bufferSize);
-
-        if (SerialReadBuffer(buffer, bufferSize))
-        {
-          // We need to cover downscaling, too.
-          int renderBufferSize = (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT) ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
-          if (renderBufferInUse == 2) {
-            renderBufferInUse = 1;
-            free(renderBuffer);
-          }
-          renderBuffer = (unsigned char *)malloc(renderBufferSize);
-          memset(renderBuffer, 0, renderBufferSize);
-          palette = (unsigned char *)malloc(192);
-          memcpy(palette, buffer, 192);
-
-          unsigned char *pBuffer = &buffer[192];
-          for (int tj = 0; tj < RomHeight; tj++)
-          {
-            for (int ti = 0; ti < RomWidthPlane; ti++)
-            {
-              // on reconstitue un indice à partir des plans puis une couleur à partir de la palette
-              unsigned char mask = 1;
-              unsigned char planes[6];
-              planes[0] = pBuffer[ti + tj * RomWidthPlane];
-              planes[1] = pBuffer[RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              planes[2] = pBuffer[2 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              planes[3] = pBuffer[3 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              planes[4] = pBuffer[4 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              planes[5] = pBuffer[5 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              for (int tk = 0; tk < 8; tk++)
-              {
-                unsigned char idx = 0;
-                if ((planes[0] & mask) > 0)
-                  idx |= 1;
-                if ((planes[1] & mask) > 0)
-                  idx |= 2;
-                if ((planes[2] & mask) > 0)
-                  idx |= 4;
-                if ((planes[3] & mask) > 0)
-                  idx |= 8;
-                if ((planes[4] & mask) > 0)
-                  idx |= 0x10;
-                if ((planes[5] & mask) > 0)
-                  idx |= 0x20;
-                renderBuffer[(ti * 8 + tk) + tj * RomWidth] = idx;
-                mask <<= 1;
-              }
-            }
-          }
-
-          // Handle up to 8 different rotations for each frame.
-          // first byte: first color in the rotation
-          // second byte: number of contiguous colors in the rotation
-          // third byte: delay between 2 rotations (5 -> 50ms, 12 -> 120ms)
-          pBuffer = &buffer[192 + 6 * RomWidthPlane * RomHeight];
-          unsigned long actime = millis();
-
-          for (int ti = 0; ti < MAX_COLOR_ROTATIONS; ti++)
-          {
-            rotFirstColor[ti] = pBuffer[ti * 3];
-            rotAmountColors[ti] = pBuffer[ti * 3 + 1];
-            rotStepDurationTime[ti] = 10 * pBuffer[ti * 3 + 2];
-            rotNextRotationTime[ti] = actime + rotStepDurationTime[ti];
-          }
-
-          free(buffer);
-
-          mode64 = true;
-
-          ScaleImage(1);
-          fillPanelUsingPalette();
-
-          free(renderBuffer);
-          renderBufferInUse = 0;
-          free(palette);
-        }
-        else
-        {
-          free(buffer);
-        }
-        break;
-      }
-
-      default:
+      else
       {
         Serial.write('E');
       }
+    }
+
+    case 28: // set WiFi password
+    {
+      uint8_t tbuf[129];
+      if (SerialReadBuffer(tbuf, 129))
+      {
+        // tbuf[0] now contains the length of the string
+        uint8_t *tmp = (uint8_t *)malloc(tbuf[0]);
+        memcpy(tmp, &tbuf[1], tbuf[0]);
+        pwd = (const char *)tmp;
+        free(tmp);
+        Serial.write('A');
+      }
+      else
+      {
+        Serial.write('E');
+      }
+      break;
+    }
+
+    case 29: // set WiFi port
+    {
+      uint8_t byteArray[2];
+      if (Serial.readBytes(byteArray, 2))
+      {
+        port = ((((unsigned int)byteArray[0]) << 8) +
+                ((unsigned int)byteArray[1]));
+        Serial.write('A');
+      }
+      else
+      {
+        Serial.write('E');
+      }
+      break;
+    }
+#endif
+
+    case 30: // save settings
+    {
+      Serial.write('A');
+      SaveLum();
+      SaveOrdreRGB();
+#ifdef ZEDMD_WIFI
+      SaveWiFiConfig();
+#endif
+      break;
+    }
+
+    case 31: // reset
+    {
+      Serial.write('A');
+      handshakeSucceeded = false;
+      DisplayLogo();
+      break;
+    }
+
+    case 32: // get version
+    {
+      Serial.write(ZEDMD_VERSION_MAJOR);
+      Serial.write(ZEDMD_VERSION_MINOR);
+      Serial.write(ZEDMD_VERSION_PATCH);
+      break;
+    }
+
+    case 33: // get panel resolution
+    {
+      Serial.write(TOTAL_WIDTH & 0xff);
+      Serial.write((TOTAL_WIDTH >> 8) & 0xff);
+      Serial.write(TOTAL_HEIGHT & 0xff);
+      Serial.write((TOTAL_HEIGHT >> 8) & 0xff);
+      break;
+    }
+
+    case 98: // disable debug mode
+    {
+      debugMode = false;
+      Serial.write('A');
+      break;
+    }
+
+    case 99: // enable debug mode
+    {
+      debugMode = true;
+      Serial.write('A');
+      break;
+    }
+
+    case 6: // reinit palette (deprecated)
+    {
+      // Just backward compatibility. We don't need that command anymore.
+      Serial.write('A');
+      break;
+    }
+
+    case 10: // clear screen
+    {
+      Serial.write('A');
+      ClearScreen();
+      displayStatus = 3;
+      rotNextRotationTime[0] = millis();
+      break;
+    }
+
+    case 4: // mode RGB24 zones streaming
+    {
+      renderBuffer = (uint8_t *)malloc(TOTAL_ZONES * ZONE_SIZE + ZONES_PER_ROW);
+      if (SerialReadBuffer(renderBuffer, TOTAL_ZONES * ZONE_SIZE + ZONES_PER_ROW, false))
+      {
+        uint16_t idx = 0;
+        // SerialReadBuffer prefills buffer with zeros. That will fill Zone 0 black if buffer is not used entirely.
+        // Ensure that Zone 0 is only allowed at the beginning of the buffer.
+        while (idx <= ((TOTAL_ZONES * ZONE_SIZE + ZONES_PER_ROW) - (ZONE_SIZE + 1)) && (renderBuffer[idx] < TOTAL_ZONES) && (idx == 0 || renderBuffer[idx] > 0))
+        {
+          fillZoneRaw(renderBuffer[idx], &renderBuffer[++idx]);
+          idx += ZONE_SIZE;
+        }
+      }
+      
+      free(renderBuffer);
+      break;
+    }
+
+#if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
+    case 3: // mode RGB24
+    {
+      // We need to cover downscaling, too.
+      int renderBufferSize = (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT) ? TOTAL_BYTES : RomWidth * RomHeight * 3;
+      renderBuffer = (uint8_t *)malloc(renderBufferSize);
+      memset(renderBuffer, 0, renderBufferSize);
+
+      if (SerialReadBuffer(renderBuffer, RomHeight * RomWidth * 3))
+      {
+        mode64 = false;
+        ScaleImage(3);
+        fillPanelRaw();
+      }
+
+      free(renderBuffer);
+      break;
+    }
+
+    case 8: // mode 4 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 4 pixels par byte
+    {
+      int bufferSize = 12 + 2 * RomWidthPlane * RomHeight;
+      uint8_t *buffer = (uint8_t *)malloc(bufferSize);
+
+      if (SerialReadBuffer(buffer, bufferSize))
+      {
+        // We need to cover downscaling, too.
+        int renderBufferSize = (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT) ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
+        renderBuffer = (uint8_t *)malloc(renderBufferSize);
+        memset(renderBuffer, 0, renderBufferSize);
+        palette = (uint8_t *)malloc(12);
+        memcpy(palette, buffer, 12);
+
+        uint8_t *frame = &buffer[12];
+        for (int tj = 0; tj < RomHeight; tj++)
+        {
+          for (int ti = 0; ti < RomWidthPlane; ti++)
+          {
+            uint8_t mask = 1;
+            uint8_t planes[2];
+            planes[0] = frame[ti + tj * RomWidthPlane];
+            planes[1] = frame[RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
+            for (int tk = 0; tk < 8; tk++)
+            {
+              uint8_t idx = 0;
+              if ((planes[0] & mask) > 0)
+                idx |= 1;
+              if ((planes[1] & mask) > 0)
+                idx |= 2;
+              renderBuffer[(ti * 8 + tk) + tj * RomWidth] = idx;
+              mask <<= 1;
+            }
+          }
+        }
+        free(buffer);
+
+        mode64 = false;
+
+        ScaleImage(1);
+        fillPanelUsingPalette();
+
+        free(renderBuffer);
+        free(palette);
+      }
+      else
+      {
+        free(buffer);
+      }
+      break;
+    }
+
+    case 7: // mode 16 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis de 2 pixels par byte
+    {
+      int bufferSize = 12 + 4 * RomWidthPlane * RomHeight;
+      uint8_t *buffer = (uint8_t *)malloc(bufferSize);
+
+      if (SerialReadBuffer(buffer, bufferSize))
+      {
+        // We need to cover downscaling, too.
+        int renderBufferSize = (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT) ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
+        renderBuffer = (uint8_t *)malloc(renderBufferSize);
+        memset(renderBuffer, 0, renderBufferSize);
+        palette = (uint8_t *)malloc(48);
+        memcpy(palette, buffer, 48);
+
+        palette[0] = palette[1] = palette[2] = 0;
+        palette[3] = palette[3 * 3] / 3;
+        palette[4] = palette[3 * 3 + 1] / 3;
+        palette[5] = palette[3 * 3 + 2] / 3;
+        palette[6] = 2 * (palette[3 * 3] / 3);
+        palette[7] = 2 * (palette[3 * 3 + 1] / 3);
+        palette[8] = 2 * (palette[3 * 3 + 2] / 3);
+
+        palette[12] = palette[3 * 3] + (palette[7 * 3] - palette[3 * 3]) / 4;
+        palette[13] = palette[3 * 3 + 1] + (palette[7 * 3 + 1] - palette[3 * 3 + 1]) / 4;
+        palette[14] = palette[3 * 3 + 2] + (palette[7 * 3 + 2] - palette[3 * 3 + 2]) / 4;
+        palette[15] = palette[3 * 3] + 2 * ((palette[7 * 3] - palette[3 * 3]) / 4);
+        palette[16] = palette[3 * 3 + 1] + 2 * ((palette[7 * 3 + 1] - palette[3 * 3 + 1]) / 4);
+        palette[17] = palette[3 * 3 + 2] + 2 * ((palette[7 * 3 + 2] - palette[3 * 3 + 2]) / 4);
+        palette[18] = palette[3 * 3] + 3 * ((palette[7 * 3] - palette[3 * 3]) / 4);
+        palette[19] = palette[3 * 3 + 1] + 3 * ((palette[7 * 3 + 1] - palette[3 * 3 + 1]) / 4);
+        palette[20] = palette[3 * 3 + 2] + 3 * ((palette[7 * 3 + 2] - palette[3 * 3 + 2]) / 4);
+
+        palette[24] = palette[7 * 3] + (palette[11 * 3] - palette[7 * 3]) / 4;
+        palette[25] = palette[7 * 3 + 1] + (palette[11 * 3 + 1] - palette[7 * 3 + 1]) / 4;
+        palette[26] = palette[7 * 3 + 2] + (palette[11 * 3 + 2] - palette[7 * 3 + 2]) / 4;
+        palette[27] = palette[7 * 3] + 2 * ((palette[11 * 3] - palette[7 * 3]) / 4);
+        palette[28] = palette[7 * 3 + 1] + 2 * ((palette[11 * 3 + 1] - palette[7 * 3 + 1]) / 4);
+        palette[29] = palette[7 * 3 + 2] + 2 * ((palette[11 * 3 + 2] - palette[7 * 3 + 2]) / 4);
+        palette[30] = palette[7 * 3] + 3 * ((palette[11 * 3] - palette[7 * 3]) / 4);
+        palette[31] = palette[7 * 3 + 1] + 3 * ((palette[11 * 3 + 1] - palette[7 * 3 + 1]) / 4);
+        palette[32] = palette[7 * 3 + 2] + 3 * ((palette[11 * 3 + 2] - palette[7 * 3 + 2]) / 4);
+
+        palette[36] = palette[11 * 3] + (palette[15 * 3] - palette[11 * 3]) / 4;
+        palette[37] = palette[11 * 3 + 1] + (palette[15 * 3 + 1] - palette[11 * 3 + 1]) / 4;
+        palette[38] = palette[11 * 3 + 2] + (palette[15 * 3 + 2] - palette[11 * 3 + 2]) / 4;
+        palette[39] = palette[11 * 3] + 2 * ((palette[15 * 3] - palette[11 * 3]) / 4);
+        palette[40] = palette[11 * 3 + 1] + 2 * ((palette[15 * 3 + 1] - palette[11 * 3 + 1]) / 4);
+        palette[41] = palette[11 * 3 + 2] + 2 * ((palette[15 * 3 + 2] - palette[11 * 3 + 2]) / 4);
+        palette[42] = palette[11 * 3] + 3 * ((palette[15 * 3] - palette[11 * 3]) / 4);
+        palette[43] = palette[11 * 3 + 1] + 3 * ((palette[15 * 3 + 1] - palette[11 * 3 + 1]) / 4);
+        palette[44] = palette[11 * 3 + 2] + 3 * ((palette[15 * 3 + 2] - palette[11 * 3 + 2]) / 4);
+
+        uint8_t *pBuffer = &buffer[12];
+        for (int tj = 0; tj < RomHeight; tj++)
+        {
+          for (int ti = 0; ti < RomWidthPlane; ti++)
+          {
+            uint8_t mask = 1;
+            uint8_t planes[4];
+            planes[0] = pBuffer[ti + tj * RomWidthPlane];
+            planes[1] = pBuffer[RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
+            planes[2] = pBuffer[2 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
+            planes[3] = pBuffer[3 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
+            for (int tk = 0; tk < 8; tk++)
+            {
+              uint8_t idx = 0;
+              if ((planes[0] & mask) > 0)
+                idx |= 1;
+              if ((planes[1] & mask) > 0)
+                idx |= 2;
+              if ((planes[2] & mask) > 0)
+                idx |= 4;
+              if ((planes[3] & mask) > 0)
+                idx |= 8;
+              renderBuffer[(ti * 8 + tk) + tj * RomWidth] = idx;
+              mask <<= 1;
+            }
+          }
+        }
+        free(buffer);
+
+        mode64 = false;
+
+        ScaleImage(1);
+        fillPanelUsingPalette();
+
+        free(renderBuffer);
+        free(palette);
+      }
+      else
+      {
+        free(buffer);
+      }
+      break;
+    }
+
+    case 9: // mode 16 couleurs avec 1 palette 16 couleurs (16*3 bytes) suivis de 4 bytes par groupe de 8 points (séparés en plans de bits 4*512 bytes)
+    {
+      int bufferSize = 48 + 4 * RomWidthPlane * RomHeight;
+      uint8_t *buffer = (uint8_t *)malloc(bufferSize);
+
+      if (SerialReadBuffer(buffer, bufferSize))
+      {
+        // We need to cover downscaling, too.
+        int renderBufferSize = (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT) ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
+        renderBuffer = (uint8_t *)malloc(renderBufferSize);
+        memset(renderBuffer, 0, renderBufferSize);
+        palette = (uint8_t *)malloc(48);
+        memcpy(palette, buffer, 48);
+
+        uint8_t *pBuffer = &buffer[48];
+        for (int tj = 0; tj < RomHeight; tj++)
+        {
+          for (int ti = 0; ti < RomWidthPlane; ti++)
+          {
+            // on reconstitue un indice à partir des plans puis une couleur à partir de la palette
+            uint8_t mask = 1;
+            uint8_t planes[4];
+            planes[0] = pBuffer[ti + tj * RomWidthPlane];
+            planes[1] = pBuffer[RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
+            planes[2] = pBuffer[2 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
+            planes[3] = pBuffer[3 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
+            for (int tk = 0; tk < 8; tk++)
+            {
+              uint8_t idx = 0;
+              if ((planes[0] & mask) > 0)
+                idx |= 1;
+              if ((planes[1] & mask) > 0)
+                idx |= 2;
+              if ((planes[2] & mask) > 0)
+                idx |= 4;
+              if ((planes[3] & mask) > 0)
+                idx |= 8;
+              renderBuffer[(ti * 8 + tk) + tj * RomWidth] = idx;
+              mask <<= 1;
+            }
+          }
+        }
+        free(buffer);
+
+        mode64 = false;
+
+        ScaleImage(1);
+        fillPanelUsingPalette();
+
+        free(renderBuffer);
+        free(palette);
+      }
+      else
+      {
+        free(buffer);
+      }
+      break;
+    }
+
+    case 11: // mode 64 couleurs avec 1 palette 64 couleurs (64*3 bytes) suivis de 6 bytes par groupe de 8 points (séparés en plans de bits 6*512 bytes) suivis de 3*8 bytes de rotations de couleurs
+    {
+      int bufferSize = 192 + 6 * RomWidthPlane * RomHeight + 3 * MAX_COLOR_ROTATIONS;
+      uint8_t *buffer = (uint8_t *)malloc(bufferSize);
+
+      if (SerialReadBuffer(buffer, bufferSize))
+      {
+        // We need to cover downscaling, too.
+        int renderBufferSize = (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT) ? TOTAL_WIDTH * TOTAL_HEIGHT : RomWidth * RomHeight;
+        renderBuffer = (uint8_t *)malloc(renderBufferSize);
+        memset(renderBuffer, 0, renderBufferSize);
+        palette = (uint8_t *)malloc(192);
+        memcpy(palette, buffer, 192);
+
+        uint8_t *pBuffer = &buffer[192];
+        for (int tj = 0; tj < RomHeight; tj++)
+        {
+          for (int ti = 0; ti < RomWidthPlane; ti++)
+          {
+            // on reconstitue un indice à partir des plans puis une couleur à partir de la palette
+            uint8_t mask = 1;
+            uint8_t planes[6];
+            planes[0] = pBuffer[ti + tj * RomWidthPlane];
+            planes[1] = pBuffer[RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
+            planes[2] = pBuffer[2 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
+            planes[3] = pBuffer[3 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
+            planes[4] = pBuffer[4 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
+            planes[5] = pBuffer[5 * RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
+            for (int tk = 0; tk < 8; tk++)
+            {
+              uint8_t idx = 0;
+              if ((planes[0] & mask) > 0)
+                idx |= 1;
+              if ((planes[1] & mask) > 0)
+                idx |= 2;
+              if ((planes[2] & mask) > 0)
+                idx |= 4;
+              if ((planes[3] & mask) > 0)
+                idx |= 8;
+              if ((planes[4] & mask) > 0)
+                idx |= 0x10;
+              if ((planes[5] & mask) > 0)
+                idx |= 0x20;
+              renderBuffer[(ti * 8 + tk) + tj * RomWidth] = idx;
+              mask <<= 1;
+            }
+          }
+        }
+
+        // Handle up to 8 different rotations for each frame.
+        // first byte: first color in the rotation
+        // second byte: number of contiguous colors in the rotation
+        // third byte: delay between 2 rotations (5 -> 50ms, 12 -> 120ms)
+        pBuffer = &buffer[192 + 6 * RomWidthPlane * RomHeight];
+        unsigned long actime = millis();
+
+        for (int ti = 0; ti < MAX_COLOR_ROTATIONS; ti++)
+        {
+          rotFirstColor[ti] = pBuffer[ti * 3];
+          rotAmountColors[ti] = pBuffer[ti * 3 + 1];
+          rotStepDurationTime[ti] = 10 * pBuffer[ti * 3 + 2];
+          rotNextRotationTime[ti] = actime + rotStepDurationTime[ti];
+        }
+
+        free(buffer);
+
+        mode64 = true;
+
+        ScaleImage(1);
+        fillPanelUsingPalette();
+
+        free(renderBuffer);
+        free(palette);
+      }
+      else
+      {
+        free(buffer);
+      }
+      break;
+    }
+#endif
+    default:
+    {
+      Serial.write('E');
+    }
     }
 
     if (debugMode)
@@ -1809,7 +1888,7 @@ void loop()
       debugLines[0] = ++frameCount;
       for (int i = 0; i < 6; i++)
       {
-        Say((unsigned char)i, debugLines[i]);
+        Say((uint8_t)i, debugLines[i]);
       }
     }
   }
