@@ -1547,6 +1547,7 @@ void loop()
       break;
     }
 
+#if !defined(ZEDMD_WIFI)
     case 4: // mode RGB24 zones streaming
     {
       renderBuffer = (uint8_t *)malloc(TOTAL_ZONES * ZONE_SIZE + ZONES_PER_ROW);
@@ -1565,6 +1566,7 @@ void loop()
       free(renderBuffer);
       break;
     }
+#endif
 
 #if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
     case 3: // mode RGB24
