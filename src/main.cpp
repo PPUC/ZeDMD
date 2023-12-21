@@ -71,9 +71,11 @@
 #define TOTAL_WIDTH_PLANE (TOTAL_WIDTH >> 3)
 #define TOTAL_HEIGHT PANEL_HEIGHT
 #define TOTAL_BYTES (TOTAL_WIDTH * TOTAL_HEIGHT * 3)
-#define ZONES_PER_ROW (TOTAL_WIDTH / 16)
-#define TOTAL_ZONES ((TOTAL_HEIGHT / 8) * ZONES_PER_ROW)
-#define ZONE_SIZE (16 * 8 * 3)
+#define ZONE_WIDTH (TOTAL_WIDTH / 16)
+#define ZONE_HEIGHT (TOTAL_HEIGHT / 8)
+#define ZONES_PER_ROW (TOTAL_WIDTH / ZONE_WIDTH)
+#define TOTAL_ZONES ((TOTAL_HEIGHT / ZONE_HEIGHT) * ZONES_PER_ROW)
+#define ZONE_SIZE (ZONE_WIDTH * ZONE_HEIGHT * 3)
 #define MAX_COLOR_ROTATIONS 8
 #define LED_CHECK_DELAY 1000 // ms per color
 
@@ -610,14 +612,14 @@ void ScaleImage(uint8_t colors)
 
 void fillZoneRaw(uint8_t idx, uint8_t *pBuffer)
 {
-  uint8_t yOffset = (idx / ZONES_PER_ROW) * 8;
-  uint8_t xOffset = (idx % ZONES_PER_ROW) * 16;
+  uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
+  uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
 
-  for (uint8_t y = 0; y < 8; y++)
+  for (uint8_t y = 0; y < ZONE_HEIGHT; y++)
   {
-    for (uint8_t x = 0; x < 16; x++)
+    for (uint8_t x = 0; x < ZONE_WIDTH; x++)
     {
-      uint16_t pos = (y * 16 + x) * 3;
+      uint16_t pos = (y * ZONE_WIDTH + x) * 3;
 
       dma_display->drawPixelRGB888(
           x + xOffset,
