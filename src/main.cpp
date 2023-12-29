@@ -732,16 +732,16 @@ void SaveLum()
 bool LoadWiFiConfig()
 {
   File wifiConfig = LittleFS.open("/wifi_config.txt", "r");
-  if (!wifiConfig)
+    if (!wifiConfig)
     return false;
 
-  while (wifiConfig.available())
+    while (wifiConfig.available())
   {
     ssid = wifiConfig.readStringUntil('\n');
     pwd = wifiConfig.readStringUntil('\n');
     port = wifiConfig.read();
   }
-  wifiConfig.close();
+    wifiConfig.close();
   return true;
 }
 
@@ -960,21 +960,21 @@ void setup()
               break;
             }
 
-            case 3: // RGB24
+            case 4: // RGB24 Zones Stream
             {
               uint8_t compressed = pPacket[1] & 128;
-              uint8_t idx = pPacket[1] & 127;
+              uint8_t numZones = pPacket[1] & 127;
               int size = (int)(pPacket[3]) + (((int)pPacket[2]) << 8);
 
-              renderBuffer = (uint8_t*)malloc(16 * 8 * 3);
+              renderBuffer = (uint8_t*)malloc(ZONE_SIZE * numZones + numZones);
 
               if (compressed == 128)
               {
-                mz_ulong uncompressedBufferSize = 16 * 8 * 3;
+                mz_ulong uncompressedBufferSize = ZONE_SIZE * numZones + numZones;
                 mz_ulong udpPayloadSize = (mz_ulong) size;
 
                 int status = mz_uncompress2(renderBuffer, &uncompressedBufferSize, &pPacket[4], (mz_ulong *)&udpPayloadSize);
-                if (status != MZ_OK || uncompressedBufferSize != 16 * 8 * 3)
+                if (status != MZ_OK || uncompressedBufferSize != (ZONE_SIZE * numZones + numZones))
                 {
                   int tmp_status = (status >= 0) ? status : (-1 * status) + 100;
                   if (debugMode) Say(0, tmp_status);
@@ -986,7 +986,11 @@ void setup()
                 memcpy(renderBuffer, &pPacket[4], size);
               }
 
-              fillZoneRaw(idx, renderBuffer);
+              for (uint8_t idx = 0; idx < numZones; idx++)
+              {
+                fillZoneRaw(renderBuffer[idx * ZONE_SIZE + idx], &renderBuffer[idx * ZONE_SIZE + idx + 1]);
+              }
+
               free(renderBuffer);
               break;
             }
@@ -1429,8 +1433,8 @@ void loop()
     // the WiFi Connection at startup. When WiFi is finally active, USB is turned off.
     case 27: // set WiFi SSID
     {
-      uint8_t tbuf[129];
-      if (SerialReadBuffer(tbuf, 129))
+      uint8_t tbuf[33];
+      if (SerialReadBuffer(tbuf, 33, false))
       {
         // tbuf[0] now contains the length of the string
         uint8_t *tmp = (uint8_t *)malloc(tbuf[0]);
@@ -1447,8 +1451,8 @@ void loop()
 
     case 28: // set WiFi password
     {
-      uint8_t tbuf[129];
-      if (SerialReadBuffer(tbuf, 129))
+      uint8_t tbuf[33];
+      if (SerialReadBuffer(tbuf, 33, false))
       {
         // tbuf[0] now contains the length of the string
         uint8_t *tmp = (uint8_t *)malloc(tbuf[0]);
