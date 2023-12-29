@@ -92,6 +92,8 @@
 String ssid;
 String pwd;
 uint16_t port;
+uint8_t ssid_length;
+uint8_t pwd_length;
 
 AsyncUDP udp;
 IPAddress ip;
@@ -732,16 +734,18 @@ void SaveLum()
 bool LoadWiFiConfig()
 {
   File wifiConfig = LittleFS.open("/wifi_config.txt", "r");
-    if (!wifiConfig)
+  if (!wifiConfig)
     return false;
 
-    while (wifiConfig.available())
+  while (wifiConfig.available())
   {
     ssid = wifiConfig.readStringUntil('\n');
+    ssid_length = wifiConfig.readStringUntil('\n').toInt();
     pwd = wifiConfig.readStringUntil('\n');
-    port = wifiConfig.read();
+    pwd_length = wifiConfig.readStringUntil('\n').toInt();
+    port = wifiConfig.readStringUntil('\n').toInt();
   }
-    wifiConfig.close();
+  wifiConfig.close();
   return true;
 }
 
@@ -752,8 +756,10 @@ bool SaveWiFiConfig()
     return false;
 
   wifiConfig.println(ssid);
+  wifiConfig.println(String(ssid_length));
   wifiConfig.println(pwd);
-  wifiConfig.write(port);
+  wifiConfig.println(String(pwd_length));
+  wifiConfig.println(String(port));
   wifiConfig.close();
   return true;
 }
@@ -937,13 +943,13 @@ void setup()
     WiFi.onEvent(WiFiEvent);
 
     // Initiate connection
-    WiFi.begin(ssid.c_str(), pwd.c_str());
+    WiFi.begin(ssid.substring(0, ssid_length).c_str(), pwd.substring(0, pwd_length).c_str());
 
     uint8_t result = WiFi.waitForConnectResult();
     if (udp.listen(port))
     {
       udp.onPacket([](AsyncUDPPacket packet)
-      {
+                   {
         if (packet.length() >= 1) {
           if (MireActive)
           {
@@ -995,8 +1001,7 @@ void setup()
               break;
             }
           }
-        }
-      });
+        } });
     }
   }
 #endif
@@ -1083,7 +1088,7 @@ bool SerialReadBuffer(uint8_t *pBuffer, unsigned int BufferSize, bool fixedSize 
       debugLines[3] = tmp_status;
     }
 
-    if ((MZ_OK == status) && (!fixedSize || (fixedSize  && uncompressed_buffer_size == BufferSize)))
+    if ((MZ_OK == status) && (!fixedSize || (fixedSize && uncompressed_buffer_size == BufferSize)))
     {
       if (debugMode)
       {
@@ -1437,9 +1442,10 @@ void loop()
       if (SerialReadBuffer(tbuf, 33, false))
       {
         // tbuf[0] now contains the length of the string
-        uint8_t *tmp = (uint8_t *)malloc(tbuf[0]);
-        memcpy(tmp, &tbuf[1], tbuf[0]);
-        ssid = (const char *)tmp;
+        ssid_length = tbuf[0];
+        char *tmp = (char *)malloc(ssid_length);
+        memcpy(tmp, &tbuf[1], ssid_length);
+        ssid = String(tmp);
         free(tmp);
         Serial.write('A');
       }
@@ -1447,6 +1453,7 @@ void loop()
       {
         Serial.write('E');
       }
+      break;
     }
 
     case 28: // set WiFi password
@@ -1455,9 +1462,10 @@ void loop()
       if (SerialReadBuffer(tbuf, 33, false))
       {
         // tbuf[0] now contains the length of the string
-        uint8_t *tmp = (uint8_t *)malloc(tbuf[0]);
-        memcpy(tmp, &tbuf[1], tbuf[0]);
-        pwd = (const char *)tmp;
+        pwd_length = tbuf[0];
+        char *tmp = (char *)malloc(pwd_length);
+        memcpy(tmp, &tbuf[1], pwd_length);
+        pwd = String(tmp);
         free(tmp);
         Serial.write('A');
       }
@@ -1470,11 +1478,11 @@ void loop()
 
     case 29: // set WiFi port
     {
-      uint8_t byteArray[2];
-      if (Serial.readBytes(byteArray, 2))
+      uint8_t tbuf[2];
+      if (SerialReadBuffer(tbuf, 2))
       {
-        port = ((((unsigned int)byteArray[0]) << 8) +
-                ((unsigned int)byteArray[1]));
+        port = ((((unsigned int)tbuf[0]) << 8) +
+                ((unsigned int)tbuf[1]));
         Serial.write('A');
       }
       else
