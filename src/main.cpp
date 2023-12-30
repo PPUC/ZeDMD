@@ -1,6 +1,6 @@
 #define ZEDMD_VERSION_MAJOR 3 // X Digits
 #define ZEDMD_VERSION_MINOR 4 // Max 2 Digits
-#define ZEDMD_VERSION_PATCH 1 // Max 2 Digits
+#define ZEDMD_VERSION_PATCH 2 // Max 2 Digits
 
 #ifdef ZEDMD_HD
 #define PANEL_WIDTH 128 // Width: number of LEDs for 1 panel.
@@ -100,9 +100,6 @@ IPAddress ip;
 
 unsigned long rotNextRotationTime[1];
 #else
-#ifdef ZEDMD_HD
-unsigned long rotNextRotationTime[1];
-#else
 // color rotation
 uint8_t rotFirstColor[MAX_COLOR_ROTATIONS];
 uint8_t rotAmountColors[MAX_COLOR_ROTATIONS];
@@ -111,7 +108,6 @@ unsigned long rotNextRotationTime[MAX_COLOR_ROTATIONS];
 uint8_t tmpColor[3] = {0};
 
 bool upscaling = true;
-#endif
 #endif
 
 // Pinout derived from ESP32-HUB75-MatrixPanel-I2S-DMA.h
@@ -305,7 +301,7 @@ void ClearScreen()
   dma_display->setBrightness8(lumval[lumstep]);
 }
 
-#if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
+#if !defined(ZEDMD_WIFI)
 bool CmpColor(uint8_t *px1, uint8_t *px2, uint8_t colors)
 {
   if (colors == 3)
@@ -673,7 +669,7 @@ void fillPanelUsingPalette()
   }
 }
 
-#if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
+#if !defined(ZEDMD_WIFI)
 void fillPanelUsingChangedPalette(bool *paletteAffected)
 {
   int pos;
@@ -1115,7 +1111,7 @@ bool SerialReadBuffer(uint8_t *pBuffer, unsigned int BufferSize, bool fixedSize 
 
 void updateColorRotations(void)
 {
-#if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
+#if !defined(ZEDMD_WIFI)
   bool rotPaletteAffected[64] = {0};
   unsigned long actime = millis();
   bool rotfound = false;
@@ -1363,7 +1359,7 @@ void loop()
       break;
     }
 
-#if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
+#if !defined(ZEDMD_WIFI)
     case 20: // turn off upscaling
     {
       upscaling = false;
@@ -1578,9 +1574,7 @@ void loop()
       free(renderBuffer);
       break;
     }
-#endif
 
-#if !defined(ZEDMD_WIFI) && !defined(ZEDMD_HD)
     case 3: // mode RGB24
     {
       // We need to cover downscaling, too.
