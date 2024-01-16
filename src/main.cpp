@@ -91,6 +91,9 @@
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include <LittleFS.h>
 
+#include <cstring>
+
+#include "fonts/tiny4x6.h"
 #include "miniz/miniz.h"
 
 #ifdef ZEDMD_WIFI
@@ -146,19 +149,15 @@ Bounce2::Button *brightnessButton;
 #define N_INTERMEDIATE_CTR_CHARS 4
 
 bool debugMode = false;
-unsigned int debugLines[6] = {0};
+int16_t transferBufferSize = 0;
+int16_t receivedBytes = 0;
+int16_t minizStatus = 0;
 
 // !!!!! NE METTRE AUCUNE VALEURE IDENTIQUE !!!!!
 uint8_t CtrlCharacters[6] = {0x5a, 0x65, 0x64, 0x72, 0x75, 0x6d};
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-bool lumtxt[16 * 5] = {0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0,
-                       0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0,
-                       0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0,
-                       0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0,
-                       0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 0, 1, 0};
-
-uint8_t lumval[16] = {
+const uint8_t lumval[16] = {
     0,  2,  4,  7,   11,  18,  30,  40,
     50, 65, 80, 100, 125, 160, 200, 255};  // Non-linear brightness progression
 
@@ -174,16 +173,17 @@ HUB75_I2S_CFG mxconfig(PANEL_WIDTH,    // width
 
 MatrixPanel_I2S_DMA *dma_display;
 
-int ordreRGB[3 * 6] = {0, 1, 2, 2, 0, 1, 1, 2, 0, 0, 2, 1, 1, 0, 2, 2, 1, 0};
-int acordreRGB = 0;
+const uint8_t ordreRGB[3 * 6] = {0, 1, 2, 2, 0, 1, 1, 2, 0,
+                                 0, 2, 1, 1, 0, 2, 2, 1, 0};
+uint8_t acordreRGB = 0;
 
 uint8_t *palette;
 uint8_t *renderBuffer;
 
 bool mode64 = false;
 
-int RomWidth = 128, RomHeight = 32;
-int RomWidthPlane = 128 >> 3;
+uint16_t RomWidth = 128, RomHeight = 32;
+uint8_t RomWidthPlane = 128 >> 3;
 
 uint8_t lumstep = 1;
 
@@ -197,72 +197,64 @@ bool handshakeSucceeded = false;
 bool compression = false;
 // 256 is the default buffer size of the CP210x linux kernel driver, we should
 // not exceed it as default.
-int serialTransferChunkSize = 256;
-unsigned int frameCount = 0;
-unsigned int errorCount = 0;
+uint16_t serialTransferChunkSize = 256;
+uint16_t frameCount = 0;
+uint16_t errorCount = 0;
 uint8_t flowControlCounter = 0;
 
-void DisplayChiffre(unsigned int chf, int x, int y, int R, int G, int B) {
-  bool min_chiffres[3 * 10 * 5] = {
-      0, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1,
-      1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 1,
-      0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 0, 1,
-      0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0,
-      1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0,
-      1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0,
-      0, 0, 1, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0};
+void DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t R, uint8_t G,
+                 uint8_t B) {
+  uint8_t color[3];
+  for (uint8_t i = 0; i < 3; i++) {
+    if (ordreRGB[acordreRGB * 3 + i] == 0) {
+      color[i] = R;
+    } else if (ordreRGB[acordreRGB * 3 + i] == 1) {
+      color[i] = G;
+    } else {
+      color[i] = B;
+    }
+  }
 
-  // affiche un chiffre verticalement
-  unsigned int c = chf % 10;
-  const int poscar = 3 * c;
-  for (int ti = 0; ti < 5; ti++) {
-    for (int tj = 0; tj < 4; tj++) {
-      if (tj < 3) {
-        if (min_chiffres[poscar + tj + ti * 3 * 10] == 1) {
-          dma_display->drawPixelRGB888(x + tj, y + ti, R, G, B);
-        } else {
-          dma_display->drawPixelRGB888(x + tj, y + ti, 0, 0, 0);
-        }
-      } else {
-        dma_display->drawPixelRGB888(x + tj, y + ti, 0, 0, 0);
+  for (uint8_t ti = 0; ti < strlen(text); ti++) {
+    for (uint8_t tj = 0; tj <= 5; tj++) {
+      uint8_t fourPixels = getFontLine(text[ti], tj);
+      for (uint8_t pixel = 0; pixel < 4; pixel++) {
+        bool p = (fourPixels >> (3 - pixel)) & 0x1;
+        dma_display->drawPixelRGB888(x + pixel + (ti * 4), y + tj, color[0] * p,
+                                     color[1] * p, color[2] * p);
       }
     }
   }
 }
 
-void DisplayNombre(unsigned int chf, uint8_t nc, int x, int y, int R, int G,
-                   int B) {
-  // affiche un nombre verticalement
-  unsigned int acc = chf, acd = 1;
-  for (int ti = 0; ti < (nc - 1); ti++) acd *= 10;
-  for (int ti = 0; ti < nc; ti++) {
-    unsigned int val;
-    if (nc > 1)
-      val = (unsigned int)(acc / acd);
-    else
-      val = chf;
-    DisplayChiffre(val, x + 4 * ti, y, R, G, B);
-    acc = acc - val * acd;
-    acd /= 10;
+void DisplayNumber(uint32_t chf, uint8_t nc, uint16_t x, uint16_t y, uint8_t R,
+                   uint8_t G, uint8_t B) {
+  char text[nc];
+  sprintf(text, "%d", chf);
+  DisplayText(text, x, y, R, G, B);
+  if (strlen(text) < nc) {
+    for (uint8_t i = 0; i < (nc - strlen(text)); i++) {
+      DisplayText(" ", x + (4 * strlen(text)) + (4 * i), y, R, G, B);
+    }
   }
 }
 
 void DisplayVersion() {
   // display the version number to the lower left
-  int ncM, ncm, ncp;
+  uint8_t ncM, ncm, ncp;
   if (ZEDMD_VERSION_MAJOR >= 100)
     ncM = 3;
   else if (ZEDMD_VERSION_MAJOR >= 10)
     ncM = 2;
   else
     ncM = 1;
-  DisplayNombre(ZEDMD_VERSION_MAJOR, ncM, 4, TOTAL_HEIGHT - 5, 150, 150, 150);
+  DisplayNumber(ZEDMD_VERSION_MAJOR, ncM, 4, TOTAL_HEIGHT - 5, 150, 150, 150);
   dma_display->drawPixelRGB888(4 + 4 * ncM, TOTAL_HEIGHT - 1, 150, 150, 150);
   if (ZEDMD_VERSION_MINOR >= 10)
     ncm = 2;
   else
     ncm = 1;
-  DisplayNombre(ZEDMD_VERSION_MINOR, ncm, 4 + 4 * ncM + 2, TOTAL_HEIGHT - 5,
+  DisplayNumber(ZEDMD_VERSION_MINOR, ncm, 4 + 4 * ncM + 2, TOTAL_HEIGHT - 5,
                 150, 150, 150);
   dma_display->drawPixelRGB888(4 + 4 * ncM + 2 + 4 * ncm, TOTAL_HEIGHT - 1, 150,
                                150, 150);
@@ -270,31 +262,13 @@ void DisplayVersion() {
     ncp = 2;
   else
     ncp = 1;
-  DisplayNombre(ZEDMD_VERSION_PATCH, ncp, 4 + 4 * ncM + 2 + 4 * ncm + 2,
+  DisplayNumber(ZEDMD_VERSION_PATCH, ncp, 4 + 4 * ncM + 2 + 4 * ncm + 2,
                 TOTAL_HEIGHT - 5, 150, 150, 150);
 }
 
 void DisplayLum(void) {
-  DisplayNombre(lumstep, 2, TOTAL_WIDTH / 2 - 16 / 2 - 2 * 4 / 2 + 16,
+  DisplayNumber(lumstep, 2, TOTAL_WIDTH / 2 - 16 / 2 - 2 * 4 / 2 + 16,
                 TOTAL_HEIGHT - 5, 255, 255, 255);
-}
-
-void DisplayText(bool *text, int width, int x, int y, int R, int G, int B) {
-  // affiche le texte "SCORE" en (x, y)
-  for (unsigned int ti = 0; ti < width; ti++) {
-    for (unsigned int tj = 0; tj < 5; tj++) {
-      if (text[ti + tj * width] == 1)
-        dma_display->drawPixelRGB888(x + ti, y + tj, R, G, B);
-      else
-        dma_display->drawPixelRGB888(x + ti, y + tj, 0, 0, 0);
-    }
-  }
-}
-
-void Say(uint8_t where, unsigned int what) {
-  DisplayNombre(where, 3, 0, where * 5, 255, 255, 255);
-  if (what != (unsigned int)-1)
-    DisplayNombre(what, 10, 15, where * 5, 255, 255, 255);
 }
 
 void ClearScreen() {
@@ -321,9 +295,9 @@ void SetColor(uint8_t *px1, uint8_t *px2, uint8_t colors) {
 }
 
 void ScaleImage(uint8_t colors) {
-  int xoffset = 0;
-  int yoffset = 0;
-  int scale = 0;  // 0 - no scale, 1 - half scale, 2 - double scale
+  uint16_t xoffset = 0;
+  uint16_t yoffset = 0;
+  uint8_t scale = 0;  // 0 - no scale, 1 - half scale, 2 - double scale
 
   if (RomWidth == 192 && TOTAL_WIDTH == 256) {
     xoffset = 32;
@@ -363,8 +337,8 @@ void ScaleImage(uint8_t colors) {
   if (scale == 1) {
     // for half scaling we take the 4 points and look if there is one colour
     // repeated
-    for (int y = 0; y < RomHeight; y += 2) {
-      for (int x = 0; x < RomWidth; x += 2) {
+    for (uint16_t y = 0; y < RomHeight; y += 2) {
+      for (uint16_t x = 0; x < RomWidth; x += 2) {
         uint16_t upper_left = y * RomWidth * colors + x * colors;
         uint16_t upper_right = upper_left + colors;
         uint16_t lower_left = upper_left + RomWidth * colors;
@@ -446,8 +420,8 @@ void ScaleImage(uint8_t colors) {
   } else if (scale == 2) {
     // we implement scale2x http://www.scale2x.it/algorithm
     uint16_t row = RomWidth * colors;
-    for (int x = 0; x < RomHeight; x++) {
-      for (int y = 0; y < RomWidth; y++) {
+    for (uint16_t x = 0; x < RomHeight; x++) {
+      for (uint16_t y = 0; y < RomWidth; y++) {
         uint8_t a[colors], b[colors], c[colors], d[colors], e[colors],
             f[colors], g[colors], h[colors], i[colors];
         for (uint8_t tc = 0; tc < colors; tc++) {
@@ -554,8 +528,8 @@ void ScaleImage(uint8_t colors) {
     }
   } else  // offset!=0
   {
-    for (int y = 0; y < RomHeight; y++) {
-      for (int x = 0; x < RomWidth; x++) {
+    for (uint16_t y = 0; y < RomHeight; y++) {
+      for (uint16_t x = 0; x < RomWidth; x++) {
         for (uint8_t c = 0; c < colors; c++) {
           renderBuffer[((yoffset + y) * TOTAL_WIDTH + xoffset + x) * colors +
                        c] = panel[(y * RomWidth + x) * colors + c];
@@ -585,10 +559,10 @@ void fillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
 }
 
 void fillPanelRaw() {
-  int pos;
+  uint16_t pos;
 
-  for (int y = 0; y < TOTAL_HEIGHT; y++) {
-    for (int x = 0; x < TOTAL_WIDTH; x++) {
+  for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
+    for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
       pos = (y * TOTAL_WIDTH + x) * 3;
 
       dma_display->drawPixelRGB888(
@@ -600,10 +574,10 @@ void fillPanelRaw() {
 }
 
 void fillPanelUsingPalette() {
-  int pos;
+  uint16_t pos;
 
-  for (int y = 0; y < TOTAL_HEIGHT; y++) {
-    for (int x = 0; x < TOTAL_WIDTH; x++) {
+  for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
+    for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
       pos = renderBuffer[y * TOTAL_WIDTH + x] * 3;
 
       dma_display->drawPixelRGB888(x, y,
@@ -616,10 +590,10 @@ void fillPanelUsingPalette() {
 
 #if !defined(ZEDMD_WIFI)
 void fillPanelUsingChangedPalette(bool *paletteAffected) {
-  int pos;
+  uint16_t pos;
 
-  for (int y = 0; y < TOTAL_HEIGHT; y++) {
-    for (int x = 0; x < TOTAL_WIDTH; x++) {
+  for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
+    for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
       pos = renderBuffer[y * TOTAL_WIDTH + x];
       if (paletteAffected[pos]) {
         pos *= 3;
@@ -731,7 +705,7 @@ void DisplayLogo(void) {
   }
 
   renderBuffer = (uint8_t *)malloc(TOTAL_BYTES);
-  for (unsigned int tj = 0; tj < TOTAL_BYTES; tj++) {
+  for (uint16_t tj = 0; tj < TOTAL_BYTES; tj++) {
     renderBuffer[tj] = flogo.read();
   }
   flogo.close();
@@ -741,13 +715,14 @@ void DisplayLogo(void) {
   free(renderBuffer);
 
   DisplayVersion();
-  DisplayText(lumtxt, 16, TOTAL_WIDTH / 2 - 16 / 2 - 2 * 4 / 2,
-              TOTAL_HEIGHT - 5, 255, 255, 255);
+  DisplayText("LUM ", TOTAL_WIDTH / 2 - 16 / 2 - 2 * 4 / 2, TOTAL_HEIGHT - 5,
+              255, 255, 255);
   DisplayLum();
+
 #ifdef ZEDMD_WIFI
   if (ip = WiFi.localIP()) {
-    for (int i = 0; i < 4; i++) {
-      DisplayNombre(ip[i], 3, i * 3 * 4 + i, 0, 200, 200, 200);
+    for (uint8_t i = 0; i < 4; i++) {
+      DisplayNumber(ip[i], 3, i * 3 * 4 + i, 0, 200, 200, 200);
     }
   }
 #endif
@@ -774,7 +749,7 @@ void DisplayUpdate(void) {
   }
 
   renderBuffer = (uint8_t *)malloc(TOTAL_BYTES);
-  for (unsigned int tj = 0; tj < TOTAL_BYTES; tj++) {
+  for (uint16_t tj = 0; tj < TOTAL_BYTES; tj++) {
     renderBuffer[tj] = flogo.read();
   }
   flogo.close();
@@ -803,7 +778,7 @@ void WiFiEvent(WiFiEvent_t event) {
     case ARDUINO_EVENT_WIFI_STA_GOT_IP:
       ip = WiFi.localIP();
       for (int i = 0; i < 4; i++) {
-        DisplayNombre(ip[i], 3, i * 3 * 4 + i, 0, 200, 200, 200);
+        DisplayNumber(ip[i], 3, i * 3 * 4 + i, 0, 200, 200, 200);
       }
       break;
     case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
@@ -832,7 +807,7 @@ void setup() {
   dma_display->begin();
 
   if (!LittleFS.begin()) {
-    Say(0, 9999);
+    DisplayText("Error reading file system!", 4, 6, 255, 0, 0);
     delay(4000);
   }
 
@@ -877,7 +852,7 @@ void setup() {
             {
               uint8_t compressed = pPacket[1] & 128;
               uint8_t numZones = pPacket[1] & 127;
-              int size = (int)(pPacket[3]) + (((int)pPacket[2]) << 8);
+              uint16_t size = (int)(pPacket[3]) + (((int)pPacket[2]) << 8);
 
               renderBuffer = (uint8_t *)malloc(ZONE_SIZE * numZones + numZones);
 
@@ -886,13 +861,16 @@ void setup() {
                     ZONE_SIZE * numZones + numZones;
                 mz_ulong udpPayloadSize = (mz_ulong)size;
 
-                int status =
+                minizStatus =
                     mz_uncompress2(renderBuffer, &uncompressedBufferSize,
                                    &pPacket[4], (mz_ulong *)&udpPayloadSize);
                 if (status != MZ_OK || uncompressedBufferSize !=
                                            (ZONE_SIZE * numZones + numZones)) {
                   int tmp_status = (status >= 0) ? status : (-1 * status) + 100;
-                  if (debugMode) Say(0, tmp_status);
+                  if (debugMode) {
+                    DisplayText("Miniz Status:", 0, 3 * 6, 255, 255, 255);
+                    DisplayNumber(minizStatus, 6, 13 * 4, 3 * 6, 255, 255, 255);
+                  }
                   return;
                 }
               } else {
@@ -915,18 +893,18 @@ void setup() {
 #endif
 }
 
-bool SerialReadBuffer(uint8_t *pBuffer, unsigned int BufferSize,
+bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
                       bool fixedSize = true) {
   memset(pBuffer, 0, BufferSize);
 
-  unsigned int transferBufferSize = BufferSize;
+  transferBufferSize = BufferSize;
   uint8_t *transferBuffer;
 
   if (compression) {
     uint8_t byteArray[2];
     Serial.readBytes(byteArray, 2);
     transferBufferSize =
-        ((((unsigned int)byteArray[0]) << 8) + ((unsigned int)byteArray[1]));
+        ((((uint16_t)byteArray[0]) << 8) + ((uint16_t)byteArray[1]));
 
     transferBuffer = (uint8_t *)malloc(transferBufferSize);
   } else {
@@ -934,36 +912,33 @@ bool SerialReadBuffer(uint8_t *pBuffer, unsigned int BufferSize,
   }
 
   if (debugMode) {
-    Say(1, transferBufferSize);
-    debugLines[1] = transferBufferSize;
+    DisplayText("Transfer Buffer:", 0, 6, 255, 255, 255);
+    DisplayNumber(transferBufferSize, 5, 16 * 4, 6, 255, 255, 255);
   }
 
   // We always receive chunks of "serialTransferChunkSize" bytes (maximum).
   // At this point, the control chars and the one byte command have been read
   // already. So we only need to read the remaining bytes of the first chunk and
   // full chunks afterwards.
-  int chunkSize =
+  uint16_t chunkSize =
       serialTransferChunkSize - N_CTRL_CHARS - 1 - (compression ? 2 : 0);
-  int remainingBytes = transferBufferSize;
+  uint16_t remainingBytes = transferBufferSize;
   while (remainingBytes > 0) {
-    int receivedBytes = Serial.readBytes(
+    receivedBytes = Serial.readBytes(
         transferBuffer + transferBufferSize - remainingBytes,
         (remainingBytes > chunkSize) ? chunkSize : remainingBytes);
-    if (debugMode) {
-      Say(2, receivedBytes);
-      debugLines[2] = receivedBytes;
-    }
-    if (receivedBytes != remainingBytes && receivedBytes != chunkSize) {
-      if (debugMode) {
-        debugLines[4] = ++errorCount;
-#ifdef ZEDMD_HD
-        Say(9, remainingBytes);
-        Say(10, chunkSize);
-        Say(11, receivedBytes);
-        sleep(3);
-#endif
-      }
 
+    if (debugMode) {
+      DisplayText("Received:", 0, 2 * 6, 255, 255, 255);
+      DisplayNumber(receivedBytes, 5, 9 * 4, 2 * 6, 255, 255, 255);
+    }
+
+    if (receivedBytes != remainingBytes && receivedBytes != chunkSize) {
+      errorCount++;
+      if (debugMode) {
+        DisplayText("Errors:", 0, 4 * 6, 255, 255, 255);
+        DisplayNumber(errorCount, 5, 7 * 4, 4 * 6, 255, 0, 0);
+      }
       // Send an (E)rror signal to tell the client that no more chunks should be
       // send or to repeat the entire frame from the beginning.
       Serial.write('E');
@@ -983,31 +958,30 @@ bool SerialReadBuffer(uint8_t *pBuffer, unsigned int BufferSize,
 
   if (compression) {
     mz_ulong uncompressed_buffer_size = (mz_ulong)BufferSize;
-    int status =
+    minizStatus =
         mz_uncompress2(pBuffer, &uncompressed_buffer_size, transferBuffer,
                        (mz_ulong *)&transferBufferSize);
     free(transferBuffer);
 
-    if (debugMode && (MZ_OK != status)) {
-      int tmp_status = (status >= 0) ? status : (-1 * status) + 100;
-      Say(3, tmp_status);
-      debugLines[3] = tmp_status;
+    if (debugMode) {
+      DisplayText("Miniz Status:", 0, 3 * 6, 255, 255, 255);
+      DisplayNumber(minizStatus, 6, 13 * 4, 3 * 6, 255, 255, 255);
     }
 
-    if ((MZ_OK == status) &&
+    if ((MZ_OK == minizStatus) &&
         (!fixedSize || (fixedSize && uncompressed_buffer_size == BufferSize))) {
-      if (debugMode) {
-        Say(3, 0);
-        debugLines[3] = 0;
-      }
-
       return true;
     }
 
-    if (debugMode && (MZ_OK == status)) {
+    if (debugMode && (MZ_OK == minizStatus)) {
       // uncrompessed data isn't of expected size
-      Say(3, 99);
-      debugLines[3] = 99;
+      DisplayNumber(99, 6, 13 * 4, 3 * 6, 255, 255, 255);
+    }
+
+    errorCount++;
+    if (debugMode) {
+      DisplayText("Errors:", 0, 4 * 6, 255, 255, 255);
+      DisplayNumber(errorCount, 5, 7 * 4, 4 * 6, 255, 0, 0);
     }
 
     Serial.write('E');
@@ -1022,7 +996,7 @@ void updateColorRotations(void) {
   bool rotPaletteAffected[64] = {0};
   unsigned long actime = millis();
   bool rotfound = false;
-  for (int ti = 0; ti < MAX_COLOR_ROTATIONS; ti++) {
+  for (uint8_t ti = 0; ti < MAX_COLOR_ROTATIONS; ti++) {
     if (rotFirstColor[ti] == 255) continue;
 
     if (actime >= rotNextRotationTime[ti]) {
@@ -1032,7 +1006,7 @@ void updateColorRotations(void) {
               (rotAmountColors[ti] - 1) * 3);
       memcpy(&palette[(rotFirstColor[ti] + rotAmountColors[ti] - 1) * 3],
              tmpColor, 3);
-      for (int tj = rotFirstColor[ti];
+      for (uint8_t tj = rotFirstColor[ti];
            tj < (rotFirstColor[ti] + rotAmountColors[ti]); tj++) {
         rotPaletteAffected[tj] = true;
       }
@@ -1056,8 +1030,7 @@ bool wait_for_ctrl_chars(void) {
         nCtrlCharFound = 0;
         if (debugMode) {
           // There's garbage on the line.
-          Say(3, 666);
-          debugLines[3] = 666;
+          DisplayText("Miniz Status:99    ", 0, 3 * 6, 255, 255, 255);
         }
       }
     }
@@ -1102,7 +1075,7 @@ void loop() {
       if (acordreRGB >= 6) acordreRGB = 0;
       SaveOrdreRGB();
       fillPanelRaw();
-      DisplayText(lumtxt, 16, TOTAL_WIDTH / 2 - 16 / 2 - 2 * 4 / 2,
+      DisplayText("LUM ", TOTAL_WIDTH / 2 - 16 / 2 - 2 * 4 / 2,
                   TOTAL_HEIGHT - 5, 255, 255, 255);
       DisplayLum();
     }
@@ -1157,7 +1130,7 @@ void loop() {
     c4 = Serial.read();
 
     if (debugMode) {
-      DisplayNombre(c4, 2, TOTAL_WIDTH - 3 * 4, TOTAL_HEIGHT - 8, 200, 200,
+      DisplayNumber(c4, 2, TOTAL_WIDTH - 3 * 4, TOTAL_HEIGHT - 8, 200, 200,
                     200);
     }
 
@@ -1189,8 +1162,8 @@ void loop() {
           RomHeight = (int)(tbuf[2]) + (int)(tbuf[3] << 8);
           RomWidthPlane = RomWidth >> 3;
           if (debugMode) {
-            DisplayNombre(RomWidth, 3, TOTAL_WIDTH - 7 * 4, 4, 200, 200, 200);
-            DisplayNombre(RomHeight, 2, TOTAL_WIDTH - 3 * 4, 4, 200, 200, 200);
+            DisplayNumber(RomWidth, 3, TOTAL_WIDTH - 7 * 4, 4, 200, 200, 200);
+            DisplayNumber(RomHeight, 2, TOTAL_WIDTH - 3 * 4, 4, 200, 200, 200);
           }
         }
         break;
@@ -1438,7 +1411,7 @@ void loop() {
       case 3:  // mode RGB24
       {
         // We need to cover downscaling, too.
-        int renderBufferSize =
+        uint16_t renderBufferSize =
             (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT)
                 ? TOTAL_BYTES
                 : RomWidth * RomHeight * 3;
@@ -1458,12 +1431,12 @@ void loop() {
       case 8:  // mode 4 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis
                // de 4 pixels par byte
       {
-        int bufferSize = 12 + 2 * RomWidthPlane * RomHeight;
+        uint16_t bufferSize = 12 + 2 * RomWidthPlane * RomHeight;
         uint8_t *buffer = (uint8_t *)malloc(bufferSize);
 
         if (SerialReadBuffer(buffer, bufferSize)) {
           // We need to cover downscaling, too.
-          int renderBufferSize =
+          uint16_t renderBufferSize =
               (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT)
                   ? TOTAL_WIDTH * TOTAL_HEIGHT
                   : RomWidth * RomHeight;
@@ -1473,8 +1446,8 @@ void loop() {
           memcpy(palette, buffer, 12);
 
           uint8_t *frame = &buffer[12];
-          for (int tj = 0; tj < RomHeight; tj++) {
-            for (int ti = 0; ti < RomWidthPlane; ti++) {
+          for (uint16_t tj = 0; tj < RomHeight; tj++) {
+            for (uint16_t ti = 0; ti < RomWidthPlane; ti++) {
               uint8_t mask = 1;
               uint8_t planes[2];
               planes[0] = frame[ti + tj * RomWidthPlane];
@@ -1507,12 +1480,12 @@ void loop() {
       case 7:  // mode 16 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis
                // de 2 pixels par byte
       {
-        int bufferSize = 12 + 4 * RomWidthPlane * RomHeight;
+        uint16_t bufferSize = 12 + 4 * RomWidthPlane * RomHeight;
         uint8_t *buffer = (uint8_t *)malloc(bufferSize);
 
         if (SerialReadBuffer(buffer, bufferSize)) {
           // We need to cover downscaling, too.
-          int renderBufferSize =
+          uint16_t renderBufferSize =
               (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT)
                   ? TOTAL_WIDTH * TOTAL_HEIGHT
                   : RomWidth * RomHeight;
@@ -1585,8 +1558,8 @@ void loop() {
                         3 * ((palette[15 * 3 + 2] - palette[11 * 3 + 2]) / 4);
 
           uint8_t *pBuffer = &buffer[12];
-          for (int tj = 0; tj < RomHeight; tj++) {
-            for (int ti = 0; ti < RomWidthPlane; ti++) {
+          for (uint16_t tj = 0; tj < RomHeight; tj++) {
+            for (uint16_t ti = 0; ti < RomWidthPlane; ti++) {
               uint8_t mask = 1;
               uint8_t planes[4];
               planes[0] = pBuffer[ti + tj * RomWidthPlane];
@@ -1596,7 +1569,7 @@ void loop() {
                                   tj * RomWidthPlane];
               planes[3] = pBuffer[3 * RomWidthPlane * RomHeight + ti +
                                   tj * RomWidthPlane];
-              for (int tk = 0; tk < 8; tk++) {
+              for (uint8_t tk = 0; tk < 8; tk++) {
                 uint8_t idx = 0;
                 if ((planes[0] & mask) > 0) idx |= 1;
                 if ((planes[1] & mask) > 0) idx |= 2;
@@ -1626,12 +1599,12 @@ void loop() {
                // suivis de 4 bytes par groupe de 8 points (séparés en plans de
                // bits 4*512 bytes)
       {
-        int bufferSize = 48 + 4 * RomWidthPlane * RomHeight;
+        uint16_t bufferSize = 48 + 4 * RomWidthPlane * RomHeight;
         uint8_t *buffer = (uint8_t *)malloc(bufferSize);
 
         if (SerialReadBuffer(buffer, bufferSize)) {
           // We need to cover downscaling, too.
-          int renderBufferSize =
+          uint16_t renderBufferSize =
               (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT)
                   ? TOTAL_WIDTH * TOTAL_HEIGHT
                   : RomWidth * RomHeight;
@@ -1641,8 +1614,8 @@ void loop() {
           memcpy(palette, buffer, 48);
 
           uint8_t *pBuffer = &buffer[48];
-          for (int tj = 0; tj < RomHeight; tj++) {
-            for (int ti = 0; ti < RomWidthPlane; ti++) {
+          for (uint16_t tj = 0; tj < RomHeight; tj++) {
+            for (uint16_t ti = 0; ti < RomWidthPlane; ti++) {
               // on reconstitue un indice à partir des plans puis une couleur à
               // partir de la palette
               uint8_t mask = 1;
@@ -1654,7 +1627,7 @@ void loop() {
                                   tj * RomWidthPlane];
               planes[3] = pBuffer[3 * RomWidthPlane * RomHeight + ti +
                                   tj * RomWidthPlane];
-              for (int tk = 0; tk < 8; tk++) {
+              for (uint8_t tk = 0; tk < 8; tk++) {
                 uint8_t idx = 0;
                 if ((planes[0] & mask) > 0) idx |= 1;
                 if ((planes[1] & mask) > 0) idx |= 2;
@@ -1685,13 +1658,13 @@ void loop() {
                 // bits 6*512 bytes) suivis de 3*8 bytes de rotations de
                 // couleurs
       {
-        int bufferSize =
+        uint16_t bufferSize =
             192 + 6 * RomWidthPlane * RomHeight + 3 * MAX_COLOR_ROTATIONS;
         uint8_t *buffer = (uint8_t *)malloc(bufferSize);
 
         if (SerialReadBuffer(buffer, bufferSize)) {
           // We need to cover downscaling, too.
-          int renderBufferSize =
+          uint16_t renderBufferSize =
               (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT)
                   ? TOTAL_WIDTH * TOTAL_HEIGHT
                   : RomWidth * RomHeight;
@@ -1701,8 +1674,8 @@ void loop() {
           memcpy(palette, buffer, 192);
 
           uint8_t *pBuffer = &buffer[192];
-          for (int tj = 0; tj < RomHeight; tj++) {
-            for (int ti = 0; ti < RomWidthPlane; ti++) {
+          for (uint16_t tj = 0; tj < RomHeight; tj++) {
+            for (uint16_t ti = 0; ti < RomWidthPlane; ti++) {
               // on reconstitue un indice à partir des plans puis une couleur à
               // partir de la palette
               uint8_t mask = 1;
@@ -1718,7 +1691,7 @@ void loop() {
                                   tj * RomWidthPlane];
               planes[5] = pBuffer[5 * RomWidthPlane * RomHeight + ti +
                                   tj * RomWidthPlane];
-              for (int tk = 0; tk < 8; tk++) {
+              for (uint8_t tk = 0; tk < 8; tk++) {
                 uint8_t idx = 0;
                 if ((planes[0] & mask) > 0) idx |= 1;
                 if ((planes[1] & mask) > 0) idx |= 2;
@@ -1762,24 +1735,35 @@ void loop() {
       }
 #endif
       default: {
+        if (debugMode) {
+          DisplayText("Unsupported render mode!", 4, 6, 255, 0, 0);
+        }
+
         Serial.write('E');
       }
     }
 
-    if (debugMode) {
-      DisplayNombre(RomWidth, 3, TOTAL_WIDTH - 7 * 4, 4, 200, 200, 200);
-      DisplayNombre(RomHeight, 2, TOTAL_WIDTH - 3 * 4, 4, 200, 200, 200);
-      DisplayNombre(flowControlCounter, 2, TOTAL_WIDTH - 6 * 4,
-                    TOTAL_HEIGHT - 8, 200, 200, 200);
-      DisplayNombre(c4, 2, TOTAL_WIDTH - 3 * 4, TOTAL_HEIGHT - 8, 200, 200,
-                    200);
+    // An overflow of the unsigned int counters should not be an issue, they
+    // just reset to 0.
+    frameCount++;
 
-      // An overflow of the unsigned int counters should not be an issue, they
-      // just reset to 0.
-      debugLines[0] = ++frameCount;
-      for (int i = 0; i < 6; i++) {
-        Say((uint8_t)i, debugLines[i]);
-      }
+    if (debugMode) {
+      DisplayNumber(RomWidth, 3, TOTAL_WIDTH - 7 * 4, 4, 200, 200, 200);
+      DisplayNumber(RomHeight, 2, TOTAL_WIDTH - 3 * 4, 4, 200, 200, 200);
+      DisplayNumber(flowControlCounter, 2, TOTAL_WIDTH - 6 * 4,
+                    TOTAL_HEIGHT - 8, 200, 200, 200);
+      DisplayNumber(c4, 2, TOTAL_WIDTH - 3 * 4, TOTAL_HEIGHT - 8, 200, 200,
+                    200);
+      DisplayText("Frames:", 0, 0, 255, 255, 255);
+      DisplayNumber(frameCount, 10, 7 * 4, 0, 0, 255, 0);
+      DisplayText("Transfer Buffer:", 0, 6, 255, 255, 255);
+      DisplayNumber(transferBufferSize, 5, 16 * 4, 6, 255, 255, 255);
+      DisplayText("Received:", 0, 2 * 6, 255, 255, 255);
+      DisplayNumber(receivedBytes, 5, 9 * 4, 2 * 6, 255, 255, 255);
+      DisplayText("Miniz Status:", 0, 3 * 6, 255, 255, 255);
+      DisplayNumber(minizStatus, 6, 13 * 4, 3 * 6, 255, 255, 255);
+      DisplayText("Errors:", 0, 4 * 6, 255, 255, 255);
+      DisplayNumber(errorCount, 5, 7 * 4, 4 * 6, 255, 0, 0);
     }
   }
 }
