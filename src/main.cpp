@@ -864,9 +864,9 @@ void setup() {
                 minizStatus =
                     mz_uncompress2(renderBuffer, &uncompressedBufferSize,
                                    &pPacket[4], (mz_ulong *)&udpPayloadSize);
-                if (status != MZ_OK || uncompressedBufferSize !=
-                                           (ZONE_SIZE * numZones + numZones)) {
-                  int tmp_status = (status >= 0) ? status : (-1 * status) + 100;
+                if (minizStatus != MZ_OK ||
+                    uncompressedBufferSize !=
+                        (ZONE_SIZE * numZones + numZones)) {
                   if (debugMode) {
                     DisplayText("Miniz Status:", 0, 3 * 6, 255, 255, 255);
                     DisplayNumber(minizStatus, 6, 13 * 4, 3 * 6, 255, 255, 255);
