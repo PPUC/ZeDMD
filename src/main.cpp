@@ -149,12 +149,6 @@ Bounce2::Button *brightnessButton;
 #define N_CTRL_CHARS 6
 #define N_INTERMEDIATE_CTR_CHARS 4
 
-bool debugMode = false;
-uint8_t c4;
-int16_t transferBufferSize = 0;
-int16_t receivedBytes = 0;
-int16_t minizStatus = 0;
-
 // !!!!! NE METTRE AUCUNE VALEURE IDENTIQUE !!!!!
 uint8_t CtrlCharacters[6] = {0x5a, 0x65, 0x64, 0x72, 0x75, 0x6d};
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -178,17 +172,17 @@ MatrixPanel_I2S_DMA *dma_display;
 const uint8_t ordreRGB[3 * 6] = {0, 1, 2, 2, 0, 1, 1, 2, 0,
                                  0, 2, 1, 1, 0, 2, 2, 1, 0};
 uint8_t acordreRGB = 0;
-
+bool debugMode = false;
+uint8_t c4;
+int16_t transferBufferSize = 0;
+int16_t receivedBytes = 0;
+int16_t minizStatus = 0;
 uint8_t *palette;
 uint8_t *renderBuffer;
-
 bool mode64 = false;
-
 uint16_t RomWidth = 128, RomHeight = 32;
 uint8_t RomWidthPlane = 128 >> 3;
-
 uint8_t lumstep = 1;
-
 bool MireActive = false;
 // 0: screen saver
 // 1: normal operation mode
