@@ -173,6 +173,8 @@ const uint8_t ordreRGB[3 * 6] = {0, 1, 2, 2, 0, 1, 1, 2, 0,
                                  0, 2, 1, 1, 0, 2, 2, 1, 0};
 uint8_t acordreRGB = 0;
 bool debugMode = false;
+// WTF removing this dummy variable kills the debug mode
+bool debugWTF = false;
 uint8_t c4;
 int16_t transferBufferSize = 0;
 int16_t receivedBytes = 0;
@@ -268,6 +270,29 @@ void DisplayVersion() {
 void DisplayLum(void) {
   DisplayNumber(lumstep, 2, TOTAL_WIDTH / 2 - 16 / 2 - 2 * 4 / 2 + 16,
                 TOTAL_HEIGHT - 5, 255, 255, 255);
+}
+
+void DisplayDebugInfo(void) {
+  // WTF not comparing against true kills the debug mode
+  if (debugMode == true) {
+    DisplayText("Frames:", 0, 0, 255, 255, 255);
+    DisplayNumber(frameCount, 5, 7 * 4, 0, 0, 255, 0);
+    DisplayText("Transfer Buffer:", 0, 6, 255, 255, 255);
+    DisplayNumber(transferBufferSize, 5, 16 * 4, 6, 255, 255, 255);
+    DisplayText("Received Bytes: ", 0, 2 * 6, 255, 255, 255);
+    DisplayNumber(receivedBytes, 5, 16 * 4, 2 * 6, 255, 255, 255);
+    DisplayText("Miniz Status:", 0, 3 * 6, 255, 255, 255);
+    DisplayNumber(minizStatus, 6, 13 * 4, 3 * 6, 255, 255, 255);
+    DisplayText("Errors:", 0, 4 * 6, 255, 255, 255);
+    DisplayNumber(errorCount, 5, 7 * 4, 4 * 6, 255, 0, 0);
+
+    DisplayNumber(RomWidth, 3, TOTAL_WIDTH - 6 * 4, 0, 255, 255, 255);
+    DisplayText("x", TOTAL_WIDTH - 3 * 4, 0, 255, 255, 255);
+    DisplayNumber(RomHeight, 2, TOTAL_WIDTH - 2 * 4, 0, 255, 255, 255);
+    DisplayNumber(flowControlCounter, 2, TOTAL_WIDTH - 5 * 4, TOTAL_HEIGHT - 6,
+                  0, 0, 255);
+    DisplayNumber(c4, 2, TOTAL_WIDTH - 2 * 4, TOTAL_HEIGHT - 6, 255, 255, 255);
+  }
 }
 
 void ClearScreen() {
@@ -866,10 +891,9 @@ void setup() {
                 if (minizStatus != MZ_OK ||
                     uncompressedBufferSize !=
                         (ZONE_SIZE * numZones + numZones)) {
-                  if (debugMode) {
-                    DisplayText("Miniz Status:", 0, 3 * 6, 255, 255, 255);
-                    DisplayNumber(minizStatus, 6, 13 * 4, 3 * 6, 255, 255, 255);
-                  }
+
+                  DisplayDebugInfo();
+
                   return;
                 }
               } else {
@@ -910,10 +934,7 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
     transferBuffer = pBuffer;
   }
 
-  if (debugMode) {
-    DisplayText("Transfer Buffer:", 0, 6, 255, 255, 255);
-    DisplayNumber(transferBufferSize, 5, 16 * 4, 6, 255, 255, 255);
-  }
+  DisplayDebugInfo();
 
   // We always receive chunks of "serialTransferChunkSize" bytes (maximum).
   // At this point, the control chars and the one byte command have been read
@@ -927,17 +948,11 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
         transferBuffer + transferBufferSize - remainingBytes,
         (remainingBytes > chunkSize) ? chunkSize : remainingBytes);
 
-    if (debugMode) {
-      DisplayText("Received Bytes: ", 0, 2 * 6, 255, 255, 255);
-      DisplayNumber(receivedBytes, 5, 16 * 4, 2 * 6, 255, 255, 255);
-    }
+    DisplayDebugInfo();
 
     if (receivedBytes != remainingBytes && receivedBytes != chunkSize) {
       errorCount++;
-      if (debugMode) {
-        DisplayText("Errors:", 0, 4 * 6, 255, 255, 255);
-        DisplayNumber(errorCount, 5, 7 * 4, 4 * 6, 255, 0, 0);
-      }
+      DisplayDebugInfo();
       // Send an (E)rror signal to tell the client that no more chunks should be
       // send or to repeat the entire frame from the beginning.
       Serial.write('E');
@@ -962,10 +977,7 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
                        (mz_ulong *)&transferBufferSize);
     free(transferBuffer);
 
-    if (debugMode) {
-      DisplayText("Miniz Status:", 0, 3 * 6, 255, 255, 255);
-      DisplayNumber(minizStatus, 6, 13 * 4, 3 * 6, 255, 255, 255);
-    }
+    DisplayDebugInfo();
 
     if ((MZ_OK == minizStatus) &&
         (!fixedSize || (fixedSize && uncompressed_buffer_size == BufferSize))) {
@@ -974,14 +986,11 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
 
     if (debugMode && (MZ_OK == minizStatus)) {
       // uncrompessed data isn't of expected size
-      DisplayNumber(99, 6, 13 * 4, 3 * 6, 255, 255, 255);
+      minizStatus = 99;
     }
 
     errorCount++;
-    if (debugMode) {
-      DisplayText("Errors:", 0, 4 * 6, 255, 255, 255);
-      DisplayNumber(errorCount, 5, 7 * 4, 4 * 6, 255, 0, 0);
-    }
+    DisplayDebugInfo();
 
     Serial.write('E');
     return false;
@@ -1027,10 +1036,9 @@ bool wait_for_ctrl_chars(void) {
     if (Serial.available()) {
       if (Serial.read() != CtrlCharacters[nCtrlCharFound++]) {
         nCtrlCharFound = 0;
-        if (debugMode) {
-          // There's garbage on the line.
-          DisplayText("Miniz Status:____99", 0, 3 * 6, 255, 255, 255);
-        }
+        // There's garbage on the line.
+        minizStatus = 666;
+        DisplayDebugInfo();
       }
     }
 
@@ -1122,10 +1130,7 @@ void loop() {
       ;
     c4 = Serial.read();
 
-    if (debugMode) {
-      DisplayNumber(c4, 2, TOTAL_WIDTH - 3 * 4, TOTAL_HEIGHT - 8, 200, 200,
-                    200);
-    }
+    DisplayDebugInfo();
 
     if (displayStatus != 1) {
       // Exit screen saver.
@@ -1154,10 +1159,7 @@ void loop() {
           RomWidth = (int)(tbuf[0]) + (int)(tbuf[1] << 8);
           RomHeight = (int)(tbuf[2]) + (int)(tbuf[3] << 8);
           RomWidthPlane = RomWidth >> 3;
-          if (debugMode) {
-            DisplayNumber(RomWidth, 3, TOTAL_WIDTH - 7 * 4, 4, 200, 200, 200);
-            DisplayNumber(RomHeight, 2, TOTAL_WIDTH - 3 * 4, 4, 200, 200, 200);
-          }
+          DisplayDebugInfo();
         }
         break;
       }
@@ -1357,7 +1359,8 @@ void loop() {
       case 99:  // enable debug mode
       {
         debugMode = true;
-
+        // WTF removing this dummy variable kills the debug mode
+        debugWTF = true;
         Serial.write('A');
         break;
       }
@@ -1729,34 +1732,17 @@ void loop() {
       }
 #endif
       default: {
-        if (debugMode) {
-          DisplayText("Unsupported render mode!", 4, 6, 255, 0, 0);
-        }
-
         Serial.write('E');
+        DisplayText("Unsupported render mode:", 0, 0, 255, 0, 0);
+        DisplayNumber(c4, 3, 24 * 4, 0, 255, 0, 0);
+        delay(5000);
       }
     }
 
     // An overflow of the unsigned int counters should not be an issue, they
     // just reset to 0.
     frameCount++;
-  }
 
-  if (debugMode) {
-    DisplayNumber(RomWidth, 3, TOTAL_WIDTH - 7 * 4, 4, 200, 200, 200);
-    DisplayNumber(RomHeight, 2, TOTAL_WIDTH - 3 * 4, 4, 200, 200, 200);
-    DisplayNumber(flowControlCounter, 2, TOTAL_WIDTH - 6 * 4, TOTAL_HEIGHT - 8,
-                  200, 200, 200);
-    DisplayNumber(c4, 2, TOTAL_WIDTH - 3 * 4, TOTAL_HEIGHT - 8, 200, 200, 200);
-    DisplayText("Frames:", 0, 0, 255, 255, 255);
-    DisplayNumber(frameCount, 5, 7 * 4, 0, 0, 255, 0);
-    DisplayText("Transfer Buffer:", 0, 6, 255, 255, 255);
-    DisplayNumber(transferBufferSize, 5, 16 * 4, 6, 255, 255, 255);
-    DisplayText("Received Bytes: ", 0, 2 * 6, 255, 255, 255);
-    DisplayNumber(receivedBytes, 5, 16 * 4, 2 * 6, 255, 255, 255);
-    DisplayText("Miniz Status:", 0, 3 * 6, 255, 255, 255);
-    DisplayNumber(minizStatus, 6, 13 * 4, 3 * 6, 255, 255, 255);
-    DisplayText("Errors:", 0, 4 * 6, 255, 255, 255);
-    DisplayNumber(errorCount, 5, 7 * 4, 4 * 6, 255, 0, 0);
+    DisplayDebugInfo();
   }
 }
