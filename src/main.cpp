@@ -33,11 +33,10 @@
 //   change below) pin and a ground pin several times
 // until the display is correct (automatically saved, no need to do it again)
 // -----------------------------------------------------------------------------------------------------------------------------------------
-// By pressing the RGB button while a game is running or by sending command
-// 99,you can enable the "Debug Mode". The output will be: number of frames
-// received, regardless if any error happened, size of compressed frame if
-// compression is enabled, size of currently received bytes of frame
-// (compressed or decompressed), error code if the decompression if
+// By sending command 99, you can enable the "Debug Mode". The output will be:
+// number of frames received, regardless if any error happened, size of
+// compressed frame if compression is enabled, size of currently received bytes
+// of frame (compressed or decompressed), error code if the decompression if
 // compression is enabled, number of incomplete frames, number of resets
 // because of communication freezes
 // -----------------------------------------------------------------------------------------------------------------------------------------
@@ -1110,11 +1109,6 @@ void loop() {
         ScreenSaver();
       }
     }
-  }
-
-  rgbOrderButton->update();
-  if (rgbOrderButton->pressed()) {
-    debugMode = !debugMode;
   }
 
   // After handshake, send a (R)eady signal to indicate that a new command could
