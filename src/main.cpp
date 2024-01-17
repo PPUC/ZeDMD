@@ -21,25 +21,24 @@
 #define FLOW_CONTROL_TIMEOUT \
   1  // Time in milliseconds to wait before sending a new ready signal.
 
-// ------------------------------------------ ZeDMD by MK47 & Zedrummer
-// (http://ppuc.org) --------------------------------------------------
+// ----------------- ZeDMD by MK47 & Zedrummer (http://ppuc.org) ---------------
 // - If you have blurry pictures, the display is not clean, try to reduce the
-// input voltage of your LED matrix panels, often, 5V panels need
+//   input voltage of your LED matrix panels, often, 5V panels need
 //   between 4V and 4.5V to display clean pictures, you often have a screw in
 //   switch-mode power supplies to change the output voltage a little bit
 // - While the initial pattern logo is displayed, check you have red in the
-// upper left, green in the lower left and blue in the upper right,
+//   upper left, green in the lower left and blue in the upper right,
 //   if not, make contact between the ORDRE_BUTTON_PIN (default 21, but you can
 //   change below) pin and a ground pin several times
-// until the display is correct (automatically saved, no need to do it again)
-// -----------------------------------------------------------------------------------------------------------------------------------------
+//   until the display is correct (automatically saved, no need to do it again)
+// -----------------------------------------------------------------------------
 // By sending command 99, you can enable the "Debug Mode". The output will be:
 // number of frames received, regardless if any error happened, size of
 // compressed frame if compression is enabled, size of currently received bytes
 // of frame (compressed or decompressed), error code if the decompression if
 // compression is enabled, number of incomplete frames, number of resets
 // because of communication freezes
-// -----------------------------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Commands:
 //  2: set rom frame size as (int16) width, (int16) height
 //  3: render raw data, RGB24
@@ -53,7 +52,8 @@
 // 11: render 64 colors using a 64 color palette (3*64 bytes), 6 bytes per group
 //     of 8 pixels (encoded as 6*512 bytes planes) 12: handshake + report
 //     resolution, returns (int16) width, (int16) height 13: set serial transfer
-//     chunk size as (int8) value, the value will be multiplied with 256 internally
+//     chunk size as (int8) value, the value will be multiplied with 256
+//     internally
 // 14: enable serial transfer compression
 // 15: disable serial transfer compression
 // 16: panel LED check, screen full red, then full green, then full blue
@@ -150,6 +150,7 @@ Bounce2::Button *brightnessButton;
 #define N_INTERMEDIATE_CTR_CHARS 4
 
 bool debugMode = false;
+uint8_t c4;
 int16_t transferBufferSize = 0;
 int16_t receivedBytes = 0;
 int16_t minizStatus = 0;
@@ -1123,7 +1124,6 @@ void loop() {
     // wait_for_ctrl_chars(), now reset it to false.
     mode64 = false;
 
-    uint8_t c4;
     while (Serial.available() == 0)
       ;
     c4 = Serial.read();
@@ -1363,6 +1363,7 @@ void loop() {
       case 99:  // enable debug mode
       {
         debugMode = true;
+
         Serial.write('A');
         break;
       }
@@ -1745,24 +1746,23 @@ void loop() {
     // An overflow of the unsigned int counters should not be an issue, they
     // just reset to 0.
     frameCount++;
+  }
 
-    if (debugMode) {
-      DisplayNumber(RomWidth, 3, TOTAL_WIDTH - 7 * 4, 4, 200, 200, 200);
-      DisplayNumber(RomHeight, 2, TOTAL_WIDTH - 3 * 4, 4, 200, 200, 200);
-      DisplayNumber(flowControlCounter, 2, TOTAL_WIDTH - 6 * 4,
-                    TOTAL_HEIGHT - 8, 200, 200, 200);
-      DisplayNumber(c4, 2, TOTAL_WIDTH - 3 * 4, TOTAL_HEIGHT - 8, 200, 200,
-                    200);
-      DisplayText("Frames:", 0, 0, 255, 255, 255);
-      DisplayNumber(frameCount, 5, 7 * 4, 0, 0, 255, 0);
-      DisplayText("Transfer Buffer:", 0, 6, 255, 255, 255);
-      DisplayNumber(transferBufferSize, 5, 16 * 4, 6, 255, 255, 255);
-      DisplayText("Received Bytes: ", 0, 2 * 6, 255, 255, 255);
-      DisplayNumber(receivedBytes, 5, 16 * 4, 2 * 6, 255, 255, 255);
-      DisplayText("Miniz Status:", 0, 3 * 6, 255, 255, 255);
-      DisplayNumber(minizStatus, 6, 13 * 4, 3 * 6, 255, 255, 255);
-      DisplayText("Errors:", 0, 4 * 6, 255, 255, 255);
-      DisplayNumber(errorCount, 5, 7 * 4, 4 * 6, 255, 0, 0);
-    }
+  if (debugMode) {
+    DisplayNumber(RomWidth, 3, TOTAL_WIDTH - 7 * 4, 4, 200, 200, 200);
+    DisplayNumber(RomHeight, 2, TOTAL_WIDTH - 3 * 4, 4, 200, 200, 200);
+    DisplayNumber(flowControlCounter, 2, TOTAL_WIDTH - 6 * 4, TOTAL_HEIGHT - 8,
+                  200, 200, 200);
+    DisplayNumber(c4, 2, TOTAL_WIDTH - 3 * 4, TOTAL_HEIGHT - 8, 200, 200, 200);
+    DisplayText("Frames:", 0, 0, 255, 255, 255);
+    DisplayNumber(frameCount, 5, 7 * 4, 0, 0, 255, 0);
+    DisplayText("Transfer Buffer:", 0, 6, 255, 255, 255);
+    DisplayNumber(transferBufferSize, 5, 16 * 4, 6, 255, 255, 255);
+    DisplayText("Received Bytes: ", 0, 2 * 6, 255, 255, 255);
+    DisplayNumber(receivedBytes, 5, 16 * 4, 2 * 6, 255, 255, 255);
+    DisplayText("Miniz Status:", 0, 3 * 6, 255, 255, 255);
+    DisplayNumber(minizStatus, 6, 13 * 4, 3 * 6, 255, 255, 255);
+    DisplayText("Errors:", 0, 4 * 6, 255, 255, 255);
+    DisplayNumber(errorCount, 5, 7 * 4, 4 * 6, 255, 0, 0);
   }
 }
