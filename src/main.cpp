@@ -49,12 +49,12 @@
 //  7: render 16 colors using a 4 color palette (3*4 bytes), 2 pixels per byte
 //  8: render 4 colors using a 4 color palette (3*4 bytes), 4 pixels per byte
 //  9: render 16 colors using a 16 color palette (3*16 bytes), 4 bytes per group
-//  of 8 pixels (encoded as 4*512 bytes planes)
+//     of 8 pixels (encoded as 4*512 bytes planes)
 // 10: clear screen
 // 11: render 64 colors using a 64 color palette (3*64 bytes), 6 bytes per group
-// of 8 pixels (encoded as 6*512 bytes planes) 12: handshake + report
-// resolution, returns (int16) width, (int16) height 13: set serial transfer
-// chunk size as (int8) value, the value will be multiplied with 256 internally
+//     of 8 pixels (encoded as 6*512 bytes planes) 12: handshake + report
+//     resolution, returns (int16) width, (int16) height 13: set serial transfer
+//     chunk size as (int8) value, the value will be multiplied with 256 internally
 // 14: enable serial transfer compression
 // 15: disable serial transfer compression
 // 16: panel LED check, screen full red, then full green, then full blue
@@ -71,7 +71,7 @@
 // 30: save settings
 // 31: reset
 // 32: get version string, returns (int8) major, (int8) minor, (int8) patch
-// level
+//     level
 // 33: get panel resolution, returns (int16) width, (int16) height
 // 98: disable debug mode
 // 99: enable debug mode
@@ -934,7 +934,7 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
         (remainingBytes > chunkSize) ? chunkSize : remainingBytes);
 
     if (debugMode) {
-      DisplayText("Received Bytes:", 0, 2 * 6, 255, 255, 255);
+      DisplayText("Received Bytes: ", 0, 2 * 6, 255, 255, 255);
       DisplayNumber(receivedBytes, 5, 16 * 4, 2 * 6, 255, 255, 255);
     }
 
@@ -1763,7 +1763,7 @@ void loop() {
       DisplayNumber(frameCount, 5, 7 * 4, 0, 0, 255, 0);
       DisplayText("Transfer Buffer:", 0, 6, 255, 255, 255);
       DisplayNumber(transferBufferSize, 5, 16 * 4, 6, 255, 255, 255);
-      DisplayText("Received Bytes:", 0, 2 * 6, 255, 255, 255);
+      DisplayText("Received Bytes: ", 0, 2 * 6, 255, 255, 255);
       DisplayNumber(receivedBytes, 5, 16 * 4, 2 * 6, 255, 255, 255);
       DisplayText("Miniz Status:", 0, 3 * 6, 255, 255, 255);
       DisplayNumber(minizStatus, 6, 13 * 4, 3 * 6, 255, 255, 255);
