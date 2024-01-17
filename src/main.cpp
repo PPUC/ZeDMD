@@ -34,11 +34,11 @@
 // until the display is correct (automatically saved, no need to do it again)
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // By pressing the RGB button while a game is running or by sending command
-// 99,you can enable the "Debug Mode". The output will be: 000 number of frames
-// received, regardless if any error happened 001 size of compressed frame if
-// compression is enabled 002 size of currently received bytes of frame
-// (compressed or decompressed) 003 error code if the decompression if
-// compression is enabled 004 number of incomplete frames 005 number of resets
+// 99,you can enable the "Debug Mode". The output will be: number of frames
+// received, regardless if any error happened, size of compressed frame if
+// compression is enabled, size of currently received bytes of frame
+// (compressed or decompressed), error code if the decompression if
+// compression is enabled, number of incomplete frames, number of resets
 // because of communication freezes
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // Commands:
@@ -71,8 +71,10 @@
 // 30: save settings
 // 31: reset
 // 32: get version string, returns (int8) major, (int8) minor, (int8) patch
-// level 33: get panel resolution, returns (int16) width, (int16) height 98:
-// disable debug mode 99: enable debug mode
+// level
+// 33: get panel resolution, returns (int16) width, (int16) height
+// 98: disable debug mode
+// 99: enable debug mode
 
 #define TOTAL_WIDTH (PANEL_WIDTH * PANELS_NUMBER)
 #define TOTAL_WIDTH_PLANE (TOTAL_WIDTH >> 3)
@@ -231,12 +233,15 @@ void DisplayNumber(uint32_t chf, uint8_t nc, uint16_t x, uint16_t y, uint8_t R,
                    uint8_t G, uint8_t B) {
   char text[nc];
   sprintf(text, "%d", chf);
-  DisplayText(text, x, y, R, G, B);
+
+  uint8_t i = 0;
   if (strlen(text) < nc) {
-    for (uint8_t i = 0; i < (nc - strlen(text)); i++) {
-      DisplayText(" ", x + (4 * strlen(text)) + (4 * i), y, R, G, B);
+    for (; i < (nc - strlen(text)); i++) {
+      DisplayText("_", x + (4 * i), y, R, G, B);
     }
   }
+
+  DisplayText(text, x + (4 * i), y, R, G, B);
 }
 
 void DisplayVersion() {
@@ -929,8 +934,8 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
         (remainingBytes > chunkSize) ? chunkSize : remainingBytes);
 
     if (debugMode) {
-      DisplayText("Received:", 0, 2 * 6, 255, 255, 255);
-      DisplayNumber(receivedBytes, 5, 9 * 4, 2 * 6, 255, 255, 255);
+      DisplayText("Received Bytes:", 0, 2 * 6, 255, 255, 255);
+      DisplayNumber(receivedBytes, 5, 16 * 4, 2 * 6, 255, 255, 255);
     }
 
     if (receivedBytes != remainingBytes && receivedBytes != chunkSize) {
@@ -1030,7 +1035,7 @@ bool wait_for_ctrl_chars(void) {
         nCtrlCharFound = 0;
         if (debugMode) {
           // There's garbage on the line.
-          DisplayText("Miniz Status:99    ", 0, 3 * 6, 255, 255, 255);
+          DisplayText("Miniz Status:____99", 0, 3 * 6, 255, 255, 255);
         }
       }
     }
@@ -1755,11 +1760,11 @@ void loop() {
       DisplayNumber(c4, 2, TOTAL_WIDTH - 3 * 4, TOTAL_HEIGHT - 8, 200, 200,
                     200);
       DisplayText("Frames:", 0, 0, 255, 255, 255);
-      DisplayNumber(frameCount, 10, 7 * 4, 0, 0, 255, 0);
+      DisplayNumber(frameCount, 5, 7 * 4, 0, 0, 255, 0);
       DisplayText("Transfer Buffer:", 0, 6, 255, 255, 255);
       DisplayNumber(transferBufferSize, 5, 16 * 4, 6, 255, 255, 255);
-      DisplayText("Received:", 0, 2 * 6, 255, 255, 255);
-      DisplayNumber(receivedBytes, 5, 9 * 4, 2 * 6, 255, 255, 255);
+      DisplayText("Received Bytes:", 0, 2 * 6, 255, 255, 255);
+      DisplayNumber(receivedBytes, 5, 16 * 4, 2 * 6, 255, 255, 255);
       DisplayText("Miniz Status:", 0, 3 * 6, 255, 255, 255);
       DisplayNumber(minizStatus, 6, 13 * 4, 3 * 6, 255, 255, 255);
       DisplayText("Errors:", 0, 4 * 6, 255, 255, 255);
