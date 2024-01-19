@@ -1741,10 +1741,10 @@ void loop() {
       }
 #endif
       default: {
-        Serial.write('E');
         DisplayText("Unsupported render mode:", 0, 0, 255, 0, 0);
         DisplayNumber(c4, 3, 24 * 4, 0, 255, 0, 0);
         delay(5000);
+        Serial.write('E');
       }
     }
 
