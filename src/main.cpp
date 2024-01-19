@@ -1,6 +1,6 @@
 #define ZEDMD_VERSION_MAJOR 3  // X Digits
-#define ZEDMD_VERSION_MINOR 4  // Max 2 Digits
-#define ZEDMD_VERSION_PATCH 2  // Max 2 Digits
+#define ZEDMD_VERSION_MINOR 5  // Max 2 Digits
+#define ZEDMD_VERSION_PATCH 0  // Max 2 Digits
 
 #ifdef ZEDMD_HD
 #define PANEL_WIDTH 128  // Width: number of LEDs for 1 panel.
@@ -17,7 +17,7 @@
 #define SERIAL_TIMEOUT \
   8  // Time in milliseconds to wait for the next data chunk.
 #define SERIAL_BUFFER 512   // Serial buffer size in byte.
-#define SERIAL_CHUNK_SIZE_MAX 8192
+#define SERIAL_CHUNK_SIZE_MAX 1888
 #define LOGO_TIMEOUT 20000  // Time in milliseconds before the logo vanishes.
 #define FLOW_CONTROL_TIMEOUT \
   1  // Time in milliseconds to wait before sending a new ready signal.
@@ -54,7 +54,7 @@
 // 11: render 64 colors using a 64 color palette (3*64 bytes), 6 bytes per group
 //     of 8 pixels (encoded as 6*512 bytes planes) 12: handshake + report
 //     resolution, returns (int16) width, (int16) height 13: set serial transfer
-//     chunk size as (int8) value, the value will be multiplied with 256
+//     chunk size as (int8) value, the value will be multiplied with 32
 //     internally
 // 14: enable serial transfer compression
 // 15: disable serial transfer compression
@@ -1175,7 +1175,7 @@ void loop() {
       {
         while (Serial.available() == 0)
           ;
-        int tmpSerialTransferChunkSize = ((int)Serial.read()) * 256;
+        int tmpSerialTransferChunkSize = ((int)Serial.read()) * 32;
         if (tmpSerialTransferChunkSize <= SERIAL_CHUNK_SIZE_MAX) {
           serialTransferChunkSize = tmpSerialTransferChunkSize;
           // Send an (A)cknowledge signal to tell the client that we
