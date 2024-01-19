@@ -16,10 +16,12 @@
 #define SERIAL_BAUD 921600  // Serial baud rate.
 #define SERIAL_TIMEOUT \
   8  // Time in milliseconds to wait for the next data chunk.
-#define SERIAL_BUFFER 8192  // Serial buffer size in byte.
+#define SERIAL_BUFFER 512   // Serial buffer size in byte.
+#define SERIAL_CHUNK_SIZE_MAX 8192
 #define LOGO_TIMEOUT 20000  // Time in milliseconds before the logo vanishes.
 #define FLOW_CONTROL_TIMEOUT \
   1  // Time in milliseconds to wait before sending a new ready signal.
+#define BUFFER_OVERHEAD 4
 
 // ----------------- ZeDMD by MK47 & Zedrummer (http://ppuc.org) ---------------
 // - If you have blurry pictures, the display is not clean, try to reduce the
@@ -86,6 +88,7 @@
 #define ZONE_SIZE (ZONE_WIDTH * ZONE_HEIGHT * 3)
 #define MAX_COLOR_ROTATIONS 8
 #define LED_CHECK_DELAY 1000  // ms per color
+#define DEBUG_DELAY 5000  // ms
 
 #include <Arduino.h>
 #include <Bounce2.h>
@@ -173,8 +176,7 @@ const uint8_t ordreRGB[3 * 6] = {0, 1, 2, 2, 0, 1, 1, 2, 0,
                                  0, 2, 1, 1, 0, 2, 2, 1, 0};
 uint8_t acordreRGB = 0;
 bool debugMode = false;
-// WTF removing this dummy variable kills the debug mode
-bool debugWTF = false;
+bool debugDelayOnError = false;
 uint8_t c4;
 int16_t transferBufferSize = 0;
 int16_t receivedBytes = 0;
@@ -929,12 +931,10 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
     transferBufferSize =
         ((((uint16_t)byteArray[0]) << 8) + ((uint16_t)byteArray[1]));
 
-    transferBuffer = (uint8_t *)malloc(transferBufferSize);
+    transferBuffer = (uint8_t *)malloc(transferBufferSize + BUFFER_OVERHEAD);
   } else {
     transferBuffer = pBuffer;
   }
-
-  DisplayDebugInfo();
 
   // We always receive chunks of "serialTransferChunkSize" bytes (maximum).
   // At this point, the control chars and the one byte command have been read
@@ -944,15 +944,19 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
       serialTransferChunkSize - N_CTRL_CHARS - 1 - (compression ? 2 : 0);
   uint16_t remainingBytes = transferBufferSize;
   while (remainingBytes > 0) {
-    receivedBytes = Serial.readBytes(
-        transferBuffer + transferBufferSize - remainingBytes,
-        (remainingBytes > chunkSize) ? chunkSize : remainingBytes);
+          receivedBytes = Serial.readBytes(
+          transferBuffer + transferBufferSize - remainingBytes,
+          (remainingBytes > chunkSize) ? chunkSize : remainingBytes);
 
-    DisplayDebugInfo();
+          DisplayDebugInfo();
 
     if (receivedBytes != remainingBytes && receivedBytes != chunkSize) {
       errorCount++;
       DisplayDebugInfo();
+      if (debugDelayOnError) {
+        delay(DEBUG_DELAY);
+      }
+
       // Send an (E)rror signal to tell the client that no more chunks should be
       // send or to repeat the entire frame from the beginning.
       Serial.write('E');
@@ -964,6 +968,8 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
     // the chunk.
     Serial.write('A');
 
+    DisplayDebugInfo();
+
     remainingBytes -= receivedBytes;
 
     // From now on read full amount of byte chunks.
@@ -971,13 +977,11 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
   }
 
   if (compression) {
-    mz_ulong uncompressed_buffer_size = (mz_ulong)BufferSize;
+    mz_ulong uncompressed_buffer_size = (mz_ulong)BufferSize + BUFFER_OVERHEAD;
     minizStatus =
         mz_uncompress2(pBuffer, &uncompressed_buffer_size, transferBuffer,
                        (mz_ulong *)&transferBufferSize);
     free(transferBuffer);
-
-    DisplayDebugInfo();
 
     if ((MZ_OK == minizStatus) &&
         (!fixedSize || (fixedSize && uncompressed_buffer_size == BufferSize))) {
@@ -991,6 +995,9 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
 
     errorCount++;
     DisplayDebugInfo();
+    if (debugDelayOnError) {
+      delay(DEBUG_DELAY);
+    }
 
     Serial.write('E');
     return false;
@@ -1154,7 +1161,7 @@ void loop() {
 
       case 2:  // set rom frame size
       {
-        uint8_t tbuf[4];
+        uint8_t tbuf[4 + BUFFER_OVERHEAD];
         if (SerialReadBuffer(tbuf, 4)) {
           RomWidth = (int)(tbuf[0]) + (int)(tbuf[1] << 8);
           RomHeight = (int)(tbuf[2]) + (int)(tbuf[3] << 8);
@@ -1169,12 +1176,16 @@ void loop() {
         while (Serial.available() == 0)
           ;
         int tmpSerialTransferChunkSize = ((int)Serial.read()) * 256;
-        if (tmpSerialTransferChunkSize <= SERIAL_BUFFER) {
+        if (tmpSerialTransferChunkSize <= SERIAL_CHUNK_SIZE_MAX) {
           serialTransferChunkSize = tmpSerialTransferChunkSize;
           // Send an (A)cknowledge signal to tell the client that we
           // successfully read the chunk.
           Serial.write('A');
         } else {
+          DisplayText("Unsupported chunk size:", 0, 0, 255, 0, 0);
+          DisplayNumber(tmpSerialTransferChunkSize, 5, 24 * 4, 0, 255, 0, 0);
+          delay(5000);
+
           Serial.write('E');
         }
         break;
@@ -1216,7 +1227,7 @@ void loop() {
 
       case 22:  // set brightness
       {
-        uint8_t tbuf[1];
+        uint8_t tbuf[1 + BUFFER_OVERHEAD];
         if (SerialReadBuffer(tbuf, 1)) {
           if (tbuf[0] > 0 && tbuf[0] < 16) {
             lumstep = tbuf[0];
@@ -1231,7 +1242,7 @@ void loop() {
 
       case 23:  // set RGB order
       {
-        uint8_t tbuf[1];
+        uint8_t tbuf[1 + BUFFER_OVERHEAD];
         if (SerialReadBuffer(tbuf, 1)) {
           if (tbuf[0] >= 0 && tbuf[0] < 6) {
             acordreRGB = tbuf[0];
@@ -1268,7 +1279,7 @@ void loop() {
       // USB is turned off.
       case 27:  // set WiFi SSID
       {
-        uint8_t tbuf[33];
+        uint8_t tbuf[33 + BUFFER_OVERHEAD];
         if (SerialReadBuffer(tbuf, 33, false)) {
           // tbuf[0] now contains the length of the string
           ssid_length = tbuf[0];
@@ -1285,7 +1296,7 @@ void loop() {
 
       case 28:  // set WiFi password
       {
-        uint8_t tbuf[33];
+        uint8_t tbuf[33 + BUFFER_OVERHEAD];
         if (SerialReadBuffer(tbuf, 33, false)) {
           // tbuf[0] now contains the length of the string
           pwd_length = tbuf[0];
@@ -1302,7 +1313,7 @@ void loop() {
 
       case 29:  // set WiFi port
       {
-        uint8_t tbuf[2];
+        uint8_t tbuf[2 + BUFFER_OVERHEAD];
         if (SerialReadBuffer(tbuf, 2)) {
           port = ((((unsigned int)tbuf[0]) << 8) + ((unsigned int)tbuf[1]));
           Serial.write('A');
@@ -1359,8 +1370,7 @@ void loop() {
       case 99:  // enable debug mode
       {
         debugMode = true;
-        // WTF removing this dummy variable kills the debug mode
-        debugWTF = true;
+        debugDelayOnError = true;
         Serial.write('A');
         break;
       }
@@ -1385,7 +1395,7 @@ void loop() {
       case 4:  // mode RGB24 zones streaming
       {
         renderBuffer =
-            (uint8_t *)malloc(TOTAL_ZONES * ZONE_SIZE + ZONES_PER_ROW);
+            (uint8_t *)malloc(TOTAL_ZONES * ZONE_SIZE + ZONES_PER_ROW + BUFFER_OVERHEAD);
         if (SerialReadBuffer(renderBuffer,
                              TOTAL_ZONES * ZONE_SIZE + ZONES_PER_ROW, false)) {
           uint16_t idx = 0;
@@ -1412,8 +1422,7 @@ void loop() {
             (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT)
                 ? TOTAL_BYTES
                 : RomWidth * RomHeight * 3;
-        renderBuffer = (uint8_t *)malloc(renderBufferSize);
-        memset(renderBuffer, 0, renderBufferSize);
+        renderBuffer = (uint8_t *)malloc(renderBufferSize + BUFFER_OVERHEAD);
 
         if (SerialReadBuffer(renderBuffer, RomHeight * RomWidth * 3)) {
           mode64 = false;
@@ -1429,7 +1438,7 @@ void loop() {
                // de 4 pixels par byte
       {
         uint16_t bufferSize = 12 + 2 * RomWidthPlane * RomHeight;
-        uint8_t *buffer = (uint8_t *)malloc(bufferSize);
+        uint8_t *buffer = (uint8_t *)malloc(bufferSize + BUFFER_OVERHEAD);
 
         if (SerialReadBuffer(buffer, bufferSize)) {
           // We need to cover downscaling, too.
@@ -1478,7 +1487,7 @@ void loop() {
                // de 2 pixels par byte
       {
         uint16_t bufferSize = 12 + 4 * RomWidthPlane * RomHeight;
-        uint8_t *buffer = (uint8_t *)malloc(bufferSize);
+        uint8_t *buffer = (uint8_t *)malloc(bufferSize + BUFFER_OVERHEAD);
 
         if (SerialReadBuffer(buffer, bufferSize)) {
           // We need to cover downscaling, too.
@@ -1597,7 +1606,7 @@ void loop() {
                // bits 4*512 bytes)
       {
         uint16_t bufferSize = 48 + 4 * RomWidthPlane * RomHeight;
-        uint8_t *buffer = (uint8_t *)malloc(bufferSize);
+        uint8_t *buffer = (uint8_t *)malloc(bufferSize + BUFFER_OVERHEAD);
 
         if (SerialReadBuffer(buffer, bufferSize)) {
           // We need to cover downscaling, too.
@@ -1657,7 +1666,7 @@ void loop() {
       {
         uint16_t bufferSize =
             192 + 6 * RomWidthPlane * RomHeight + 3 * MAX_COLOR_ROTATIONS;
-        uint8_t *buffer = (uint8_t *)malloc(bufferSize);
+        uint8_t *buffer = (uint8_t *)malloc(bufferSize + BUFFER_OVERHEAD);
 
         if (SerialReadBuffer(buffer, bufferSize)) {
           // We need to cover downscaling, too.
