@@ -16,7 +16,7 @@
 #define SERIAL_BAUD 921600  // Serial baud rate.
 #define SERIAL_TIMEOUT \
   8  // Time in milliseconds to wait for the next data chunk.
-#define SERIAL_BUFFER 512   // Serial buffer size in byte.
+#define SERIAL_BUFFER 2048  // Serial buffer size in byte.
 #define SERIAL_CHUNK_SIZE_MAX 1888
 #define LOGO_TIMEOUT 20000  // Time in milliseconds before the logo vanishes.
 #define FLOW_CONTROL_TIMEOUT \
@@ -88,7 +88,7 @@
 #define ZONE_SIZE (ZONE_WIDTH * ZONE_HEIGHT * 3)
 #define MAX_COLOR_ROTATIONS 8
 #define LED_CHECK_DELAY 1000  // ms per color
-#define DEBUG_DELAY 5000  // ms
+#define DEBUG_DELAY 5000      // ms
 
 #include <Arduino.h>
 #include <Bounce2.h>
@@ -203,7 +203,7 @@ uint16_t errorCount = 0;
 uint8_t flowControlCounter = 0;
 
 void DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t R, uint8_t G,
-                 uint8_t B) {
+                 uint8_t B, bool transparent = false) {
   uint8_t color[3];
   for (uint8_t i = 0; i < 3; i++) {
     if (ordreRGB[acordreRGB * 3 + i] == 0) {
@@ -220,6 +220,9 @@ void DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t R, uint8_t G,
       uint8_t fourPixels = getFontLine(text[ti], tj);
       for (uint8_t pixel = 0; pixel < 4; pixel++) {
         bool p = (fourPixels >> (3 - pixel)) & 0x1;
+        if (transparent && !p) {
+          continue;
+        }
         dma_display->drawPixelRGB888(x + pixel + (ti * 4), y + tj, color[0] * p,
                                      color[1] * p, color[2] * p);
       }
@@ -228,18 +231,18 @@ void DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t R, uint8_t G,
 }
 
 void DisplayNumber(uint32_t chf, uint8_t nc, uint16_t x, uint16_t y, uint8_t R,
-                   uint8_t G, uint8_t B) {
+                   uint8_t G, uint8_t B, bool transparent = false) {
   char text[nc];
   sprintf(text, "%d", chf);
 
   uint8_t i = 0;
   if (strlen(text) < nc) {
     for (; i < (nc - strlen(text)); i++) {
-      DisplayText("_", x + (4 * i), y, R, G, B);
+      DisplayText(" ", x + (4 * i), y, R, G, B, transparent);
     }
   }
 
-  DisplayText(text, x + (4 * i), y, R, G, B);
+  DisplayText(text, x + (4 * i), y, R, G, B, transparent);
 }
 
 void DisplayVersion() {
@@ -270,8 +273,21 @@ void DisplayVersion() {
 }
 
 void DisplayLum(void) {
-  DisplayNumber(lumstep, 2, TOTAL_WIDTH / 2 - 16 / 2 - 2 * 4 / 2 + 16,
-                TOTAL_HEIGHT - 5, 255, 255, 255);
+  DisplayText(" ", (TOTAL_WIDTH / 2) - 26 - 1, TOTAL_HEIGHT - 6, 128, 128, 128);
+  DisplayText("Brightness:", (TOTAL_WIDTH / 2) - 26, TOTAL_HEIGHT - 6, 128, 128,
+              128);
+  DisplayNumber(lumstep, 2, (TOTAL_WIDTH / 2) + 18, TOTAL_HEIGHT - 6, 255, 191,
+                0);
+}
+
+void DisplayRGB(void) {
+  DisplayText("red", 0, 0, 255, 0, 0);
+  DisplayText(" ", TOTAL_WIDTH - (4 * 4) - 1, 0, 0, 0, 255);
+  DisplayText("blue", TOTAL_WIDTH - (4 * 4), 0, 0, 0, 255);
+  DisplayText("green", 0, TOTAL_HEIGHT - 6, 0, 255, 0);
+  DisplayText(" ", (TOTAL_WIDTH / 2) - (6 * 4) - 1, 0, 0, 0, 0);
+  DisplayText("RGB Order:", (TOTAL_WIDTH / 2) - (6 * 4), 0, 128, 128, 128);
+  DisplayNumber(acordreRGB, 2, (TOTAL_WIDTH / 2) + (4 * 4), 0, 255, 191, 0);
 }
 
 void DisplayDebugInfo(void) {
@@ -741,9 +757,6 @@ void DisplayLogo(void) {
   free(renderBuffer);
 
   DisplayVersion();
-  DisplayText("LUM ", TOTAL_WIDTH / 2 - 16 / 2 - 2 * 4 / 2, TOTAL_HEIGHT - 5,
-              255, 255, 255);
-  DisplayLum();
 
 #ifdef ZEDMD_WIFI
   if (ip = WiFi.localIP()) {
@@ -893,7 +906,6 @@ void setup() {
                 if (minizStatus != MZ_OK ||
                     uncompressedBufferSize !=
                         (ZONE_SIZE * numZones + numZones)) {
-
                   DisplayDebugInfo();
 
                   return;
@@ -944,11 +956,11 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
       serialTransferChunkSize - N_CTRL_CHARS - 1 - (compression ? 2 : 0);
   uint16_t remainingBytes = transferBufferSize;
   while (remainingBytes > 0) {
-          receivedBytes = Serial.readBytes(
-          transferBuffer + transferBufferSize - remainingBytes,
-          (remainingBytes > chunkSize) ? chunkSize : remainingBytes);
+    receivedBytes = Serial.readBytes(
+        transferBuffer + transferBufferSize - remainingBytes,
+        (remainingBytes > chunkSize) ? chunkSize : remainingBytes);
 
-          DisplayDebugInfo();
+    DisplayDebugInfo();
 
     if (receivedBytes != remainingBytes && receivedBytes != chunkSize) {
       errorCount++;
@@ -1081,6 +1093,8 @@ void loop() {
     if (rgbOrderButton->pressed()) {
       if (displayStatus != 1) {
         DisplayLogo();
+        DisplayRGB();
+        DisplayLum();
         continue;
       }
 
@@ -1089,8 +1103,8 @@ void loop() {
       if (acordreRGB >= 6) acordreRGB = 0;
       SaveOrdreRGB();
       fillPanelRaw();
-      DisplayText("LUM ", TOTAL_WIDTH / 2 - 16 / 2 - 2 * 4 / 2,
-                  TOTAL_HEIGHT - 5, 255, 255, 255);
+
+      DisplayRGB();
       DisplayLum();
     }
 
@@ -1098,6 +1112,8 @@ void loop() {
     if (brightnessButton->pressed()) {
       if (displayStatus != 1) {
         DisplayLogo();
+        DisplayRGB();
+        DisplayLum();
         continue;
       }
 
@@ -1105,8 +1121,9 @@ void loop() {
       lumstep++;
       if (lumstep >= 16) lumstep = 1;
       dma_display->setBrightness8(lumval[lumstep]);
-      DisplayLum();
       SaveLum();
+      DisplayRGB();
+      DisplayLum();
     }
 
     if (Serial.available() > 0) {
@@ -1137,8 +1154,6 @@ void loop() {
       ;
     c4 = Serial.read();
 
-    DisplayDebugInfo();
-
     if (displayStatus != 1) {
       // Exit screen saver.
       ClearScreen();
@@ -1166,7 +1181,6 @@ void loop() {
           RomWidth = (int)(tbuf[0]) + (int)(tbuf[1] << 8);
           RomHeight = (int)(tbuf[2]) + (int)(tbuf[3] << 8);
           RomWidthPlane = RomWidth >> 3;
-          DisplayDebugInfo();
         }
         break;
       }
@@ -1394,8 +1408,8 @@ void loop() {
 #if !defined(ZEDMD_WIFI)
       case 4:  // mode RGB24 zones streaming
       {
-        renderBuffer =
-            (uint8_t *)malloc(TOTAL_ZONES * ZONE_SIZE + ZONES_PER_ROW + BUFFER_OVERHEAD);
+        renderBuffer = (uint8_t *)malloc(TOTAL_ZONES * ZONE_SIZE +
+                                         ZONES_PER_ROW + BUFFER_OVERHEAD);
         if (SerialReadBuffer(renderBuffer,
                              TOTAL_ZONES * ZONE_SIZE + ZONES_PER_ROW, false)) {
           uint16_t idx = 0;
