@@ -45,6 +45,7 @@
 //  2: set rom frame size as (int16) width, (int16) height
 //  3: render raw data, RGB24
 //  4: render raw data, RGB24 zones streaming
+//  5: render raw data, RGB565 zones streaming
 //  6: init palette (deprectated, backward compatibility)
 //  7: render 16 colors using a 4 color palette (3*4 bytes), 2 pixels per byte
 //  8: render 4 colors using a 4 color palette (3*4 bytes), 4 pixels per byte
@@ -86,6 +87,7 @@
 #define ZONES_PER_ROW (TOTAL_WIDTH / ZONE_WIDTH)
 #define TOTAL_ZONES ((TOTAL_HEIGHT / ZONE_HEIGHT) * ZONES_PER_ROW)
 #define ZONE_SIZE (ZONE_WIDTH * ZONE_HEIGHT * 3)
+#define RGB565_ZONE_SIZE (ZONE_WIDTH * ZONE_HEIGHT * 2)
 #define MAX_COLOR_ROTATIONS 8
 #define LED_CHECK_DELAY 1000  // ms per color
 #define DEBUG_DELAY 5000      // ms
@@ -203,7 +205,7 @@ uint16_t errorCount = 0;
 uint8_t flowControlCounter = 0;
 
 void DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t R, uint8_t G,
-                 uint8_t B, bool transparent = false) {
+                 uint8_t B, bool transparent = false, bool inverted = false) {
   uint8_t color[3];
   for (uint8_t i = 0; i < 3; i++) {
     if (ordreRGB[acordreRGB * 3 + i] == 0) {
@@ -220,6 +222,9 @@ void DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t R, uint8_t G,
       uint8_t fourPixels = getFontLine(text[ti], tj);
       for (uint8_t pixel = 0; pixel < 4; pixel++) {
         bool p = (fourPixels >> (3 - pixel)) & 0x1;
+        if (inverted) {
+          p = !p;
+        }
         if (transparent && !p) {
           continue;
         }
@@ -281,11 +286,14 @@ void DisplayLum(void) {
 }
 
 void DisplayRGB(void) {
-  DisplayText("red", 0, 0, 255, 0, 0);
-  DisplayText(" ", TOTAL_WIDTH - (4 * 4) - 1, 0, 0, 0, 255);
-  DisplayText("blue", TOTAL_WIDTH - (4 * 4), 0, 0, 0, 255);
+  DisplayText("red", 0, 0, 0, 0, 0, true, true);
+  for (uint8_t i = 0; i < 6; i++) {
+    dma_display->drawPixelRGB888(TOTAL_WIDTH - (4 * 4) - 1, i, 0, 0, 0);
+    dma_display->drawPixelRGB888((TOTAL_WIDTH / 2) - (6 * 4) - 1, i, 0, 0, 0);
+  }
+  DisplayText("blue", TOTAL_WIDTH - (4 * 4), 0, 0, 0, 0, true, true);
+  // @todo turn into transparent inverted when a new logo is provided.
   DisplayText("green", 0, TOTAL_HEIGHT - 6, 0, 255, 0);
-  DisplayText(" ", (TOTAL_WIDTH / 2) - (6 * 4) - 1, 0, 0, 0, 0);
   DisplayText("RGB Order:", (TOTAL_WIDTH / 2) - (6 * 4), 0, 128, 128, 128);
   DisplayNumber(acordreRGB, 2, (TOTAL_WIDTH / 2) + (4 * 4), 0, 255, 191, 0);
 }
@@ -596,6 +604,34 @@ void fillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
                                    pBuffer[pos + ordreRGB[acordreRGB * 3]],
                                    pBuffer[pos + ordreRGB[acordreRGB * 3 + 1]],
                                    pBuffer[pos + ordreRGB[acordreRGB * 3 + 2]]);
+    }
+  }
+}
+
+void fillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
+  uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
+  uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
+
+  for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
+    for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
+      uint16_t pos = (y * ZONE_WIDTH + x) * 2;
+      uint8_t r, b, g;
+      dma_display->color565to888(
+          (((uint16_t)pBuffer[pos]) << 8) + pBuffer[pos + 1], r, g, b);
+
+      uint8_t color[3];
+      for (uint8_t i = 0; i < 3; i++) {
+        if (ordreRGB[acordreRGB * 3 + i] == 0) {
+          color[i] = r;
+        } else if (ordreRGB[acordreRGB * 3 + i] == 1) {
+          color[i] = g;
+        } else {
+          color[i] = b;
+        }
+      }
+
+      dma_display->drawPixelRGB888(x + xOffset, y + yOffset, color[0], color[1],
+                                   color[2]);
     }
   }
 }
@@ -1422,6 +1458,30 @@ void loop() {
                  (idx == 0 || renderBuffer[idx] > 0)) {
             fillZoneRaw(renderBuffer[idx], &renderBuffer[++idx]);
             idx += ZONE_SIZE;
+          }
+        }
+
+        free(renderBuffer);
+        break;
+      }
+
+      case 5:  // mode RGB565 zones streaming
+      {
+        renderBuffer = (uint8_t *)malloc(TOTAL_ZONES * RGB565_ZONE_SIZE +
+                                         ZONES_PER_ROW + BUFFER_OVERHEAD);
+        if (SerialReadBuffer(renderBuffer,
+                             TOTAL_ZONES * RGB565_ZONE_SIZE + ZONES_PER_ROW,
+                             false)) {
+          uint16_t idx = 0;
+          // SerialReadBuffer prefills buffer with zeros. That will fill Zone 0
+          // black if buffer is not used entirely. Ensure that Zone 0 is only
+          // allowed at the beginning of the buffer.
+          while (idx <= ((TOTAL_ZONES * RGB565_ZONE_SIZE + ZONES_PER_ROW) -
+                         (ZONE_SIZE + 1)) &&
+                 (renderBuffer[idx] < TOTAL_ZONES) &&
+                 (idx == 0 || renderBuffer[idx] > 0)) {
+            fillZoneRaw565(renderBuffer[idx], &renderBuffer[++idx]);
+            idx += RGB565_ZONE_SIZE;
           }
         }
 
