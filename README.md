@@ -1,26 +1,71 @@
 # ZeDMD
-ESP32 firmware code for ZeDMD.
 
-The code is now half the credit of David Lafarge (aka "Zed") and half the credit of Markus Kalkbrenner as he made so many outstanding improvements in the serial communication code that the display on the device is way more smooth and stable than before. Thanks Markus.
+## About
 
-This is the specific repo for the Arduino code of the ESP32 for the ZeDMD.
+ZeDMD is a "real" DMD for pinball emulations and other use cases.
 
-For VPX users, the PC code has been integrated in the Freezy dmd-extensions https://github.com/freezy/dmd-extensions inside the LibDmd/Output/ZeDMD directory.
+It is or will be supported by:
+* [DMDExtensions](https://github.com/freezy/dmd-extensions)
+* [VPX Standalone](https://github.com/vpinball/vpinball/tree/standalone)
+* [PPUC](https://github.com/PPUC/ppuc)
+* [batocera](https://batocera.org/)
+* ...
 
-The full tuto on installation is available in English here https://www.pincabpassion.net/t14796-tuto-zedmd-installation-english and in French here https://www.pincabpassion.net/t14798-tuto-installation-du-zedmd
+A full tutorial of its installation is available in [English](https://www.pincabpassion.net/t14796-tuto-zedmd-installation-english) and in [French](https://www.pincabpassion.net/t14798-tuto-installation-du-zedmd)
 
-Any other language translation is welcome and will be added to the tuto if sent.
+There're four different "flawors" of the ZeDMD firmware. Because it pushes the cheap ESP32 to its limits, we can't provide a unified firmware, so you have to pick the appropriate one:
+* ZeDMD: using two 64x32 panels connected over USB
+* ZeDMD HD: using four 64x64 or two 128x64 panels connected over USB
+* ZeDMD WiFi: using two 64x32 panels connected over WiFi (after configured over USB)
+* ZeDMD HD WiFi: using four 64x64 or two 128x64 panels WiFi (after configured over USB)
 
-Download the files on the release page here https://github.com/zesinger/ZeDMD_ESP32/releases/tag/ZeDMD
+Here's a short demo of ZeDMD and ZeDMD HD in parallel:
+https://www.youtube.com/watch?v=B6D00oB4Co8
 
-Thanks, Zed and Markus Kalkbrenner
+## Flashing the firmware
 
-### IMPORTANT LEGAL NOTICE:
+There're different ways to flash the firmware on the ESP32.
 
-1/ Everything from my cheap real DMD "ZeDMD" to my "Serum" (aka "cRom") file format and its editor "ColorizingDMD" is open-source and subject to the **GPLv2+** licence with only a restriction (see 3/).
-WE DON'T EARN a thing from them (except perhaps some kind feedbacks and a place in the vpin world), not even a single Euro!
-Our ZeDMD may be sold by any reseller who wants to (see 3/) but we don't want to get any money AT ALL from that!
+### esptool
 
-2/ It is important to us that all the things we coded or created **remain in the open-source DIY side**, so any concept from our code (like colour rotations or sprites) **CAN NOT be used in encrypted/protected/closed-source code/file format** but freely for any open-source project as long as you credit us!
+Download the appropriate zip file for the release section (assets) and extract it.
+Install [esptool](https://github.com/espressif/esptool) and run
 
-3/ For manufacturers or resellers of any shield, frame or whatever linked to the ZeDMD, our only request is that the device is **ostensibly called as "ZeDMD something"**. "ZeDMD" should be what you see first when you look at the device. Also, **a link to this Github** should be provided with the device.
+```shell
+esptool --port /dev/ttyUSB0 --chip esp32 write_flash 0x0 ZeDMD.bin
+```
+
+For sure you have to replace the `--port` optition with the serial port the ESP32 is connected to.
+For Windows that might be `--port COM3`.
+
+### platformio ("from source")
+
+```shell
+pio run -t uploadfs -e 128x32
+pio run -t upload -e 128x32
+```
+
+### ZeDMD Updater (Windows only)
+
+Download and install the [ZeDMD_Updater](https://github.com/zesinger/ZeDMD_Updater) and follow its instructions.
+
+## First start
+
+After flashing the firmware you'll see the ZeDMD logo. But due to the different panels available on the market,
+you need to adjust the colors. While the logo is visible you can press the RGB button to rotate the colors until
+`red` in the left top corner is red, `green` is green and `blue` is shown in blue.
+
+Using the brightness butten you can adjust the brightness.
+
+## IMPORTANT LEGAL NOTICE:
+
+ZeDMD's firmware is open source and licensed as **GPLv2 or later** and can be ditributed under these terms.
+
+For manufacturers or resellers of any shield, frame or whatever linked to the ZeDMD, our only request is that the device is
+**called as "ZeDMD something"**. "ZeDMD" should be what you see first when you look at the device. Also, **a link to this project** should be provided with the device.
+
+ZeDMD uses
+* [ESP32-HUB75-MatrixPanel-DMA](https://github.com/mrfaptastic/ESP32-HUB75-MatrixPanel-DMA)
+* [Bounce2](https://github.com/thomasfredericks/Bounce2)
+* [miniz](https://github.com/richgel999/miniz)
+* [Tiny 4x6 Pixel Font](https://hackaday.io/project/6309-vga-graphics-over-spi-and-serial-vgatonic/log/20759-a-tiny-4x6-pixel-font-that-will-fit-on-almost-any-microcontroller-license-mit)

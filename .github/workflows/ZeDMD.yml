@@ -62,7 +62,7 @@ jobs:
         run: |
           pio run -e ${{ matrix.panels }}
           pio run -e ${{ matrix.panels }} -t buildfs
-          python ~/.platformio/packages/tool-esptoolpy/esptool.py --chip esp32 merge_bin -o ZeDMD.bin --flash_mode qio --flash_size 4MB \
+          python ~/.platformio/packages/tool-esptoolpy/esptool.py --chip esp32 merge_bin -o ZeDMD.bin --flash_mode dio --flash_size 4MB \
             0x1000 .pio/build/${{ matrix.panels }}/bootloader.bin \
             0x8000 .pio/build/${{ matrix.panels }}/partitions.bin \
             0xe000 ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin \
