@@ -20,7 +20,7 @@ There're four different "flawors" of the ZeDMD firmware. Because it pushes the c
 * ZeDMD HD WiFi: using four 64x64 or two 128x64 panels WiFi (after configured over USB)
 
 Here's a short demo of ZeDMD and ZeDMD HD in parallel:
-https://www.youtube.com/watch?v=B6D00oB4Co8
+[![Watch the video](https://img.youtube.com/vi/B6D00oB4Co8/default.jpg)](https://youtu.be/B6D00oB4Co8)
 
 ## Flashing the firmware
 
