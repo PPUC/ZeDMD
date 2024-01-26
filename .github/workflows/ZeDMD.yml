@@ -29,7 +29,7 @@ jobs:
     needs: [ version ]
     strategy:
       matrix:
-        panels: ['128x32', '256x64', '128x32_wifi', '256x64_wifi']
+        panels: ['128x32', '256x64', '128x32_wifi', '256x64_wifi', 'S3-N16R8_256x64']
 
     name: ZeDMD ${{ matrix.panels }}
 
@@ -95,6 +95,9 @@ jobs:
             cd ../ZeDMD-256x64_wifi
             echo "${{ needs.version.outputs.tag }}" > version.txt
             zip ../ZeDMD-256x64_wifi.zip ZeDMD.bin version.txt
+            cd ../ZeDMD-S3-N16R8_256x64
+            echo "${{ needs.version.outputs.tag }}" > version.txt
+            zip ../ZeDMD-S3-N16R8_256x64.zip ZeDMD.bin version.txt
             cd ..
       - name: Release
         uses: softprops/action-gh-release@v1
@@ -106,3 +109,4 @@ jobs:
             ZeDMD-256x64.zip
             ZeDMD-128x32_wifi.zip
             ZeDMD-256x64_wifi.zip
+            ZeDMD-S3-N16R8_256x64.zip
