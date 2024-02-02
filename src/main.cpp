@@ -13,9 +13,12 @@
 #define PANELS_NUMBER 2  // Number of horizontally chained panels.
 #endif
 
+#ifdef BOARD_HAS_PSRAM
+#define SERIAL_BAUD 921600 * 8  // Serial baud rate.
+#else
 #define SERIAL_BAUD 921600  // Serial baud rate.
-#define SERIAL_TIMEOUT \
-  8  // Time in milliseconds to wait for the next data chunk.
+#endif
+#define SERIAL_TIMEOUT 8  // Time in milliseconds to wait for the next data chunk.
 #define SERIAL_BUFFER 2048  // Serial buffer size in byte.
 #define SERIAL_CHUNK_SIZE_MAX 1888
 #define LOGO_TIMEOUT 20000  // Time in milliseconds before the logo vanishes.
@@ -57,6 +60,8 @@
 //     resolution, returns (int16) width, (int16) height 13: set serial transfer
 //     chunk size as (int8) value, the value will be multiplied with 32
 //     internally
+// 12: handshake
+// 13: set serial transfer chunk size
 // 14: enable serial transfer compression
 // 15: disable serial transfer compression
 // 16: panel LED check, screen full red, then full green, then full blue
@@ -127,6 +132,27 @@ uint8_t tmpColor[3] = {0};
 bool upscaling = true;
 #endif
 
+#ifdef BOARD_HAS_PSRAM
+#define R1_PIN 4
+#define G1_PIN 5
+#define B1_PIN 6
+#define R2_PIN 7
+#define G2_PIN 15
+#define B2_PIN 16
+#define A_PIN 18
+#define B_PIN 8
+#define C_PIN 3
+#define D_PIN 42
+#define E_PIN \
+  1  // required for 1/32 scan panels, like 64x64.
+#define LAT_PIN 40
+#define OE_PIN 2
+#define CLK_PIN 41
+
+#define ORDRE_BUTTON_PIN 45
+
+#define LUMINOSITE_BUTTON_PIN 48
+#else
 // Pinout derived from ESP32-HUB75-MatrixPanel-I2S-DMA.h
 #define R1_PIN 25
 #define G1_PIN 26
@@ -146,10 +172,9 @@ bool upscaling = true;
 #define CLK_PIN 16
 
 #define ORDRE_BUTTON_PIN 21
-Bounce2::Button *rgbOrderButton;
 
 #define LUMINOSITE_BUTTON_PIN 33
-Bounce2::Button *brightnessButton;
+#endif
 
 #define N_CTRL_CHARS 6
 #define N_INTERMEDIATE_CTR_CHARS 4
@@ -157,6 +182,9 @@ Bounce2::Button *brightnessButton;
 // !!!!! NE METTRE AUCUNE VALEURE IDENTIQUE !!!!!
 uint8_t CtrlCharacters[6] = {0x5a, 0x65, 0x64, 0x72, 0x75, 0x6d};
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Bounce2::Button *rgbOrderButton;
+Bounce2::Button *brightnessButton;
 
 const uint8_t lumval[16] = {
     0,  2,  4,  7,   11,  18,  30,  40,
