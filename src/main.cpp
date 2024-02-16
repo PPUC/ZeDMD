@@ -1,6 +1,6 @@
 #define ZEDMD_VERSION_MAJOR 3  // X Digits
 #define ZEDMD_VERSION_MINOR 5  // Max 2 Digits
-#define ZEDMD_VERSION_PATCH 0  // Max 2 Digits
+#define ZEDMD_VERSION_PATCH 2  // Max 2 Digits
 
 #ifdef ZEDMD_HD
 #define PANEL_WIDTH 128  // Width: number of LEDs for 1 panel.
@@ -645,7 +645,7 @@ void fillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
       uint16_t pos = (y * ZONE_WIDTH + x) * 2;
       uint8_t r, b, g;
       dma_display->color565to888(
-          (((uint16_t)pBuffer[pos]) << 8) + pBuffer[pos + 1], r, g, b);
+          (((uint16_t)pBuffer[pos + 1]) << 8) + pBuffer[pos], r, g, b);
 
       uint8_t color[3];
       for (uint8_t i = 0; i < 3; i++) {
