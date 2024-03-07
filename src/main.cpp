@@ -268,31 +268,13 @@ void DisplayNumber(uint32_t chf, uint8_t nc, uint16_t x, uint16_t y, uint8_t r,
   DisplayText(text, x + (4 * i), y, r, g, b, transparent);
 }
 
-void DisplayVersion() {
-  // display the version number to the lower left
-  uint8_t ncM, ncm, ncp;
-  if (ZEDMD_VERSION_MAJOR >= 100)
-    ncM = 3;
-  else if (ZEDMD_VERSION_MAJOR >= 10)
-    ncM = 2;
-  else
-    ncM = 1;
-  DisplayNumber(ZEDMD_VERSION_MAJOR, ncM, 4, TOTAL_HEIGHT - 5, 150, 150, 150);
-  dma_display->drawPixelRGB888(4 + 4 * ncM, TOTAL_HEIGHT - 1, 150, 150, 150);
-  if (ZEDMD_VERSION_MINOR >= 10)
-    ncm = 2;
-  else
-    ncm = 1;
-  DisplayNumber(ZEDMD_VERSION_MINOR, ncm, 4 + 4 * ncM + 2, TOTAL_HEIGHT - 5,
-                150, 150, 150);
-  dma_display->drawPixelRGB888(4 + 4 * ncM + 2 + 4 * ncm, TOTAL_HEIGHT - 1, 150,
-                               150, 150);
-  if (ZEDMD_VERSION_PATCH >= 10)
-    ncp = 2;
-  else
-    ncp = 1;
-  DisplayNumber(ZEDMD_VERSION_PATCH, ncp, 4 + 4 * ncM + 2 + 4 * ncm + 2,
-                TOTAL_HEIGHT - 5, 150, 150, 150);
+void DisplayVersion(bool logo = false) {
+  // display the version number to the lower right
+  char version[10];
+  snprintf(version, 9, "%d.%d.%d", ZEDMD_VERSION_MAJOR, ZEDMD_VERSION_MINOR,
+           ZEDMD_VERSION_PATCH);
+  DisplayText(version, TOTAL_WIDTH - (strlen(version) * 4), TOTAL_HEIGHT - 5,
+              255 * !logo, 255 * !logo, 255 * !logo, logo);
 }
 
 void DisplayLum(void) {
@@ -310,8 +292,7 @@ void DisplayRGB(void) {
     dma_display->drawPixelRGB888((TOTAL_WIDTH / 2) - (6 * 4) - 1, i, 0, 0, 0);
   }
   DisplayText("blue", TOTAL_WIDTH - (4 * 4), 0, 0, 0, 0, true, true);
-  // @todo turn into transparent inverted when a new logo is provided.
-  DisplayText("green", 0, TOTAL_HEIGHT - 6, 0, 255, 0);
+  DisplayText("green", 0, TOTAL_HEIGHT - 6, 0, 0, 0, true, true);
   DisplayText("RGB Order:", (TOTAL_WIDTH / 2) - (6 * 4), 0, 128, 128, 128);
   DisplayNumber(rgbMode, 2, (TOTAL_WIDTH / 2) + (4 * 4), 0, 255, 191, 0);
 }
@@ -753,7 +734,6 @@ void ledTester(void) {
 
 void DisplayLogo(void) {
   ClearScreen();
-  LoadRgbOrder();
 
   File f;
 
@@ -769,39 +749,17 @@ void DisplayLogo(void) {
   }
 
   renderBuffer = (uint8_t *)malloc(TOTAL_BYTES);
-  uint8_t r;
-  uint8_t g;
-  uint8_t b;
+
   for (uint16_t tj = 0; tj < TOTAL_BYTES; tj += 3) {
-    r = f.read();
-    g = f.read();
-    b = f.read();
-    uint8_t color[3];
-    for (uint8_t i = 0; i < 3; i++) {
-      if (rgbOrder[rgbMode * 3 + i] == rgbOrder[rgbModeLoaded * 3]) {
-        if (rgbOrder[rgbModeLoaded * 3] == R)
-          color[i] = r;
-        else if (rgbOrder[rgbModeLoaded * 3] == G)
-          color[i] = g;
-        else
-          color[i] = b;
-      } else if (rgbOrder[rgbMode * 3 + i] == rgbOrder[rgbModeLoaded * 3 + 1]) {
-        if (rgbOrder[rgbModeLoaded * 3 + 1] == R)
-          color[i] = r;
-        else if (rgbOrder[rgbModeLoaded * 3 + 1] == G)
-          color[i] = g;
-        else
-          color[i] = b;
-      } else {
-        if (rgbOrder[rgbModeLoaded * 3 + 2] == R)
-          color[i] = r;
-        else if (rgbOrder[rgbModeLoaded * 3 + 2] == G)
-          color[i] = g;
-        else
-          color[i] = b;
-      }
+    if (rgbMode == rgbModeLoaded) {
+      renderBuffer[tj] = f.read();
+      renderBuffer[tj + 1] = f.read();
+      renderBuffer[tj + 2] = f.read();
+    } else {
+      renderBuffer[tj + rgbOrder[rgbMode * 3]] = f.read();
+      renderBuffer[tj + rgbOrder[rgbMode * 3 + 1]] = f.read();
+      renderBuffer[tj + rgbOrder[rgbMode * 3 + 2]] = f.read();
     }
-    memcpy(&renderBuffer[tj], color, 3);
   }
 
   f.close();
@@ -810,7 +768,7 @@ void DisplayLogo(void) {
 
   free(renderBuffer);
 
-  DisplayVersion();
+  DisplayVersion(true);
 
 #ifdef ZEDMD_WIFI
   if (ip = WiFi.localIP()) {
@@ -896,6 +854,7 @@ void setup() {
 
   bool fileSystemOK;
   if (fileSystemOK = LittleFS.begin()) {
+    LoadRgbOrder();
     LoadLum();
   }
 
@@ -1175,6 +1134,12 @@ void loop() {
   while (MireActive) {
     rgbOrderButton->update();
     if (rgbOrderButton->pressed()) {
+      if (rgbModeLoaded != 0) {
+        rgbMode = 0;
+        SaveRgbOrder();
+        ESP.restart();
+      }
+
       if (displayStatus != DISPLAY_STATUS_NORMAL_OPERATION) {
         DisplayLogo();
         DisplayRGB();
@@ -1440,9 +1405,7 @@ void loop() {
 
       case 31:  // reset
       {
-        Serial.write('A');
-        handshakeSucceeded = false;
-        DisplayLogo();
+        ESP.restart();
         break;
       }
 
