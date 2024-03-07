@@ -36,8 +36,8 @@ Install [esptool](https://github.com/espressif/esptool) and run
 esptool --port /dev/ttyUSB0 --chip esp32 write_flash 0x0 ZeDMD.bin
 ```
 
-For sure you have to replace the `--port` optition with the serial port the ESP32 is connected to.
-For Windows that might be `--port COM3`.
+For sure you have to replace the `--port /dev/ttyUSB0` optition with the serial port the ESP32 is connected to.
+For Windows that might be `--port COM3` instead of `--port /dev/ttyUSB0`.
 
 ### platformio ("from source")
 
