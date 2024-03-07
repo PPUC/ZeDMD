@@ -1,6 +1,6 @@
 #define ZEDMD_VERSION_MAJOR 3  // X Digits
-#define ZEDMD_VERSION_MINOR 5  // Max 2 Digits
-#define ZEDMD_VERSION_PATCH 2  // Max 2 Digits
+#define ZEDMD_VERSION_MINOR 6  // Max 2 Digits
+#define ZEDMD_VERSION_PATCH 0  // Max 2 Digits
 
 #ifdef ZEDMD_HD
 #define PANEL_WIDTH 128  // Width: number of LEDs for 1 panel.
@@ -18,13 +18,21 @@
 #else
 #define SERIAL_BAUD 921600  // Serial baud rate.
 #endif
-#define SERIAL_TIMEOUT 8  // Time in milliseconds to wait for the next data chunk.
+#define SERIAL_TIMEOUT \
+  8  // Time in milliseconds to wait for the next data chunk.
 #define SERIAL_BUFFER 2048  // Serial buffer size in byte.
 #define SERIAL_CHUNK_SIZE_MAX 1888
 #define LOGO_TIMEOUT 20000  // Time in milliseconds before the logo vanishes.
 #define FLOW_CONTROL_TIMEOUT \
   1  // Time in milliseconds to wait before sending a new ready signal.
 #define BUFFER_OVERHEAD 4
+#define R 0
+#define G 1
+#define B 2
+#define DISPLAY_STATUS_SCREEN_SAVER 0      // screen saver
+#define DISPLAY_STATUS_NORMAL_OPERATION 1  // normal operation mode
+#define DISPLAY_STATUS_INFO 2              // PPUC info screen
+#define DISPLAY_STATUS_CLEAR 3             // clear screen (command received)
 
 // ----------------- ZeDMD by MK47 & Zedrummer (http://ppuc.org) ---------------
 // - If you have blurry pictures, the display is not clean, try to reduce the
@@ -143,8 +151,7 @@ bool upscaling = true;
 #define B_PIN 8
 #define C_PIN 3
 #define D_PIN 42
-#define E_PIN \
-  1  // required for 1/32 scan panels, like 64x64.
+#define E_PIN 1  // required for 1/32 scan panels, like 64x64.
 #define LAT_PIN 40
 #define OE_PIN 2
 #define CLK_PIN 41
@@ -190,21 +197,19 @@ const uint8_t lumval[16] = {
     0,  2,  4,  7,   11,  18,  30,  40,
     50, 65, 80, 100, 125, 160, 200, 255};  // Non-linear brightness progression
 
-HUB75_I2S_CFG::i2s_pins _pins = {R1_PIN, G1_PIN,  B1_PIN, R2_PIN, G2_PIN,
-                                 B2_PIN, A_PIN,   B_PIN,  C_PIN,  D_PIN,
-                                 E_PIN,  LAT_PIN, OE_PIN, CLK_PIN};
-HUB75_I2S_CFG mxconfig(PANEL_WIDTH,    // width
-                       PANEL_HEIGHT,   // height
-                       PANELS_NUMBER,  // chain length
-                       _pins           // pin mapping
-                                       // HUB75_I2S_CFG::FM6126A  // driver chip
-);
+uint8_t rgbMode = 0;
+uint8_t rgbModeLoaded = 0;
+const uint8_t rgbOrder[3 * 6] = {
+    R, G, B,  // rgbMode 0
+    B, R, G,  // rgbMode 1
+    G, B, R,  // rgbMode 2
+    R, B, G,  // rgbMode 3
+    G, R, B,  // rgbMode 4
+    B, G, R   // rgbMode 5
+};
 
 MatrixPanel_I2S_DMA *dma_display;
 
-const uint8_t ordreRGB[3 * 6] = {0, 1, 2, 2, 0, 1, 1, 2, 0,
-                                 0, 2, 1, 1, 0, 2, 2, 1, 0};
-uint8_t acordreRGB = 0;
 bool debugMode = false;
 bool debugDelayOnError = false;
 uint8_t c4;
@@ -218,11 +223,7 @@ uint16_t RomWidth = 128, RomHeight = 32;
 uint8_t RomWidthPlane = 128 >> 3;
 uint8_t lumstep = 1;
 bool MireActive = false;
-// 0: screen saver
-// 1: normal operation mode
-// 2: PPUC info screen
-// 3: clear screen (command received)
-uint8_t displayStatus = 1;
+uint8_t displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
 bool handshakeSucceeded = false;
 bool compression = false;
 // 256 is the default buffer size of the CP210x linux kernel driver, we should
@@ -232,19 +233,8 @@ uint16_t frameCount = 0;
 uint16_t errorCount = 0;
 uint8_t flowControlCounter = 0;
 
-void DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t R, uint8_t G,
-                 uint8_t B, bool transparent = false, bool inverted = false) {
-  uint8_t color[3];
-  for (uint8_t i = 0; i < 3; i++) {
-    if (ordreRGB[acordreRGB * 3 + i] == 0) {
-      color[i] = R;
-    } else if (ordreRGB[acordreRGB * 3 + i] == 1) {
-      color[i] = G;
-    } else {
-      color[i] = B;
-    }
-  }
-
+void DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t r, uint8_t g,
+                 uint8_t b, bool transparent = false, bool inverted = false) {
   for (uint8_t ti = 0; ti < strlen(text); ti++) {
     for (uint8_t tj = 0; tj <= 5; tj++) {
       uint8_t fourPixels = getFontLine(text[ti], tj);
@@ -256,53 +246,35 @@ void DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t R, uint8_t G,
         if (transparent && !p) {
           continue;
         }
-        dma_display->drawPixelRGB888(x + pixel + (ti * 4), y + tj, color[0] * p,
-                                     color[1] * p, color[2] * p);
+        dma_display->drawPixelRGB888(x + pixel + (ti * 4), y + tj, r * p, g * p,
+                                     b * p);
       }
     }
   }
 }
 
-void DisplayNumber(uint32_t chf, uint8_t nc, uint16_t x, uint16_t y, uint8_t R,
-                   uint8_t G, uint8_t B, bool transparent = false) {
+void DisplayNumber(uint32_t chf, uint8_t nc, uint16_t x, uint16_t y, uint8_t r,
+                   uint8_t g, uint8_t b, bool transparent = false) {
   char text[nc];
   sprintf(text, "%d", chf);
 
   uint8_t i = 0;
   if (strlen(text) < nc) {
     for (; i < (nc - strlen(text)); i++) {
-      DisplayText(" ", x + (4 * i), y, R, G, B, transparent);
+      DisplayText(" ", x + (4 * i), y, r, g, b, transparent);
     }
   }
 
-  DisplayText(text, x + (4 * i), y, R, G, B, transparent);
+  DisplayText(text, x + (4 * i), y, r, g, b, transparent);
 }
 
-void DisplayVersion() {
-  // display the version number to the lower left
-  uint8_t ncM, ncm, ncp;
-  if (ZEDMD_VERSION_MAJOR >= 100)
-    ncM = 3;
-  else if (ZEDMD_VERSION_MAJOR >= 10)
-    ncM = 2;
-  else
-    ncM = 1;
-  DisplayNumber(ZEDMD_VERSION_MAJOR, ncM, 4, TOTAL_HEIGHT - 5, 150, 150, 150);
-  dma_display->drawPixelRGB888(4 + 4 * ncM, TOTAL_HEIGHT - 1, 150, 150, 150);
-  if (ZEDMD_VERSION_MINOR >= 10)
-    ncm = 2;
-  else
-    ncm = 1;
-  DisplayNumber(ZEDMD_VERSION_MINOR, ncm, 4 + 4 * ncM + 2, TOTAL_HEIGHT - 5,
-                150, 150, 150);
-  dma_display->drawPixelRGB888(4 + 4 * ncM + 2 + 4 * ncm, TOTAL_HEIGHT - 1, 150,
-                               150, 150);
-  if (ZEDMD_VERSION_PATCH >= 10)
-    ncp = 2;
-  else
-    ncp = 1;
-  DisplayNumber(ZEDMD_VERSION_PATCH, ncp, 4 + 4 * ncM + 2 + 4 * ncm + 2,
-                TOTAL_HEIGHT - 5, 150, 150, 150);
+void DisplayVersion(bool logo = false) {
+  // display the version number to the lower right
+  char version[10];
+  snprintf(version, 9, "%d.%d.%d", ZEDMD_VERSION_MAJOR, ZEDMD_VERSION_MINOR,
+           ZEDMD_VERSION_PATCH);
+  DisplayText(version, TOTAL_WIDTH - (strlen(version) * 4), TOTAL_HEIGHT - 5,
+              255 * !logo, 255 * !logo, 255 * !logo, logo);
 }
 
 void DisplayLum(void) {
@@ -320,10 +292,9 @@ void DisplayRGB(void) {
     dma_display->drawPixelRGB888((TOTAL_WIDTH / 2) - (6 * 4) - 1, i, 0, 0, 0);
   }
   DisplayText("blue", TOTAL_WIDTH - (4 * 4), 0, 0, 0, 0, true, true);
-  // @todo turn into transparent inverted when a new logo is provided.
-  DisplayText("green", 0, TOTAL_HEIGHT - 6, 0, 255, 0);
+  DisplayText("green", 0, TOTAL_HEIGHT - 6, 0, 0, 0, true, true);
   DisplayText("RGB Order:", (TOTAL_WIDTH / 2) - (6 * 4), 0, 128, 128, 128);
-  DisplayNumber(acordreRGB, 2, (TOTAL_WIDTH / 2) + (4 * 4), 0, 255, 191, 0);
+  DisplayNumber(rgbMode, 2, (TOTAL_WIDTH / 2) + (4 * 4), 0, 255, 191, 0);
 }
 
 void DisplayDebugInfo(void) {
@@ -628,10 +599,8 @@ void fillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
     for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
       uint16_t pos = (y * ZONE_WIDTH + x) * 3;
 
-      dma_display->drawPixelRGB888(x + xOffset, y + yOffset,
-                                   pBuffer[pos + ordreRGB[acordreRGB * 3]],
-                                   pBuffer[pos + ordreRGB[acordreRGB * 3 + 1]],
-                                   pBuffer[pos + ordreRGB[acordreRGB * 3 + 2]]);
+      dma_display->drawPixelRGB888(x + xOffset, y + yOffset, pBuffer[pos],
+                                   pBuffer[pos + 1], pBuffer[pos + 2]);
     }
   }
 }
@@ -643,23 +612,9 @@ void fillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
   for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
     for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
       uint16_t pos = (y * ZONE_WIDTH + x) * 2;
-      uint8_t r, b, g;
-      dma_display->color565to888(
-          (((uint16_t)pBuffer[pos + 1]) << 8) + pBuffer[pos], r, g, b);
-
-      uint8_t color[3];
-      for (uint8_t i = 0; i < 3; i++) {
-        if (ordreRGB[acordreRGB * 3 + i] == 0) {
-          color[i] = r;
-        } else if (ordreRGB[acordreRGB * 3 + i] == 1) {
-          color[i] = g;
-        } else {
-          color[i] = b;
-        }
-      }
-
-      dma_display->drawPixelRGB888(x + xOffset, y + yOffset, color[0], color[1],
-                                   color[2]);
+      dma_display->drawPixel(
+          x + xOffset, y + yOffset,
+          (((uint16_t)pBuffer[pos + 1]) << 8) + pBuffer[pos]);
     }
   }
 }
@@ -671,10 +626,9 @@ void fillPanelRaw() {
     for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
       pos = (y * TOTAL_WIDTH + x) * 3;
 
-      dma_display->drawPixelRGB888(
-          x, y, renderBuffer[pos + ordreRGB[acordreRGB * 3]],
-          renderBuffer[pos + ordreRGB[acordreRGB * 3 + 1]],
-          renderBuffer[pos + ordreRGB[acordreRGB * 3 + 2]]);
+      dma_display->drawPixelRGB888(x, y, renderBuffer[pos],
+                                   renderBuffer[pos + 1],
+                                   renderBuffer[pos + 2]);
     }
   }
 }
@@ -686,10 +640,8 @@ void fillPanelUsingPalette() {
     for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
       pos = renderBuffer[y * TOTAL_WIDTH + x] * 3;
 
-      dma_display->drawPixelRGB888(x, y,
-                                   palette[pos + ordreRGB[acordreRGB * 3]],
-                                   palette[pos + ordreRGB[acordreRGB * 3 + 1]],
-                                   palette[pos + ordreRGB[acordreRGB * 3 + 2]]);
+      dma_display->drawPixelRGB888(x, y, palette[pos], palette[pos + 1],
+                                   palette[pos + 2]);
     }
   }
 }
@@ -703,40 +655,38 @@ void fillPanelUsingChangedPalette(bool *paletteAffected) {
       pos = renderBuffer[y * TOTAL_WIDTH + x];
       if (paletteAffected[pos]) {
         pos *= 3;
-        dma_display->drawPixelRGB888(
-            x, y, palette[pos + ordreRGB[acordreRGB * 3]],
-            palette[pos + ordreRGB[acordreRGB * 3 + 1]],
-            palette[pos + ordreRGB[acordreRGB * 3 + 2]]);
+        dma_display->drawPixelRGB888(x, y, palette[pos], palette[pos + 1],
+                                     palette[pos + 2]);
       }
     }
   }
 }
 #endif
 
-void LoadOrdreRGB() {
-  File fordre = LittleFS.open("/ordrergb.val", "r");
-  if (!fordre) return;
-  acordreRGB = fordre.read();
-  fordre.close();
+void LoadRgbOrder() {
+  File f = LittleFS.open("/ordrergb.val", "r");
+  if (!f) return;
+  rgbMode = rgbModeLoaded = f.read();
+  f.close();
 }
 
-void SaveOrdreRGB() {
-  File fordre = LittleFS.open("/ordrergb.val", "w");
-  fordre.write(acordreRGB);
-  fordre.close();
+void SaveRgbOrder() {
+  File f = LittleFS.open("/ordrergb.val", "w");
+  f.write(rgbMode);
+  f.close();
 }
 
 void LoadLum() {
-  File flum = LittleFS.open("/lum.val", "r");
-  if (!flum) return;
-  lumstep = flum.read();
-  flum.close();
+  File f = LittleFS.open("/lum.val", "r");
+  if (!f) return;
+  lumstep = f.read();
+  f.close();
 }
 
 void SaveLum() {
-  File flum = LittleFS.open("/lum.val", "w");
-  flum.write(lumstep);
-  flum.close();
+  File f = LittleFS.open("/lum.val", "w");
+  f.write(lumstep);
+  f.close();
 }
 
 #ifdef ZEDMD_WIFI
@@ -770,24 +720,13 @@ bool SaveWiFiConfig() {
 #endif
 
 void ledTester(void) {
-  uint8_t col[3] = {255, 0, 0};
-  dma_display->fillScreenRGB888(col[ordreRGB[acordreRGB * 3]],
-                                col[ordreRGB[acordreRGB * 3 + 1]],
-                                col[ordreRGB[acordreRGB * 3 + 2]]);
+  dma_display->fillScreenRGB888(255, 0, 0);
   delay(LED_CHECK_DELAY);
 
-  col[0] = 0;
-  col[1] = 255;
-  dma_display->fillScreenRGB888(col[ordreRGB[acordreRGB * 3]],
-                                col[ordreRGB[acordreRGB * 3 + 1]],
-                                col[ordreRGB[acordreRGB * 3 + 2]]);
+  dma_display->fillScreenRGB888(0, 255, 0);
   delay(LED_CHECK_DELAY);
 
-  col[1] = 0;
-  col[2] = 255;
-  dma_display->fillScreenRGB888(col[ordreRGB[acordreRGB * 3]],
-                                col[ordreRGB[acordreRGB * 3 + 1]],
-                                col[ordreRGB[acordreRGB * 3 + 2]]);
+  dma_display->fillScreenRGB888(0, 0, 255);
   delay(LED_CHECK_DELAY);
 
   dma_display->clearScreen();
@@ -795,32 +734,41 @@ void ledTester(void) {
 
 void DisplayLogo(void) {
   ClearScreen();
-  LoadOrdreRGB();
 
-  File flogo;
+  File f;
 
   if (TOTAL_HEIGHT == 64) {
-    flogo = LittleFS.open("/logoHD.raw", "r");
+    f = LittleFS.open("/logoHD.raw", "r");
   } else {
-    flogo = LittleFS.open("/logo.raw", "r");
+    f = LittleFS.open("/logo.raw", "r");
   }
 
-  if (!flogo) {
+  if (!f) {
     // Serial.println("Failed to open file for reading");
     return;
   }
 
   renderBuffer = (uint8_t *)malloc(TOTAL_BYTES);
-  for (uint16_t tj = 0; tj < TOTAL_BYTES; tj++) {
-    renderBuffer[tj] = flogo.read();
+
+  for (uint16_t tj = 0; tj < TOTAL_BYTES; tj += 3) {
+    if (rgbMode == rgbModeLoaded) {
+      renderBuffer[tj] = f.read();
+      renderBuffer[tj + 1] = f.read();
+      renderBuffer[tj + 2] = f.read();
+    } else {
+      renderBuffer[tj + rgbOrder[rgbMode * 3]] = f.read();
+      renderBuffer[tj + rgbOrder[rgbMode * 3 + 1]] = f.read();
+      renderBuffer[tj + rgbOrder[rgbMode * 3 + 2]] = f.read();
+    }
   }
-  flogo.close();
+
+  f.close();
 
   fillPanelRaw();
 
   free(renderBuffer);
 
-  DisplayVersion();
+  DisplayVersion(true);
 
 #ifdef ZEDMD_WIFI
   if (ip = WiFi.localIP()) {
@@ -830,7 +778,7 @@ void DisplayLogo(void) {
   }
 #endif
 
-  displayStatus = 1;
+  displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
   MireActive = true;
   // Re-use this variable to save memory
   rotNextRotationTime[0] = millis();
@@ -839,29 +787,29 @@ void DisplayLogo(void) {
 void DisplayUpdate(void) {
   ClearScreen();
 
-  File flogo;
+  File f;
 
   if (TOTAL_HEIGHT == 64) {
-    flogo = LittleFS.open("/ppucHD.raw", "r");
+    f = LittleFS.open("/ppucHD.raw", "r");
   } else {
-    flogo = LittleFS.open("/ppuc.raw", "r");
+    f = LittleFS.open("/ppuc.raw", "r");
   }
 
-  if (!flogo) {
+  if (!f) {
     return;
   }
 
   renderBuffer = (uint8_t *)malloc(TOTAL_BYTES);
   for (uint16_t tj = 0; tj < TOTAL_BYTES; tj++) {
-    renderBuffer[tj] = flogo.read();
+    renderBuffer[tj] = f.read();
   }
-  flogo.close();
+  f.close();
 
   fillPanelRaw();
 
   free(renderBuffer);
 
-  displayStatus = 2;
+  displayStatus = DISPLAY_STATUS_INFO;
   // Re-use this variable to save memory
   rotNextRotationTime[0] = millis() - (LOGO_TIMEOUT / 2);
 }
@@ -871,7 +819,7 @@ void ScreenSaver(void) {
   dma_display->setBrightness8(lumval[1]);
   DisplayVersion();
 
-  displayStatus = 0;
+  displayStatus = DISPLAY_STATUS_SCREEN_SAVER;
 }
 
 #ifdef ZEDMD_WIFI
@@ -904,14 +852,45 @@ void setup() {
   brightnessButton->interval(100);
   brightnessButton->setPressedState(LOW);
 
+  bool fileSystemOK;
+  if (fileSystemOK = LittleFS.begin()) {
+    LoadRgbOrder();
+    LoadLum();
+  }
+
+  const uint8_t colorPins1[3] = {R1_PIN, G1_PIN, B1_PIN};
+  const uint8_t colorPins2[3] = {R2_PIN, G2_PIN, B2_PIN};
+  const HUB75_I2S_CFG::i2s_pins _pins = {colorPins1[rgbOrder[rgbMode * 3]],
+                                         colorPins1[rgbOrder[rgbMode * 3 + 1]],
+                                         colorPins1[rgbOrder[rgbMode * 3 + 2]],
+                                         colorPins2[rgbOrder[rgbMode * 3]],
+                                         colorPins2[rgbOrder[rgbMode * 3 + 1]],
+                                         colorPins2[rgbOrder[rgbMode * 3 + 2]],
+                                         A_PIN,
+                                         B_PIN,
+                                         C_PIN,
+                                         D_PIN,
+                                         E_PIN,
+                                         LAT_PIN,
+                                         OE_PIN,
+                                         CLK_PIN};
+
+  HUB75_I2S_CFG mxconfig(PANEL_WIDTH,    // width
+                         PANEL_HEIGHT,   // height
+                         PANELS_NUMBER,  // chain length
+                         _pins           // pin mapping
+                         // HUB75_I2S_CFG::FM6126A  // driver chip
+  );
   mxconfig.clkphase =
       false;  // change if you have some parts of the panel with a shift
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   dma_display->begin();
 
-  if (!LittleFS.begin()) {
-    DisplayText("Error reading file system!", 4, 6, 255, 0, 0);
-    delay(4000);
+  if (!fileSystemOK) {
+    DisplayText("Error reading file system!", 4, 6, 255, 255, 255);
+    DisplayText("Try to flash the firmware again.", 4, 14, 255, 255, 255);
+    while (true)
+      ;
   }
 
   Serial.setRxBufferSize(SERIAL_BUFFER);
@@ -920,7 +899,6 @@ void setup() {
   while (!Serial)
     ;
 
-  LoadLum();
   ClearScreen();
   DisplayLogo();
 
@@ -1125,10 +1103,11 @@ bool wait_for_ctrl_chars(void) {
       }
     }
 
-    if (displayStatus == 1 && mode64 && nCtrlCharFound == 0) {
+    if (displayStatus == DISPLAY_STATUS_NORMAL_OPERATION && mode64 &&
+        nCtrlCharFound == 0) {
       // While waiting for the next frame, perform in-frame color rotations.
       updateColorRotations();
-    } else if (displayStatus == 3 &&
+    } else if (displayStatus == DISPLAY_STATUS_CLEAR &&
                (millis() - rotNextRotationTime[0]) > LOGO_TIMEOUT) {
       ScreenSaver();
     }
@@ -1155,7 +1134,13 @@ void loop() {
   while (MireActive) {
     rgbOrderButton->update();
     if (rgbOrderButton->pressed()) {
-      if (displayStatus != 1) {
+      if (rgbModeLoaded != 0) {
+        rgbMode = 0;
+        SaveRgbOrder();
+        ESP.restart();
+      }
+
+      if (displayStatus != DISPLAY_STATUS_NORMAL_OPERATION) {
         DisplayLogo();
         DisplayRGB();
         DisplayLum();
@@ -1163,18 +1148,17 @@ void loop() {
       }
 
       rotNextRotationTime[0] = millis();
-      acordreRGB++;
-      if (acordreRGB >= 6) acordreRGB = 0;
-      SaveOrdreRGB();
-      fillPanelRaw();
-
+      rgbMode++;
+      if (rgbMode > 5) rgbMode = 0;
+      SaveRgbOrder();
+      DisplayLogo();
       DisplayRGB();
       DisplayLum();
     }
 
     brightnessButton->update();
     if (brightnessButton->pressed()) {
-      if (displayStatus != 1) {
+      if (displayStatus != DISPLAY_STATUS_NORMAL_OPERATION) {
         DisplayLogo();
         DisplayRGB();
         DisplayLum();
@@ -1191,12 +1175,18 @@ void loop() {
     }
 
     if (Serial.available() > 0) {
+      if (rgbMode != rgbModeLoaded) {
+        ESP.restart();
+      }
       ClearScreen();
       MireActive = false;
     } else if ((millis() - rotNextRotationTime[0]) > LOGO_TIMEOUT) {
-      if (displayStatus == 1) {
+      if (displayStatus == DISPLAY_STATUS_NORMAL_OPERATION) {
+        if (rgbMode != rgbModeLoaded) {
+          ESP.restart();
+        }
         DisplayUpdate();
-      } else if (displayStatus != 0) {
+      } else if (displayStatus != DISPLAY_STATUS_SCREEN_SAVER) {
         ScreenSaver();
       }
     }
@@ -1218,10 +1208,10 @@ void loop() {
       ;
     c4 = Serial.read();
 
-    if (displayStatus != 1) {
+    if (displayStatus != DISPLAY_STATUS_NORMAL_OPERATION) {
       // Exit screen saver.
       ClearScreen();
-      displayStatus = 1;
+      displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
     }
 
     switch (c4) {
@@ -1323,7 +1313,7 @@ void loop() {
         uint8_t tbuf[1 + BUFFER_OVERHEAD];
         if (SerialReadBuffer(tbuf, 1)) {
           if (tbuf[0] >= 0 && tbuf[0] < 6) {
-            acordreRGB = tbuf[0];
+            rgbMode = tbuf[0];
             Serial.write('A');
           } else {
             Serial.write('E');
@@ -1340,7 +1330,7 @@ void loop() {
 
       case 25:  // get RGB order
       {
-        Serial.write(acordreRGB);
+        Serial.write(rgbMode);
         break;
       }
 
@@ -1406,7 +1396,7 @@ void loop() {
       {
         Serial.write('A');
         SaveLum();
-        SaveOrdreRGB();
+        SaveRgbOrder();
 #ifdef ZEDMD_WIFI
         SaveWiFiConfig();
 #endif
@@ -1415,9 +1405,7 @@ void loop() {
 
       case 31:  // reset
       {
-        Serial.write('A');
-        handshakeSucceeded = false;
-        DisplayLogo();
+        ESP.restart();
         break;
       }
 
@@ -1464,7 +1452,7 @@ void loop() {
       {
         Serial.write('A');
         ClearScreen();
-        displayStatus = 3;
+        displayStatus = DISPLAY_STATUS_CLEAR;
         rotNextRotationTime[0] = millis();
         break;
       }
