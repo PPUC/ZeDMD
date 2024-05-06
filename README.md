@@ -58,15 +58,55 @@ you need to adjust the colors. While the logo is visible you can press the RGB b
 
 Using the brightness butten you can adjust the brightness.
 
-## IMPORTANT LEGAL NOTICE:
+## IMPORTANT LEGAL NOTICES:
 
 ZeDMD's firmware is open source and licensed as **GPLv2 or later** and can be ditributed under these terms.
 
-For manufacturers or resellers of any shield, frame or whatever linked to the ZeDMD, our only request is that the device is
-**called as "ZeDMD something"**. "ZeDMD" should be what you see first when you look at the device. Also, **a link to this project** should be provided with the device.
+For manufacturers or resellers of any shield, frame, ready-to-use devices or whatever linked to the ZeDMD, our only request is that the device is **called as "ZeDMD something"** or **powered by ZeDMD**. "ZeDMD" should be what you see first when you look at the device. Also, **a link to this project** must be provided with the device.
 
 ZeDMD uses
 * [ESP32-HUB75-MatrixPanel-DMA](https://github.com/mrfaptastic/ESP32-HUB75-MatrixPanel-DMA)
 * [Bounce2](https://github.com/thomasfredericks/Bounce2)
 * [miniz](https://github.com/richgel999/miniz)
 * [Tiny 4x6 Pixel Font](https://hackaday.io/project/6309-vga-graphics-over-spi-and-serial-vgatonic/log/20759-a-tiny-4x6-pixel-font-that-will-fit-on-almost-any-microcontroller-license-mit)
+
+## FAQ
+
+### "Where can I buy a ZeDMD?"
+
+The intention of ZeDMD is to provide a cheap DIY DMD solution. The maintainers of this project don't run any shop to sell ready-to-use hardware!
+
+Nevertheless, there're are some shops we're aware of who designed their own shields to build a ZeDMD.
+And as this might ease the task to use a ZeDMD for some users, we're fine to add some links here:
+* https://shop.arnoz.com/en/dmd/87-esp-dmd-shield.html
+* https://benfactory.fr/produit/zedmd-shield/
+* https://www.smallcab.net/shield-zedmd-p-2697.html
+
+There're also ready-to-use devices:
+* https://benfactory.fr/produit/zedmd/
+* https://www.smallcab.net/pack-zedmd-p-2698.html
+* https://virtuapin.net/index.php?main_page=product_info&cPath=6&products_id=283
+
+### "The LED pannels aren't working", ghosting, wrong pixels, missing lines
+
+The ZeDMD firmware supports a wide range of LED panels with different driver chips ... in theory.
+In general, some driver chips require adjustments in the configuration, timings and the clock phase.
+That can't be done with ZeDMD updater, but within the source code of the firmware. Here os some background information:
+* https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA?tab=readme-ov-file#supported-panel-can-types
+* https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA?tab=readme-ov-file#latch-blanking
+
+These are the available config options:
+https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA/blob/54ef6071663325e7b8f3a9e1e0db89b0b0b7398d/src/ESP32-HUB75-MatrixPanel-I2S-DMA.h#L235-L309
+
+The pre-built firmware uses the default config which is suitable for the most common LED panels.
+Obviously we can't provide a menu on the device to adjust these settings as you won't see them ;-)
+
+But we consider to add support for these driver settings to libzedmd and the ini file of dmdserver so that these values could be adjusted and sent to ZeDMD before the panels get initialized.
+
+We could also offer firmeware builds for specific panels. But that would require that somone sends such panels to us to find out the correct config.
+
+If you find out what config adjustment gets a specific panel to work, you should open an issue here and provide that information so that we could include it in the README and probably add a specific automated build for the bext releases.
+
+### "I'm running a shop, can I assemble and sell ZeDMDs?"
+
+Yes, you can, as long as you respect the legal notices above. And it would be nice if you sent us a ready to-use device because people might ask here or on dicord about problems with a specific variation of ZeDMD.
