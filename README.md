@@ -109,4 +109,4 @@ If you find out what config adjustment gets a specific panel to work, you should
 
 ### "I'm running a shop, can I assemble and sell ZeDMDs?"
 
-Yes, you can, as long as you respect the legal notices above. And it would be nice if you sent us a ready to-use device because people might ask here or on dicord about problems with a specific variation of ZeDMD.
+Yes, you can, as long as you respect the legal notices above. You could also do your own hardware design. But it would be nice if you sent us a ready to-use device for testing because people might ask here or on discord about problems with a specific variation of ZeDMD.
