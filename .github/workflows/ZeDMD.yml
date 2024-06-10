@@ -52,7 +52,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install --upgrade platformio
 
-      - if: (!(matrix.panels == 'S3-N16R8_128x32' && matrix.panels == 'S3-N16R8_256x64' && matrix.panels == 'S3-N16R8_128x64'))
+      - if: (!(matrix.panels == 'S3-N16R8_128x32') && !(matrix.panels == 'S3-N16R8_256x64') && !(matrix.panels == 'S3-N16R8_128x64'))
         name: Build ZeDMD
         run: |
           pio run -e ${{ matrix.panels }}
