@@ -17,7 +17,7 @@
 #define PANELS_NUMBER 2  // Number of horizontally chained panels.
 #endif
 
-#ifdef BOARD_HAS_PSRAM
+#ifdef ARDUINO_ESP32_S3_N16R8
 #define SERIAL_BAUD 921600 * 8  // Serial baud rate.
 #else
 #define SERIAL_BAUD 921600  // Serial baud rate.
@@ -45,9 +45,9 @@
 //   switch-mode power supplies to change the output voltage a little bit
 // - While the initial pattern logo is displayed, check you have red in the
 //   upper left, green in the lower left and blue in the upper right,
-//   if not, make contact between the ORDRE_BUTTON_PIN (default 21, but you can
-//   change below) pin and a ground pin several times
-//   until the display is correct (automatically saved, no need to do it again)
+//   if not, make contact between the RGB_ORDER_BUTTON_PIN (default 21, but you
+//   can change below) pin and a ground pin several times until the display is
+//   correct (automatically saved, no need to do it again)
 // -----------------------------------------------------------------------------
 // By sending command 99, you can enable the "Debug Mode". The output will be:
 // number of frames received, regardless if any error happened, size of
@@ -149,7 +149,7 @@ uint8_t tmpColor[3] = {0};
 bool upscaling = true;
 #endif
 
-#ifdef BOARD_HAS_PSRAM
+#ifdef ARDUINO_ESP32_S3_N16R8
 #define R1_PIN 4
 #define G1_PIN 5
 #define B1_PIN 6
@@ -165,9 +165,8 @@ bool upscaling = true;
 #define OE_PIN 2
 #define CLK_PIN 41
 
-#define ORDRE_BUTTON_PIN 45
-
-#define LUMINOSITE_BUTTON_PIN 48
+#define RGB_ORDER_BUTTON_PIN 45
+#define BRIGHTNESS_BUTTON_PIN 48
 #else
 // Pinout derived from ESP32-HUB75-MatrixPanel-I2S-DMA.h
 #define R1_PIN 25
@@ -187,9 +186,8 @@ bool upscaling = true;
 #define OE_PIN 15
 #define CLK_PIN 16
 
-#define ORDRE_BUTTON_PIN 21
-
-#define LUMINOSITE_BUTTON_PIN 33
+#define RGB_ORDER_BUTTON_PIN 21
+#define BRIGHTNESS_BUTTON_PIN 33
 #endif
 
 #define N_CTRL_CHARS 6
@@ -852,12 +850,12 @@ void WiFiEvent(WiFiEvent_t event) {
 
 void setup() {
   rgbOrderButton = new Bounce2::Button();
-  rgbOrderButton->attach(ORDRE_BUTTON_PIN, INPUT_PULLUP);
+  rgbOrderButton->attach(RGB_ORDER_BUTTON_PIN, INPUT_PULLUP);
   rgbOrderButton->interval(100);
   rgbOrderButton->setPressedState(LOW);
 
   brightnessButton = new Bounce2::Button();
-  brightnessButton->attach(LUMINOSITE_BUTTON_PIN, INPUT_PULLUP);
+  brightnessButton->attach(BRIGHTNESS_BUTTON_PIN, INPUT_PULLUP);
   brightnessButton->interval(100);
   brightnessButton->setPressedState(LOW);
 
@@ -892,23 +890,27 @@ void setup() {
   );
   mxconfig.clkphase =
       false;  // change if you have some parts of the panel with a shift
+              // #ifdef ARDUINO_ESP32_S3_N16R8
+              //  mxconfig.double_buff = true; // Turn on double buffer
+              // #endif
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   dma_display->begin();
 
   if (!fileSystemOK) {
     DisplayText("Error reading file system!", 4, 6, 255, 255, 255);
     DisplayText("Try to flash the firmware again.", 4, 14, 255, 255, 255);
-    while (true)
-      ;
+    // #ifdef ARDUINO_ESP32_S3_N16R8
+    //     display->flipDMABuffer();
+    // #endif
+    while (true);
   }
 
   Serial.setRxBufferSize(SERIAL_BUFFER);
   Serial.setTimeout(SERIAL_TIMEOUT);
   Serial.begin(SERIAL_BAUD);
-  while (!Serial)
-    ;
-
-  ClearScreen();
+#ifndef ARDUINO_ESP32_S3_N16R8
+  while (!Serial);
+#endif
   DisplayLogo();
 
 #ifdef ZEDMD_WIFI
@@ -1213,8 +1215,7 @@ void loop() {
     // wait_for_ctrl_chars(), now reset it to false.
     mode64 = false;
 
-    while (Serial.available() == 0)
-      ;
+    while (Serial.available() == 0);
     c4 = Serial.read();
 
     if (displayStatus != DISPLAY_STATUS_NORMAL_OPERATION) {
@@ -1250,8 +1251,7 @@ void loop() {
 
       case 13:  // set serial transfer chunk size
       {
-        while (Serial.available() == 0)
-          ;
+        while (Serial.available() == 0);
         int tmpSerialTransferChunkSize = ((int)Serial.read()) * 32;
         if (tmpSerialTransferChunkSize <= SERIAL_CHUNK_SIZE_MAX) {
           serialTransferChunkSize = tmpSerialTransferChunkSize;
