@@ -29,15 +29,24 @@ There're different ways to flash the firmware on the ESP32.
 
 ### esptool
 
-Download the appropriate zip file for the release section (assets) and extract it.
-Install [esptool](https://github.com/espressif/esptool) and run
+Download the appropriate zip file from the [latest release](https://github.com/PPUC/ZeDMD/releases/latest)'s assets section and extract it.
 
+Install [esptool](https://github.com/espressif/esptool) and run
 ```shell
-esptool --port /dev/ttyUSB0 --chip esp32 write_flash 0x0 ZeDMD.bin
+esptool --chip esp32 write_flash 0x0 ZeDMD.bin
 ```
 
-For sure you have to replace the `--port /dev/ttyUSB0` optition with the serial port the ESP32 is connected to.
-For Windows that might be `--port COM3` instead of `--port /dev/ttyUSB0`.
+On Windows you should use `esptool.exe` instead of `esptool`.
+If you have different devices attached via USB or if the ESP32 is not detected you could specifiy the concrete port.
+On unix-like systems it might be something like `--port /dev/ttyUSB0`, for Windows something like `--port COM3`:
+```shell
+esptool --chip esp32 --port /dev/ttyUSB0 write_flash 0x0 ZeDMD.bin
+```
+
+There're experimental builds for the ESP32-S3 N16R8. To flash such a device, you need to set a different `chip`:
+```shell
+esptool --chip esp32s3 write_flash 0x0 ZeDMD.bin
+```
 
 ### platformio ("from source")
 
