@@ -18,7 +18,7 @@
 #endif
 
 #ifdef ARDUINO_ESP32_S3_N16R8
-#define SERIAL_BAUD 921600 * 8  // Serial baud rate.
+#define SERIAL_BAUD 8000000  // Serial baud rate.
 #else
 #define SERIAL_BAUD 921600  // Serial baud rate.
 #endif
@@ -28,7 +28,7 @@
 #define SERIAL_CHUNK_SIZE_MAX 1888
 #define LOGO_TIMEOUT 20000  // Time in milliseconds before the logo vanishes.
 #define FLOW_CONTROL_TIMEOUT \
-  1  // Time in milliseconds to wait before sending a new ready signal.
+  4  // Time in milliseconds to wait before sending a new ready signal.
 #define BUFFER_OVERHEAD 4
 #define R 0
 #define G 1
@@ -158,7 +158,8 @@ bool upscaling = true;
 #define B2_PIN 16
 #define A_PIN 18
 #define B_PIN 8
-#define C_PIN 3
+// #define C_PIN 3
+#define C_PIN 46
 #define D_PIN 42
 #define E_PIN 1  // required for 1/32 scan panels, like 64x64.
 #define LAT_PIN 40
@@ -906,11 +907,12 @@ void setup() {
   }
 
   Serial.setRxBufferSize(SERIAL_BUFFER);
-  Serial.setTimeout(SERIAL_TIMEOUT);
-  Serial.begin(SERIAL_BAUD);
 #ifndef ARDUINO_ESP32_S3_N16R8
-  while (!Serial);
+  Serial.setTimeout(SERIAL_TIMEOUT);
 #endif
+  Serial.begin(SERIAL_BAUD);
+  while (!Serial);
+
   DisplayLogo();
 
 #ifdef ZEDMD_WIFI
@@ -1131,9 +1133,7 @@ bool wait_for_ctrl_chars(void) {
   }
 
   if (flowControlCounter > 0) {
-    if (flowControlCounter < 32) {
-      flowControlCounter++;
-    } else {
+    if (++flowControlCounter > 32) {
       flowControlCounter = 1;
     }
   }
@@ -1206,8 +1206,13 @@ void loop() {
   // After handshake, send a (R)eady signal to indicate that a new command could
   // be sent. The client has to wait for it to avoid buffer issues. The
   // handshake itself works without it.
-  if (handshakeSucceeded && flowControlCounter == 0) {
-    Serial.write('R');
+  // The new flow control replaces the Ready signal by a counter.
+  if (handshakeSucceeded) {
+    if (flowControlCounter == 0) {
+      Serial.write('R');
+    } else {
+      Serial.write(flowControlCounter);
+    }
   }
 
   if (wait_for_ctrl_chars()) {
