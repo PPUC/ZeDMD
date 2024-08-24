@@ -847,6 +847,103 @@ void WiFiEvent(WiFiEvent_t event) {
   }
 }
 
+/// @brief Handles the UDP Packet parsing for ZeDMD WiFi and ZeDMD-HD WiFi
+/// @param packet
+void IRAM_ATTR handlePacket(AsyncUDPPacket packet) {
+  uint8_t *pPacket = packet.data();
+  int packetLength = packet.length();
+
+  if (packet.length() >= 1) {
+    if (MireActive) {
+      MireActive = false;
+      ClearScreen();
+    }
+
+    switch (pPacket[0]) {
+      case 10:  // clear screen
+      {
+        ClearScreen();
+        break;
+      }
+      case 4:  // RGB24 Zones Stream
+      {
+        uint8_t compressed = pPacket[1] & 128;
+        uint8_t numZones = pPacket[1] & 127;
+        uint16_t size = (int)(pPacket[3]) + (((int)pPacket[2]) << 8);
+
+        renderBuffer = (uint8_t *)malloc(ZONE_SIZE * numZones + numZones);
+
+        if (compressed == 128) {
+          mz_ulong uncompressedBufferSize = ZONE_SIZE * numZones + numZones;
+          mz_ulong udpPayloadSize = (mz_ulong)size;
+
+          minizStatus =
+              mz_uncompress2(renderBuffer, &uncompressedBufferSize, &pPacket[4],
+                             (mz_ulong *)&udpPayloadSize);
+
+          if (minizStatus != MZ_OK ||
+              uncompressedBufferSize != (ZONE_SIZE * numZones + numZones)) {
+            debugMode = true;
+            DisplayDebugInfo();
+            Serial.println("RGB24-5");
+            return;
+          }
+        } else {
+          memcpy(renderBuffer, &pPacket[4], size);
+        }
+
+        for (uint8_t idx = 0; idx < numZones; idx++) {
+          fillZoneRaw(renderBuffer[idx * ZONE_SIZE + idx],
+                      &renderBuffer[idx * ZONE_SIZE + idx + 1]);
+        }
+
+        free(renderBuffer);
+        break;
+      }
+
+      case 5:  // RGB565 Zones Stream
+      {
+        uint8_t compressed = pPacket[1] & 128;
+        uint8_t numZones = pPacket[1] & 127;
+        uint16_t size = (int)(pPacket[3]) + (((int)pPacket[2]) << 8);
+
+        renderBuffer =
+            (uint8_t *)malloc(RGB565_ZONE_SIZE * numZones + numZones);
+        
+
+        if (compressed == 128) {
+          mz_ulong uncompressedBufferSize =
+              RGB565_ZONE_SIZE * numZones + numZones;
+          mz_ulong udpPayloadSize = (mz_ulong)size;
+
+          minizStatus =
+              mz_uncompress2(renderBuffer, &uncompressedBufferSize, &pPacket[4],
+                             (mz_ulong *)&udpPayloadSize);
+
+          if (minizStatus != MZ_OK ||
+              uncompressedBufferSize !=
+                  (RGB565_ZONE_SIZE * numZones + numZones)) {
+            debugMode = true;
+            DisplayDebugInfo();
+            Serial.println("RGB565-ERROR");
+            return;
+          }
+        } else {
+          memcpy(renderBuffer, &pPacket[4], size);
+        }
+       
+        for (uint8_t idx = 0; idx < numZones; idx++) {
+          fillZoneRaw565(renderBuffer[idx * RGB565_ZONE_SIZE + idx],
+                         &renderBuffer[idx * RGB565_ZONE_SIZE + idx + 1]);
+        }
+        
+        free(renderBuffer);
+        break;
+      }
+    }
+
+  }
+}
 #endif
 
 void setup() {
@@ -926,60 +1023,9 @@ void setup() {
                pwd.substring(0, pwd_length).c_str());
 
     uint8_t result = WiFi.waitForConnectResult();
+     // Eventhandler for incomming UDP packets for DMD traffic
     if (udp.listen(port)) {
-      udp.onPacket([](AsyncUDPPacket packet) {
-        if (packet.length() >= 1) {
-          if (MireActive) {
-            MireActive = false;
-            ClearScreen();
-          }
-
-          uint8_t *pPacket = packet.data();
-          switch (pPacket[0]) {
-            case 10:  // clear screen
-            {
-              ClearScreen();
-              break;
-            }
-
-            case 4:  // RGB24 Zones Stream
-            {
-              uint8_t compressed = pPacket[1] & 128;
-              uint8_t numZones = pPacket[1] & 127;
-              uint16_t size = (int)(pPacket[3]) + (((int)pPacket[2]) << 8);
-
-              renderBuffer = (uint8_t *)malloc(ZONE_SIZE * numZones + numZones);
-
-              if (compressed == 128) {
-                mz_ulong uncompressedBufferSize =
-                    ZONE_SIZE * numZones + numZones;
-                mz_ulong udpPayloadSize = (mz_ulong)size;
-
-                minizStatus =
-                    mz_uncompress2(renderBuffer, &uncompressedBufferSize,
-                                   &pPacket[4], (mz_ulong *)&udpPayloadSize);
-                if (minizStatus != MZ_OK ||
-                    uncompressedBufferSize !=
-                        (ZONE_SIZE * numZones + numZones)) {
-                  DisplayDebugInfo();
-
-                  return;
-                }
-              } else {
-                memcpy(renderBuffer, &pPacket[4], size);
-              }
-
-              for (uint8_t idx = 0; idx < numZones; idx++) {
-                fillZoneRaw(renderBuffer[idx * ZONE_SIZE + idx],
-                            &renderBuffer[idx * ZONE_SIZE + idx + 1]);
-              }
-
-              free(renderBuffer);
-              break;
-            }
-          }
-        }
-      });
+      udp.onPacket(handlePacket);
     }
   }
 #endif
