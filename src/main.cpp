@@ -18,7 +18,7 @@
 #endif
 
 #ifdef ARDUINO_ESP32_S3_N16R8
-#define SERIAL_BAUD 8000000  // Serial baud rate.
+#define SERIAL_BAUD 3000000  // Serial baud rate.
 #else
 #define SERIAL_BAUD 921600  // Serial baud rate.
 #endif
@@ -28,8 +28,7 @@
 #define SERIAL_CHUNK_SIZE_MAX 1888
 #define LOGO_TIMEOUT 20000  // Time in milliseconds before the logo vanishes.
 #define FLOW_CONTROL_TIMEOUT \
-  4  // Time in milliseconds to wait before sending a new ready signal.
-#define BUFFER_OVERHEAD 4
+  100  // Time in milliseconds to wait before sending a new ready signal.
 #define R 0
 #define G 1
 #define B 2
@@ -909,9 +908,13 @@ void setup() {
   Serial.setRxBufferSize(SERIAL_BUFFER);
 #ifndef ARDUINO_ESP32_S3_N16R8
   Serial.setTimeout(SERIAL_TIMEOUT);
-#endif
   Serial.begin(SERIAL_BAUD);
   while (!Serial);
+#else
+  Serial.setTimeout(SERIAL_TIMEOUT);
+  Serial.begin(SERIAL_BAUD);
+  while (!Serial);
+#endif
 
   DisplayLogo();
 
@@ -998,7 +1001,7 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
     transferBufferSize =
         ((((uint16_t)byteArray[0]) << 8) + ((uint16_t)byteArray[1]));
 
-    transferBuffer = (uint8_t *)malloc(transferBufferSize + BUFFER_OVERHEAD);
+    transferBuffer = (uint8_t *)malloc(transferBufferSize);
   } else {
     transferBuffer = pBuffer;
   }
@@ -1044,7 +1047,7 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
   }
 
   if (compression) {
-    mz_ulong uncompressed_buffer_size = (mz_ulong)BufferSize + BUFFER_OVERHEAD;
+    mz_ulong uncompressed_buffer_size = (mz_ulong)BufferSize;
     minizStatus =
         mz_uncompress2(pBuffer, &uncompressed_buffer_size, transferBuffer,
                        (mz_ulong *)&transferBufferSize);
@@ -1127,6 +1130,7 @@ bool wait_for_ctrl_chars(void) {
 
     if (flowControlCounter > 0 && handshakeSucceeded &&
         ((millis() - ms) > FLOW_CONTROL_TIMEOUT)) {
+      Serial.flush(true);
       Serial.write(flowControlCounter);
       ms = millis();
     }
@@ -1245,7 +1249,7 @@ void loop() {
 
       case 2:  // set rom frame size
       {
-        uint8_t tbuf[4 + BUFFER_OVERHEAD];
+        uint8_t tbuf[4];
         if (SerialReadBuffer(tbuf, 4)) {
           RomWidth = (int)(tbuf[0]) + (int)(tbuf[1] << 8);
           RomHeight = (int)(tbuf[2]) + (int)(tbuf[3] << 8);
@@ -1309,7 +1313,7 @@ void loop() {
 
       case 22:  // set brightness
       {
-        uint8_t tbuf[1 + BUFFER_OVERHEAD];
+        uint8_t tbuf[1];
         if (SerialReadBuffer(tbuf, 1)) {
           if (tbuf[0] > 0 && tbuf[0] < 16) {
             lumstep = tbuf[0];
@@ -1324,7 +1328,7 @@ void loop() {
 
       case 23:  // set RGB order
       {
-        uint8_t tbuf[1 + BUFFER_OVERHEAD];
+        uint8_t tbuf[1];
         if (SerialReadBuffer(tbuf, 1)) {
           if (tbuf[0] >= 0 && tbuf[0] < 6) {
             rgbMode = tbuf[0];
@@ -1361,7 +1365,7 @@ void loop() {
       // USB is turned off.
       case 27:  // set WiFi SSID
       {
-        uint8_t tbuf[33 + BUFFER_OVERHEAD];
+        uint8_t tbuf[33];
         if (SerialReadBuffer(tbuf, 33, false)) {
           // tbuf[0] now contains the length of the string
           ssid_length = tbuf[0];
@@ -1378,7 +1382,7 @@ void loop() {
 
       case 28:  // set WiFi password
       {
-        uint8_t tbuf[33 + BUFFER_OVERHEAD];
+        uint8_t tbuf[33];
         if (SerialReadBuffer(tbuf, 33, false)) {
           // tbuf[0] now contains the length of the string
           pwd_length = tbuf[0];
@@ -1395,7 +1399,7 @@ void loop() {
 
       case 29:  // set WiFi port
       {
-        uint8_t tbuf[2 + BUFFER_OVERHEAD];
+        uint8_t tbuf[2];
         if (SerialReadBuffer(tbuf, 2)) {
           port = ((((unsigned int)tbuf[0]) << 8) + ((unsigned int)tbuf[1]));
           Serial.write('A');
@@ -1474,8 +1478,8 @@ void loop() {
 #if !defined(ZEDMD_WIFI)
       case 4:  // mode RGB24 zones streaming
       {
-        renderBuffer = (uint8_t *)malloc(TOTAL_ZONES * ZONE_SIZE +
-                                         ZONES_PER_ROW + BUFFER_OVERHEAD);
+        renderBuffer =
+            (uint8_t *)malloc(TOTAL_ZONES * ZONE_SIZE + ZONES_PER_ROW);
         if (SerialReadBuffer(renderBuffer,
                              TOTAL_ZONES * ZONE_SIZE + ZONES_PER_ROW, false)) {
           uint16_t idx = 0;
@@ -1497,8 +1501,8 @@ void loop() {
 
       case 5:  // mode RGB565 zones streaming
       {
-        renderBuffer = (uint8_t *)malloc(TOTAL_ZONES * RGB565_ZONE_SIZE +
-                                         ZONES_PER_ROW + BUFFER_OVERHEAD);
+        renderBuffer =
+            (uint8_t *)malloc(TOTAL_ZONES * RGB565_ZONE_SIZE + ZONES_PER_ROW);
         if (SerialReadBuffer(renderBuffer,
                              TOTAL_ZONES * RGB565_ZONE_SIZE + ZONES_PER_ROW,
                              false)) {
@@ -1526,7 +1530,7 @@ void loop() {
             (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT)
                 ? TOTAL_BYTES
                 : RomWidth * RomHeight * 3;
-        renderBuffer = (uint8_t *)malloc(renderBufferSize + BUFFER_OVERHEAD);
+        renderBuffer = (uint8_t *)malloc(renderBufferSize);
 
         if (SerialReadBuffer(renderBuffer, RomHeight * RomWidth * 3)) {
           mode64 = false;
@@ -1542,7 +1546,7 @@ void loop() {
                // de 4 pixels par byte
       {
         uint16_t bufferSize = 12 + 2 * RomWidthPlane * RomHeight;
-        uint8_t *buffer = (uint8_t *)malloc(bufferSize + BUFFER_OVERHEAD);
+        uint8_t *buffer = (uint8_t *)malloc(bufferSize);
 
         if (SerialReadBuffer(buffer, bufferSize)) {
           // We need to cover downscaling, too.
@@ -1591,7 +1595,7 @@ void loop() {
                // de 2 pixels par byte
       {
         uint16_t bufferSize = 12 + 4 * RomWidthPlane * RomHeight;
-        uint8_t *buffer = (uint8_t *)malloc(bufferSize + BUFFER_OVERHEAD);
+        uint8_t *buffer = (uint8_t *)malloc(bufferSize);
 
         if (SerialReadBuffer(buffer, bufferSize)) {
           // We need to cover downscaling, too.
@@ -1710,7 +1714,7 @@ void loop() {
                // bits 4*512 bytes)
       {
         uint16_t bufferSize = 48 + 4 * RomWidthPlane * RomHeight;
-        uint8_t *buffer = (uint8_t *)malloc(bufferSize + BUFFER_OVERHEAD);
+        uint8_t *buffer = (uint8_t *)malloc(bufferSize);
 
         if (SerialReadBuffer(buffer, bufferSize)) {
           // We need to cover downscaling, too.
@@ -1770,7 +1774,7 @@ void loop() {
       {
         uint16_t bufferSize =
             192 + 6 * RomWidthPlane * RomHeight + 3 * MAX_COLOR_ROTATIONS;
-        uint8_t *buffer = (uint8_t *)malloc(bufferSize + BUFFER_OVERHEAD);
+        uint8_t *buffer = (uint8_t *)malloc(bufferSize);
 
         if (SerialReadBuffer(buffer, bufferSize)) {
           // We need to cover downscaling, too.
