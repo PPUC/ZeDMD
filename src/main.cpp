@@ -127,6 +127,7 @@
 #ifdef ZEDMD_WIFI
 #include <AsyncUDP.h>
 #include <WiFi.h>
+#include <ESPAsyncWebServer.h>
 
 String ssid;
 String pwd;
@@ -851,8 +852,7 @@ void WiFiEvent(WiFiEvent_t event) {
 /// @param packet
 void IRAM_ATTR handlePacket(AsyncUDPPacket packet) {
   uint8_t *pPacket = packet.data();
-  int packetLength = packet.length();
-
+  
   if (packet.length() >= 1) {
     if (MireActive) {
       MireActive = false;
@@ -883,9 +883,7 @@ void IRAM_ATTR handlePacket(AsyncUDPPacket packet) {
 
           if (minizStatus != MZ_OK ||
               uncompressedBufferSize != (ZONE_SIZE * numZones + numZones)) {
-            debugMode = true;
             DisplayDebugInfo();
-            Serial.println("RGB24-5");
             return;
           }
         } else {
@@ -923,9 +921,7 @@ void IRAM_ATTR handlePacket(AsyncUDPPacket packet) {
           if (minizStatus != MZ_OK ||
               uncompressedBufferSize !=
                   (RGB565_ZONE_SIZE * numZones + numZones)) {
-            debugMode = true;
             DisplayDebugInfo();
-            Serial.println("RGB565-ERROR");
             return;
           }
         } else {
@@ -944,6 +940,69 @@ void IRAM_ATTR handlePacket(AsyncUDPPacket packet) {
 
   }
 }
+
+void runWebServer() {
+  // Serve index.html
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(LittleFS, "/index.html", String(), false);
+  });
+
+  // Handle AJAX request to save WiFi configuration
+  server.on("/save_wifi", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (request->hasParam("ssid", true) &&
+        request->hasParam("password", true) &&
+        request->hasParam("port", true)) {
+      ssid = request->getParam("ssid", true)->value();
+      pwd = request->getParam("password", true)->value();
+      port = request->getParam("port", true)->value().toInt();
+      ssid_length = ssid.length();
+      pwd_length = pwd.length();
+
+      bool success = SaveWiFiConfig();
+      if (success) {
+        request->send(200, "text/plain", "Config saved successfully!");
+      } else {
+        request->send(500, "text/plain", "Failed to save config!");
+      }
+    } else {
+      request->send(400, "text/plain", "Missing parameters!");
+    }
+  });
+
+  // Handle image upload
+  server.onFileUpload([](AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
+  if (!index) {
+    // Opening file for writing at the start of the upload
+    File file = LittleFS.open("/uploaded_image.jpg", FILE_WRITE);
+    if (!file) {
+      request->send(500, "text/plain", "Failed to open file for writing");
+      return;
+    }
+    file.close();
+  }
+
+  // Writing the incoming data chunk by chunk
+  File file = LittleFS.open("/uploaded_image.jpg", FILE_APPEND);
+  if (file) {
+    file.write(data, len);
+    file.close();
+  }
+
+  // Check if this is the final chunk of the upload
+  if (final) {
+    // Load the image and verify size
+    //if (!verifyAndConvertImage("/uploaded_image.jpg")) {
+    //  request->send(400, "text/plain", "Invalid image size, must be 128x32 or 256x64");
+    //  return;
+    //}
+
+    request->send(200, "text/plain", "Image uploaded and processed successfully");
+
+    // Render the image to the display
+    fillPanelRaw();
+    free(renderBuffer);
+  }
+});
 #endif
 
 void setup() {
@@ -1023,7 +1082,11 @@ void setup() {
                pwd.substring(0, pwd_length).c_str());
 
     uint8_t result = WiFi.waitForConnectResult();
-     // Eventhandler for incomming UDP packets for DMD traffic
+    
+    // Run the intergrated web server
+    runWebServer();
+
+    // Eventhandler for incomming UDP packets for DMD traffic
     if (udp.listen(port)) {
       udp.onPacket(handlePacket);
     }
