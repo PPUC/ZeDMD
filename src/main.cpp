@@ -904,6 +904,7 @@ void IRAM_ATTR handlePacket(AsyncUDPPacket packet) {
       ClearScreen();
     }
 
+
     rotNextRotationTime[0] = millis(); //Update timer on every packet received.
 
     if (displayStatus == DISPLAY_STATUS_DIM || displayStatus == DISPLAY_STATUS_SCREEN_SAVER)
@@ -1128,7 +1129,6 @@ void ScreenSaver(void) {
   // Re-use this variable to save memory
   rotNextRotationTime[0] = millis();
 }
-
 #endif
 
 void setup() {
