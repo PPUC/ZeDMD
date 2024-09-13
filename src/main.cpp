@@ -1,7 +1,3 @@
-#define ZEDMD_VERSION_MAJOR 3  // X Digits
-#define ZEDMD_VERSION_MINOR 6  // Max 2 Digits
-#define ZEDMD_VERSION_PATCH 1  // Max 2 Digits
-
 #ifdef ZEDMD_HD
 #define PANEL_WIDTH 128  // Width: number of LEDs for 1 panel.
 #define PANEL_HEIGHT 64  // Height: number of LEDs.
@@ -33,10 +29,16 @@
 #define R 0
 #define G 1
 #define B 2
-#define DISPLAY_STATUS_SCREEN_SAVER 0      // screen saver
-#define DISPLAY_STATUS_NORMAL_OPERATION 1  // normal operation mode
-#define DISPLAY_STATUS_INFO 2              // PPUC info screen
-#define DISPLAY_STATUS_CLEAR 3             // clear screen (command received)
+#define DISPLAY_STATUS_SCREEN_SAVER 0           // screen saver
+#define DISPLAY_STATUS_NORMAL_OPERATION 1       // ZeDMD logo / normal operation mode
+#define DISPLAY_STATUS_INFO 2                   // PPUC info screen
+#define DISPLAY_STATUS_CLEAR 3                  // clear screen (command received)
+#define DISPLAY_STATUS_DIM 4                    // dim screen 
+#define SCREENSAVER_MODE_CLEAR_SCREEN 0         // Screensaver is set to clear screen mode
+#define SCREENSAVER_MODE_SHOW_IMAGE 1           // Screensaver is set to show image mode
+#define SCREENSAVER_DEFAULT_DIM_TIMEOUT 60000   // Default dim timeout
+#define SCREENSAVER_INACTIVITY_TIMEOUT 5000     // Default inactivity timeout
+
 
 // ----------------- ZeDMD by MK47 & Zedrummer (http://ppuc.org) ---------------
 // - If you have blurry pictures, the display is not clean, try to reduce the
@@ -123,10 +125,15 @@
 
 #include "fonts/tiny4x6.h"
 #include "miniz/miniz.h"
+#include "version.h"  // Include version constants
 
 #ifdef ZEDMD_WIFI
 #include <AsyncUDP.h>
+#include <ESPAsyncWebServer.h>
+#include <ESPmDNS.h>
+#include <JPEGDEC.h>
 #include <WiFi.h>
+#include "webserver.h"
 
 String ssid;
 String pwd;
@@ -136,6 +143,14 @@ uint8_t pwd_length;
 
 AsyncUDP udp;
 IPAddress ip;
+JPEGDEC jpeg;
+
+const char *apSSID = "ZeDMD-WiFi";
+const char *apPassword = "zedmd1234";
+
+uint8_t screensaverMode = SCREENSAVER_MODE_CLEAR_SCREEN;
+uint32_t dimTimeout = SCREENSAVER_DEFAULT_DIM_TIMEOUT;  // Timeout for dimming the screen
+bool enableDimAfterTimeout = false;         // Should dim after timeout
 
 unsigned long rotNextRotationTime[1];
 #else
@@ -217,6 +232,7 @@ const uint8_t rgbOrder[3 * 6] = {
 };
 
 MatrixPanel_I2S_DMA *dma_display;
+
 
 bool debugMode = false;
 bool debugDelayOnError = false;
@@ -328,9 +344,14 @@ void DisplayDebugInfo(void) {
   }
 }
 
+/// @brief Changes brightness of the LED Matrix panel, needed for webserver
+void setBrightness(uint8_t level) { 
+  dma_display->setBrightness8(lumval[level]);
+}
+
 void ClearScreen() {
   dma_display->clearScreen();
-  dma_display->setBrightness8(lumval[lumstep]);
+  setBrightness(lumstep);
 }
 
 #if !defined(ZEDMD_WIFI)
@@ -725,6 +746,30 @@ bool SaveWiFiConfig() {
   wifiConfig.close();
   return true;
 }
+
+bool LoadScreensaverConfig() {
+  File ssConfig = LittleFS.open("/screensaver_config.txt", "r");
+  if (!ssConfig) return false;
+
+  while (ssConfig.available()) {
+    screensaverMode = ssConfig.readStringUntil('\n').toInt();
+    enableDimAfterTimeout = ssConfig.readStringUntil('\n').toInt();
+    dimTimeout = ssConfig.readStringUntil('\n').toInt();
+  }
+  ssConfig.close();
+  return true;
+}
+
+bool SaveScreensaverConfig() {
+  File ssConfig = LittleFS.open("/screensaver_config.txt", "w");
+  if (!ssConfig) return false;
+
+  ssConfig.println(String(screensaverMode));
+  ssConfig.println(String(enableDimAfterTimeout));
+  ssConfig.println(String(dimTimeout));
+  ssConfig.close();
+  return true;
+}
 #endif
 
 void ledTester(void) {
@@ -822,6 +867,7 @@ void DisplayUpdate(void) {
   rotNextRotationTime[0] = millis() - (LOGO_TIMEOUT / 2);
 }
 
+#if !defined(ZEDMD_WIFI)
 void ScreenSaver(void) {
   ClearScreen();
   dma_display->setBrightness8(lumval[1]);
@@ -829,6 +875,7 @@ void ScreenSaver(void) {
 
   displayStatus = DISPLAY_STATUS_SCREEN_SAVER;
 }
+#endif
 
 #ifdef ZEDMD_WIFI
 // wifi event handler
@@ -857,10 +904,19 @@ void IRAM_ATTR handlePacket(AsyncUDPPacket packet) {
       ClearScreen();
     }
 
+    rotNextRotationTime[0] = millis(); //Update timer on every packet received.
+
+    if (displayStatus == DISPLAY_STATUS_DIM || displayStatus == DISPLAY_STATUS_SCREEN_SAVER)
+    {
+      setBrightness(lumstep);
+      displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
+    } 
+
     switch (pPacket[0]) {
       case 10:  // clear screen
       {
         ClearScreen();
+        displayStatus = DISPLAY_STATUS_CLEAR;
         break;
       }
       case 4:  // RGB24 Zones Stream
@@ -936,6 +992,143 @@ void IRAM_ATTR handlePacket(AsyncUDPPacket packet) {
     }
   }
 }
+
+/// @brief Handles the mDNS Packets for ZeDMD WiFi, this allows autodiscovery
+void runMDNS() {
+  if (!MDNS.begin("ZeDMD-WiFi")) {
+    return;
+  }
+  MDNS.addService("zedmd-wifi", "udp", port);
+}
+
+/// @brief Callback method for Verify JPEG Image
+/// @param pDraw 
+/// @return Always return 1
+int JPEGDrawNothing(JPEGDRAW *pDraw) {
+    return 1; // Return 1 (success), we are only verifying the image
+}
+
+/// @brief Verify JPEG image
+bool verifyImage(const char *filename) {
+    File jpegFile = LittleFS.open(filename, "r");
+    if (!jpegFile) {
+        return false;
+    }
+
+    if (!jpeg.open(jpegFile, JPEGDrawNothing)) {
+        jpegFile.close();
+        return false;
+    }
+
+    if (jpeg.getWidth() != TOTAL_WIDTH || jpeg.getHeight() != TOTAL_HEIGHT) {
+        jpeg.close();
+        jpegFile.close();
+        return false;
+    }
+
+    jpeg.close();
+    jpegFile.close();
+    return true;
+}
+
+/// @brief Callback method for DisplayImage
+/// @param pDraw 
+/// @return 1 is success, 0 is failure
+int JPEGDraw(JPEGDRAW *pDraw) {
+    for (int y = 0; y < pDraw->iHeight; y++) {
+        uint16_t *pSrc = (uint16_t *)(pDraw->pPixels + (y * pDraw->iWidth)); 
+
+        uint8_t *pDest = renderBuffer + ((pDraw->y + y) * 128 * 3) + (pDraw->x * 3);
+
+        for (int x = 0; x < pDraw->iWidth; x++) {
+            // Extract RGB values from RGB565
+            uint16_t color = pSrc[x];
+            uint8_t r = (color >> 11) & 0x1F;
+            uint8_t g = (color >> 5) & 0x3F;
+            uint8_t b = color & 0x1F;
+
+            // Convert 5-bit/6-bit values to 8-bit
+            r = (r << 3) | (r >> 2);
+            g = (g << 2) | (g >> 4);
+            b = (b << 3) | (b >> 2);
+
+            // Store the RGB888 values in the renderBuffer
+            pDest[0] = r;
+            pDest[1] = g;
+            pDest[2] = b;
+
+            // Move to the next pixel in the destination
+            pDest += 3;
+        }
+    }
+    return 1;  // Success
+}
+
+/// @brief Display JPEG image
+bool DisplayImage(const char *filename) {
+    File jpegFile = LittleFS.open(filename, "r");
+    if (!jpegFile) {
+        return false;
+    }
+
+    renderBuffer = (uint8_t *)malloc(TOTAL_WIDTH * TOTAL_HEIGHT * 3);
+    if (renderBuffer == nullptr) {
+        jpegFile.close();
+        return false;
+    }
+
+    if (!jpeg.open(jpegFile, JPEGDraw)) {
+        free(renderBuffer); 
+        jpegFile.close();
+        return false;
+    }
+
+    if (jpeg.getWidth() != TOTAL_WIDTH || jpeg.getHeight() != TOTAL_HEIGHT) {
+        jpeg.close();
+        free(renderBuffer);
+        jpegFile.close();
+        return false;
+    }
+
+    if (jpeg.decode(0, 0, 0) != 1) { // 0, 0 as the starting position; no options
+        jpeg.close();
+        free(renderBuffer);
+        jpegFile.close();
+        return false;
+    }
+
+    fillPanelRaw();
+
+    jpeg.close();
+    jpegFile.close();
+    free(renderBuffer);
+
+    return true;
+}
+
+/// @brief Refreshes screen after color change, needed for webserver
+void refreshScreen() {
+  DisplayLogo();
+  DisplayRGB();
+  DisplayLum();
+}
+
+/// @brief Screensaver method for ZeDMD-WiFi
+/// @param  
+void ScreenSaver(void) {
+  if (screensaverMode == SCREENSAVER_MODE_CLEAR_SCREEN) {
+    ClearScreen();
+    dma_display->setBrightness8(lumval[1]);
+    DisplayVersion();
+  } else if (screensaverMode == SCREENSAVER_MODE_SHOW_IMAGE) {
+    ClearScreen();
+    DisplayImage("/screensaver.jpg");
+  }
+  displayStatus = DISPLAY_STATUS_SCREEN_SAVER;
+  // Re-use this variable to save memory
+  rotNextRotationTime[0] = millis();
+}
+
 #endif
 
 void setup() {
@@ -1007,19 +1200,28 @@ void setup() {
 #ifdef ZEDMD_WIFI
   if (LoadWiFiConfig()) {
     WiFi.disconnect(true);
-    // register event handler
     WiFi.onEvent(WiFiEvent);
-
-    // Initiate connection
     WiFi.begin(ssid.substring(0, ssid_length).c_str(),
                pwd.substring(0, pwd_length).c_str());
 
-    uint8_t result = WiFi.waitForConnectResult();
-
-    if (udp.listen(port)) {
-      udp.onPacket(handlePacket);
+    if (WiFi.waitForConnectResult() != WL_CONNECTED) {
+      WiFi.softAP(apSSID, apPassword);  // Start AP if WiFi fails to connect
     }
+  } else {
+    WiFi.softAP(apSSID, apPassword);  // Start AP if config not found
+    runWebServer();                   // Start web server for AP clients
   }
+
+  runMDNS();       // Start the MDNS server for easy detection
+  runWebServer();  // Start the web server
+
+  if (udp.listen(port)) {
+    udp.onPacket(handlePacket);  // Start listering to ZeDMD UDP traffic
+  }
+
+  LoadScreensaverConfig(); // Load Screensaver config, this should be moved to all build 
+                           // configs but we will leave it in WiFi only for now.
+
 #endif
 }
 
@@ -1154,6 +1356,14 @@ bool wait_for_ctrl_chars(void) {
       }
     }
 
+    if (!MireActive && displayStatus == DISPLAY_STATUS_NORMAL_OPERATION  && nCtrlCharFound == 0 &&
+     (millis() - rotNextRotationTime[0]) > SCREENSAVER_INACTIVITY_TIMEOUT) {
+      MireActive = true;
+      displayStatus = DISPLAY_STATUS_INFO; //Skip to Info page to get to the screensaver
+      return false;
+    }
+
+
     if (displayStatus == DISPLAY_STATUS_NORMAL_OPERATION && mode64 &&
         nCtrlCharFound == 0) {
       // While waiting for the next frame, perform in-frame color rotations.
@@ -1217,7 +1427,7 @@ void loop() {
       rotNextRotationTime[0] = millis();
       lumstep++;
       if (lumstep >= 16) lumstep = 1;
-      dma_display->setBrightness8(lumval[lumstep]);
+      setBrightness(lumstep);
       SaveLum();
       DisplayRGB();
       DisplayLum();
@@ -1235,9 +1445,20 @@ void loop() {
           ESP.restart();
         }
         DisplayUpdate();
-      } else if (displayStatus != DISPLAY_STATUS_SCREEN_SAVER) {
+      } else if (displayStatus != DISPLAY_STATUS_SCREEN_SAVER && 
+                displayStatus != DISPLAY_STATUS_DIM) {
         ScreenSaver();
+      } 
+#ifdef ZEDMD_WIFI      
+      else if (enableDimAfterTimeout &&
+                 displayStatus == DISPLAY_STATUS_SCREEN_SAVER &&
+                 screensaverMode == SCREENSAVER_MODE_SHOW_IMAGE) {
+        if ((millis() - rotNextRotationTime[0]) > dimTimeout) {
+          displayStatus = DISPLAY_STATUS_DIM;
+          setBrightness(1);
+        }
       }
+#endif
     }
   }
 
@@ -1351,7 +1572,7 @@ void loop() {
         if (SerialReadBuffer(tbuf, 1)) {
           if (tbuf[0] > 0 && tbuf[0] < 16) {
             lumstep = tbuf[0];
-            dma_display->setBrightness8(lumval[lumstep]);
+            setBrightness(lumstep);
             Serial.write('A');
           } else {
             Serial.write('E');
