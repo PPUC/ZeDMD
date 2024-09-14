@@ -6,19 +6,27 @@
 ///// LILYGO S3 AMOLED DRIVER
 ///// No 24 BIT rendering supported, internally everything will be decoded to 16 bit.
 
-
+/// @brief Intialization stuff
 LilygoS3Amoled::LilygoS3Amoled() : tft(), sprite(&tft), zoneSprite(&tft)  {
-  // AMOLED-specific initialization
 
+  // Sprite for fullscreen stuff
   sprite.createSprite(536, 240);
   sprite.setSwapBytes(1);
+
+  // Sprite for small screen updates
   zoneSprite.createSprite(ZONE_WIDTH * DISPLAY_SCALE, ZONE_HEIGHT * DISPLAY_SCALE);
   zoneSprite.setSwapBytes(1);
-
+  
   rm67162_init();
   lcd_setRotation(1);
 }
 
+/// @brief Draw a scaled RGB888 converted to RGB565 pixel (default 4x4)
+/// @param x X coordinate
+/// @param y Y coordinate
+/// @param r 8 bit red color
+/// @param g 8 bit green color
+/// @param b 8 bit blue color
 void LilygoS3Amoled::DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g,
                                uint8_t b) {
   // AMOLED works with 16 bit only; 24 bit gets converted
@@ -29,33 +37,46 @@ void LilygoS3Amoled::DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g,
                   DISPLAY_SCALE, color);
 }
 
+/// @brief Draw a scaled RGB565 pixel (default 4x4)
+/// @param x X coordinate
+/// @param y Y coordinate
+/// @param color 16 bit RGB565 color
 void LilygoS3Amoled::DrawPixel(uint16_t x, uint16_t y, uint16_t color) {
   sprite.fillRect(x * DISPLAY_SCALE, y * DISPLAY_SCALE, DISPLAY_SCALE,
                   DISPLAY_SCALE, color);
 }
 
+/// @brief Clear screen
 void LilygoS3Amoled::ClearScreen() {
   sprite.fillSprite(TFT_BLACK);
   lcd_PushColors(0, 0, 536, 240, (uint16_t *)sprite.getPointer());
 }
 
+/// @brief Set brightness of display
+/// @param level 0-15 levels
 void LilygoS3Amoled::SetBrightness(uint8_t level) {
   lcd_brightness(lumval[level]);
 }
 
+/// @brief Fill entire screen with one color
+/// @param r 8 bit red color
+/// @param g 8 bit green color
+/// @param b 8 bit blue color
 void LilygoS3Amoled::FillScreen(uint8_t r, uint8_t g, uint8_t b) {
-  // AMOLED-specific fill screen
-  
-}
-
-void LilygoS3Amoled::UpdateDisplay() {
+  uint16_t color = sprite.color565(r,g,b);
+  sprite.fillScreen(color);
   lcd_PushColors(0, 0, 536, 240, (uint16_t *)sprite.getPointer());
 }
 
-void LilygoS3Amoled::UpdateDisplayZone(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
-  lcd_PushColors(x * DISPLAY_SCALE, y * DISPLAY_SCALE, w * DISPLAY_SCALE, h * DISPLAY_SCALE, (uint16_t *)sprite.getPointer());
-}
-
+/// @brief Write scaled text to display
+/// @param text string of text
+/// @param x X coordinate
+/// @param y Y coordinate
+/// @param r 8 bit red color
+/// @param g 8 bit green color
+/// @param b 8 bit blue color
+/// @param transparent background transparent
+/// @param inverted colors inverted
 void LilygoS3Amoled::DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t r, uint8_t g,
                  uint8_t b, bool transparent, bool inverted) {
   for (uint8_t ti = 0; ti < strlen(text); ti++) {
@@ -138,7 +159,7 @@ void IRAM_ATTR LilygoS3Amoled::FillPanelRaw(uint8_t *pBuffer) {
   lcd_PushColors(0, 0, 536, 240, (uint16_t *)sprite.getPointer());
 }
 
-/// @brief Fill fullscreen with pallete
+/// @brief Fill fullscreen with palette
 /// @return 
 void LilygoS3Amoled::FillPanelUsingPalette(uint8_t *pBuffer, uint8_t *palette) {
   uint16_t pos;
@@ -157,6 +178,10 @@ void LilygoS3Amoled::FillPanelUsingPalette(uint8_t *pBuffer, uint8_t *palette) {
 }
 
 #if !defined(ZEDMD_WIFI)
+/// @brief Fill fullscreen with changed palette
+/// @param pBuffer Pixel buffer RGB888
+/// @param palette Palette
+/// @param paletteAffected Affected palette 
 void LilygoS3Amoled::FillPanelUsingChangedPalette(uint8_t *pBuffer, uint8_t *palette, bool *paletteAffected) {
   uint16_t pos;
 

@@ -12,8 +12,6 @@ public:
     virtual void ClearScreen() = 0;
     virtual void SetBrightness(uint8_t level) = 0;
     virtual void FillScreen(uint8_t r, uint8_t g, uint8_t b) = 0;
-    virtual void UpdateDisplay() = 0;
-    virtual void UpdateDisplayZone(uint16_t x, uint16_t y, uint16_t w, uint16_t h) = 0;
     virtual void DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t r, uint8_t g, 
                  uint8_t b, bool transparent = false, bool inverted = false) = 0;
     virtual void FillZoneRaw(uint8_t idx, uint8_t *pBuffer) = 0;
