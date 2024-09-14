@@ -29,7 +29,7 @@ jobs:
     needs: [ version ]
     strategy:
       matrix:
-        panels: ['128x32', '256x64', '128x64', '128x32_wifi', '256x64_wifi', '128x64_wifi', 'S3-N16R8_128x32', 'S3-N16R8_256x64', 'S3-N16R8_128x64', 'LilygoS3Amoled_128x32']
+        panels: ['128x32', '256x64', '128x64', '128x32_wifi', '256x64_wifi', '128x64_wifi', 'S3-N16R8_128x32', 'S3-N16R8_256x64', 'S3-N16R8_128x64', 'LilygoS3Amoled_128x32','LilygoS3Amoled_128x32_wifi']
 
     name: ZeDMD ${{ matrix.panels }}
 
