@@ -21,10 +21,10 @@ extern uint8_t rgbMode;
 bool SaveWiFiConfig();
 void SaveRgbOrder();
 void SaveLum();
-bool verifyImage(const char *filename);
+bool VerifyImage(const char *filename);
 bool DisplayImage(const char *filename);
-void setBrightness(uint8_t lumstep);
-void refreshScreen();
+void SetBrightness(uint8_t lumstep);
+void RefreshScreen();
 bool SaveScreensaverConfig();
 
 // Functions in webserver.cpp

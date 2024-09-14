@@ -31,7 +31,7 @@ void handleUpload(AsyncWebServerRequest *request, String filename, size_t index,
   if (final) {
     uploadFile.close();
     String imagePath = "/" + filename;
-    if (!verifyImage(imagePath.c_str())) {
+    if (!VerifyImage(imagePath.c_str())) {
       request->send(400, "text/plain",
                     "Invalid image size, must be 128x32 or 256x64");
       return;
@@ -94,7 +94,7 @@ void runWebServer() {
       String rgbOrderValue = request->getParam("rgbOrder", true)->value();
       rgbMode =
           rgbOrderValue.toInt();  // Convert to integer and set the RGB mode
-      refreshScreen();
+      RefreshScreen();
       SaveRgbOrder(); 
       request->send(200, "text/plain", "RGB Order updated successfully");
     } else {
@@ -107,7 +107,7 @@ void runWebServer() {
     if (request->hasParam("brightness", true)) {
       String brightnessValue = request->getParam("brightness", true)->value();
       lumstep = brightnessValue.toInt();
-      setBrightness(lumstep);
+      SetBrightness(lumstep);
       SaveLum(); 
       request->send(200, "text/plain", "Brightness updated successfully");
     } else {
@@ -162,7 +162,7 @@ void runWebServer() {
   server.on("/preview_screensaver", HTTP_GET,
             [](AsyncWebServerRequest *request) {
               // Render the image on the panel
-              if (!verifyImage("/screensaver.jpg")) {
+              if (!VerifyImage("/screensaver.jpg")) {
                 request->send(200, "text/plain", "Error with verifying image.");
                 return;
               }

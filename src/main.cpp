@@ -345,13 +345,13 @@ void DisplayDebugInfo(void) {
 }
 
 /// @brief Changes brightness of the LED Matrix panel, needed for webserver
-void setBrightness(uint8_t level) { 
+void SetBrightness(uint8_t level) { 
   dma_display->setBrightness8(lumval[level]);
 }
 
 void ClearScreen() {
   dma_display->clearScreen();
-  setBrightness(lumstep);
+  SetBrightness(lumstep);
 }
 
 #if !defined(ZEDMD_WIFI)
@@ -620,7 +620,7 @@ void ScaleImage(uint8_t colors) {
 }
 #endif
 
-void fillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
+void FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
   uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
   uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
 
@@ -634,7 +634,7 @@ void fillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
   }
 }
 
-void fillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
+void FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
   uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
   uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
 
@@ -648,7 +648,7 @@ void fillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
   }
 }
 
-void fillPanelRaw() {
+void FillPanelRaw() {
   uint16_t pos;
 
   for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
@@ -662,7 +662,7 @@ void fillPanelRaw() {
   }
 }
 
-void fillPanelUsingPalette() {
+void FillPanelUsingPalette() {
   uint16_t pos;
 
   for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
@@ -676,7 +676,7 @@ void fillPanelUsingPalette() {
 }
 
 #if !defined(ZEDMD_WIFI)
-void fillPanelUsingChangedPalette(bool *paletteAffected) {
+void FillPanelUsingChangedPalette(bool *paletteAffected) {
   uint16_t pos;
 
   for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
@@ -772,7 +772,7 @@ bool SaveScreensaverConfig() {
 }
 #endif
 
-void ledTester(void) {
+void LedTester(void) {
   dma_display->fillScreenRGB888(255, 0, 0);
   delay(LED_CHECK_DELAY);
 
@@ -817,7 +817,7 @@ void DisplayLogo(void) {
 
   f.close();
 
-  fillPanelRaw();
+  FillPanelRaw();
 
   free(renderBuffer);
 
@@ -858,7 +858,7 @@ void DisplayUpdate(void) {
   }
   f.close();
 
-  fillPanelRaw();
+  FillPanelRaw();
 
   free(renderBuffer);
 
@@ -896,7 +896,7 @@ void WiFiEvent(WiFiEvent_t event) {
 
 /// @brief Handles the UDP Packet parsing for ZeDMD WiFi and ZeDMD-HD WiFi
 /// @param packet
-void IRAM_ATTR handlePacket(AsyncUDPPacket packet) {
+void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
   uint8_t *pPacket = packet.data();
   if (packet.length() >= 1) {
     if (MireActive) {
@@ -909,7 +909,7 @@ void IRAM_ATTR handlePacket(AsyncUDPPacket packet) {
 
     if (displayStatus == DISPLAY_STATUS_DIM || displayStatus == DISPLAY_STATUS_SCREEN_SAVER)
     {
-      setBrightness(lumstep);
+      SetBrightness(lumstep);
       displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
     } 
 
@@ -946,7 +946,7 @@ void IRAM_ATTR handlePacket(AsyncUDPPacket packet) {
         }
 
         for (uint8_t idx = 0; idx < numZones; idx++) {
-          fillZoneRaw(renderBuffer[idx * ZONE_SIZE + idx],
+          FillZoneRaw(renderBuffer[idx * ZONE_SIZE + idx],
                       &renderBuffer[idx * ZONE_SIZE + idx + 1]);
         }
 
@@ -983,7 +983,7 @@ void IRAM_ATTR handlePacket(AsyncUDPPacket packet) {
         }
 
         for (uint8_t idx = 0; idx < numZones; idx++) {
-          fillZoneRaw565(renderBuffer[idx * RGB565_ZONE_SIZE + idx],
+          FillZoneRaw565(renderBuffer[idx * RGB565_ZONE_SIZE + idx],
                          &renderBuffer[idx * RGB565_ZONE_SIZE + idx + 1]);
         }
 
@@ -995,7 +995,7 @@ void IRAM_ATTR handlePacket(AsyncUDPPacket packet) {
 }
 
 /// @brief Handles the mDNS Packets for ZeDMD WiFi, this allows autodiscovery
-void runMDNS() {
+void RunMDNS() {
   if (!MDNS.begin("ZeDMD-WiFi")) {
     return;
   }
@@ -1010,7 +1010,7 @@ int JPEGDrawNothing(JPEGDRAW *pDraw) {
 }
 
 /// @brief Verify JPEG image
-bool verifyImage(const char *filename) {
+bool VerifyImage(const char *filename) {
     File jpegFile = LittleFS.open(filename, "r");
     if (!jpegFile) {
         return false;
@@ -1098,7 +1098,7 @@ bool DisplayImage(const char *filename) {
         return false;
     }
 
-    fillPanelRaw();
+    FillPanelRaw();
 
     jpeg.close();
     jpegFile.close();
@@ -1108,7 +1108,7 @@ bool DisplayImage(const char *filename) {
 }
 
 /// @brief Refreshes screen after color change, needed for webserver
-void refreshScreen() {
+void RefreshScreen() {
   DisplayLogo();
   DisplayRGB();
   DisplayLum();
@@ -1212,11 +1212,11 @@ void setup() {
     runWebServer();                   // Start web server for AP clients
   }
 
-  runMDNS();       // Start the MDNS server for easy detection
+  RunMDNS();       // Start the MDNS server for easy detection
   runWebServer();  // Start the web server
 
   if (udp.listen(port)) {
-    udp.onPacket(handlePacket);  // Start listering to ZeDMD UDP traffic
+    udp.onPacket(HandlePacket);  // Start listering to ZeDMD UDP traffic
   }
 
   LoadScreensaverConfig(); // Load Screensaver config, this should be moved to all build 
@@ -1313,7 +1313,7 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
   return true;
 }
 
-void updateColorRotations(void) {
+void UpdateColorRotations(void) {
 #if !defined(ZEDMD_WIFI)
   bool rotPaletteAffected[64] = {0};
   unsigned long actime = millis();
@@ -1338,11 +1338,11 @@ void updateColorRotations(void) {
     }
   }
 
-  if (rotfound == true) fillPanelUsingChangedPalette(rotPaletteAffected);
+  if (rotfound == true) FillPanelUsingChangedPalette(rotPaletteAffected);
 #endif
 }
 
-bool wait_for_ctrl_chars(void) {
+bool WaitForCtrlChars(void) {
   unsigned long ms = millis();
   uint8_t nCtrlCharFound = 0;
 
@@ -1367,7 +1367,7 @@ bool wait_for_ctrl_chars(void) {
     if (displayStatus == DISPLAY_STATUS_NORMAL_OPERATION && mode64 &&
         nCtrlCharFound == 0) {
       // While waiting for the next frame, perform in-frame color rotations.
-      updateColorRotations();
+      UpdateColorRotations();
     } else if (displayStatus == DISPLAY_STATUS_CLEAR &&
                (millis() - rotNextRotationTime[0]) > LOGO_TIMEOUT) {
       ScreenSaver();
@@ -1427,7 +1427,7 @@ void loop() {
       rotNextRotationTime[0] = millis();
       lumstep++;
       if (lumstep >= 16) lumstep = 1;
-      setBrightness(lumstep);
+      SetBrightness(lumstep);
       SaveLum();
       DisplayRGB();
       DisplayLum();
@@ -1455,7 +1455,7 @@ void loop() {
                  screensaverMode == SCREENSAVER_MODE_SHOW_IMAGE) {
         if ((millis() - rotNextRotationTime[0]) > dimTimeout) {
           displayStatus = DISPLAY_STATUS_DIM;
-          setBrightness(1);
+          SetBrightness(1);
         }
       }
 #endif
@@ -1474,9 +1474,9 @@ void loop() {
     }
   }
 
-  if (wait_for_ctrl_chars()) {
+  if (WaitForCtrlChars()) {
     // Updates to mode64 color rotations have been handled within
-    // wait_for_ctrl_chars(), now reset it to false.
+    // WaitForCtrlChars(), now reset it to false.
     mode64 = false;
 
     while (Serial.available() == 0);
@@ -1548,7 +1548,7 @@ void loop() {
 
       case 16: {
         Serial.write('A');
-        ledTester();
+        LedTester();
         break;
       }
 
@@ -1572,7 +1572,7 @@ void loop() {
         if (SerialReadBuffer(tbuf, 1)) {
           if (tbuf[0] > 0 && tbuf[0] < 16) {
             lumstep = tbuf[0];
-            setBrightness(lumstep);
+            SetBrightness(lumstep);
             Serial.write('A');
           } else {
             Serial.write('E');
@@ -1745,7 +1745,7 @@ void loop() {
                          (ZONE_SIZE + 1)) &&
                  (renderBuffer[idx] < TOTAL_ZONES) &&
                  (idx == 0 || renderBuffer[idx] > 0)) {
-            fillZoneRaw(renderBuffer[idx], &renderBuffer[++idx]);
+            FillZoneRaw(renderBuffer[idx], &renderBuffer[++idx]);
             idx += ZONE_SIZE;
           }
         }
@@ -1769,7 +1769,7 @@ void loop() {
                          (ZONE_SIZE + 1)) &&
                  (renderBuffer[idx] < TOTAL_ZONES) &&
                  (idx == 0 || renderBuffer[idx] > 0)) {
-            fillZoneRaw565(renderBuffer[idx], &renderBuffer[++idx]);
+            FillZoneRaw565(renderBuffer[idx], &renderBuffer[++idx]);
             idx += RGB565_ZONE_SIZE;
           }
         }
@@ -1790,7 +1790,7 @@ void loop() {
         if (SerialReadBuffer(renderBuffer, RomHeight * RomWidth * 3)) {
           mode64 = false;
           ScaleImage(3);
-          fillPanelRaw();
+          FillPanelRaw();
         }
 
         free(renderBuffer);
@@ -1836,7 +1836,7 @@ void loop() {
           mode64 = false;
 
           ScaleImage(1);
-          fillPanelUsingPalette();
+          FillPanelUsingPalette();
 
           free(renderBuffer);
           free(palette);
@@ -1954,7 +1954,7 @@ void loop() {
           mode64 = false;
 
           ScaleImage(1);
-          fillPanelUsingPalette();
+          FillPanelUsingPalette();
 
           free(renderBuffer);
           free(palette);
@@ -2012,7 +2012,7 @@ void loop() {
           mode64 = false;
 
           ScaleImage(1);
-          fillPanelUsingPalette();
+          FillPanelUsingPalette();
 
           free(renderBuffer);
           free(palette);
@@ -2093,7 +2093,7 @@ void loop() {
           mode64 = true;
 
           ScaleImage(1);
-          fillPanelUsingPalette();
+          FillPanelUsingPalette();
 
           free(renderBuffer);
           free(palette);
