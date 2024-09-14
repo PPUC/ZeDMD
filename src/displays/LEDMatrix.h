@@ -58,6 +58,15 @@ public:
     virtual void FillScreen(uint8_t r, uint8_t g, uint8_t b) override;
     virtual void UpdateDisplay() override;
     virtual void UpdateDisplayZone(uint16_t x, uint16_t y, uint16_t w, uint16_t h) override;
+    virtual void DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t r, uint8_t g,
+                 uint8_t b, bool transparent = false, bool inverted = false) override;
+    virtual void FillZoneRaw(uint8_t idx, uint8_t *pBuffer) override;
+    virtual void FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) override;
+    virtual void FillPanelRaw(uint8_t *pBuffer) override;
+    virtual void FillPanelUsingPalette(uint8_t *pBuffer, uint8_t *palette) override;
+#if !defined(ZEDMD_WIFI)
+    virtual void FillPanelUsingChangedPalette(uint8_t *pBuffer, uint8_t *palette, bool *paletteAffected) override; 
+#endif
     
     ~LedMatrix(); // Destructor
 };

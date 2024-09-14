@@ -91,7 +91,6 @@
 
 #include <cstring>
 
-#include "fonts/tiny4x6.h"
 #include "miniz/miniz.h"
 #include "version.h"       // Version constants
 #include "panel.h"         // ZeDMD panel constants
@@ -196,25 +195,7 @@ uint16_t frameCount = 0;
 uint16_t errorCount = 0;
 uint8_t flowControlCounter = 0;
 
-void DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t r, uint8_t g,
-                 uint8_t b, bool transparent = false, bool inverted = false) {
-  for (uint8_t ti = 0; ti < strlen(text); ti++) {
-    for (uint8_t tj = 0; tj <= 5; tj++) {
-      uint8_t fourPixels = getFontLine(text[ti], tj);
-      for (uint8_t pixel = 0; pixel < 4; pixel++) {
-        bool p = (fourPixels >> (3 - pixel)) & 0x1;
-        if (inverted) {
-          p = !p;
-        }
-        if (transparent && !p) {
-          continue;
-        }
-        display->DrawPixel(x + pixel + (ti * 4), y + tj, r * p, g * p,
-                                     b * p);
-      }
-    }
-  }
-}
+
 
 void DisplayNumber(uint32_t chf, uint8_t nc, uint16_t x, uint16_t y, uint8_t r,
                    uint8_t g, uint8_t b, bool transparent = false) {
@@ -224,11 +205,11 @@ void DisplayNumber(uint32_t chf, uint8_t nc, uint16_t x, uint16_t y, uint8_t r,
   uint8_t i = 0;
   if (strlen(text) < nc) {
     for (; i < (nc - strlen(text)); i++) {
-      DisplayText(" ", x + (4 * i), y, r, g, b, transparent);
+      display->DisplayText(" ", x + (4 * i), y, r, g, b, transparent);
     }
   }
 
-  DisplayText(text, x + (4 * i), y, r, g, b, transparent);
+  display->DisplayText(text, x + (4 * i), y, r, g, b, transparent);
 }
 
 void DisplayVersion(bool logo = false) {
@@ -236,46 +217,46 @@ void DisplayVersion(bool logo = false) {
   char version[10];
   snprintf(version, 9, "%d.%d.%d", ZEDMD_VERSION_MAJOR, ZEDMD_VERSION_MINOR,
            ZEDMD_VERSION_PATCH);
-  DisplayText(version, TOTAL_WIDTH - (strlen(version) * 4), TOTAL_HEIGHT - 5,
+  display->DisplayText(version, TOTAL_WIDTH - (strlen(version) * 4), TOTAL_HEIGHT - 5,
               255 * !logo, 255 * !logo, 255 * !logo, logo);
 }
 
 void DisplayLum(void) {
-  DisplayText(" ", (TOTAL_WIDTH / 2) - 26 - 1, TOTAL_HEIGHT - 6, 128, 128, 128);
-  DisplayText("Brightness:", (TOTAL_WIDTH / 2) - 26, TOTAL_HEIGHT - 6, 128, 128,
+  display->DisplayText(" ", (TOTAL_WIDTH / 2) - 26 - 1, TOTAL_HEIGHT - 6, 128, 128, 128);
+  display->DisplayText("Brightness:", (TOTAL_WIDTH / 2) - 26, TOTAL_HEIGHT - 6, 128, 128,
               128);
   DisplayNumber(lumstep, 2, (TOTAL_WIDTH / 2) + 18, TOTAL_HEIGHT - 6, 255, 191,
                 0);
 }
 
 void DisplayRGB(void) {
-  DisplayText("red", 0, 0, 0, 0, 0, true, true);
+  display->DisplayText("red", 0, 0, 0, 0, 0, true, true);
   for (uint8_t i = 0; i < 6; i++) {
     display->DrawPixel(TOTAL_WIDTH - (4 * 4) - 1, i, 0, 0, 0);
     display->DrawPixel((TOTAL_WIDTH / 2) - (6 * 4) - 1, i, 0, 0, 0);
   }
-  DisplayText("blue", TOTAL_WIDTH - (4 * 4), 0, 0, 0, 0, true, true);
-  DisplayText("green", 0, TOTAL_HEIGHT - 6, 0, 0, 0, true, true);
-  DisplayText("RGB Order:", (TOTAL_WIDTH / 2) - (6 * 4), 0, 128, 128, 128);
+  display->DisplayText("blue", TOTAL_WIDTH - (4 * 4), 0, 0, 0, 0, true, true);
+  display->DisplayText("green", 0, TOTAL_HEIGHT - 6, 0, 0, 0, true, true);
+  display->DisplayText("RGB Order:", (TOTAL_WIDTH / 2) - (6 * 4), 0, 128, 128, 128);
   DisplayNumber(rgbMode, 2, (TOTAL_WIDTH / 2) + (4 * 4), 0, 255, 191, 0);
 }
 
 void DisplayDebugInfo(void) {
   // WTF not comparing against true kills the debug mode
   if (debugMode == true) {
-    DisplayText("Frames:", 0, 0, 255, 255, 255);
+    display->DisplayText("Frames:", 0, 0, 255, 255, 255);
     DisplayNumber(frameCount, 5, 7 * 4, 0, 0, 255, 0);
-    DisplayText("Transfer Buffer:", 0, 6, 255, 255, 255);
+    display->DisplayText("Transfer Buffer:", 0, 6, 255, 255, 255);
     DisplayNumber(transferBufferSize, 5, 16 * 4, 6, 255, 255, 255);
-    DisplayText("Received Bytes: ", 0, 2 * 6, 255, 255, 255);
+    display->DisplayText("Received Bytes: ", 0, 2 * 6, 255, 255, 255);
     DisplayNumber(receivedBytes, 5, 16 * 4, 2 * 6, 255, 255, 255);
-    DisplayText("Miniz Status:", 0, 3 * 6, 255, 255, 255);
+    display->DisplayText("Miniz Status:", 0, 3 * 6, 255, 255, 255);
     DisplayNumber(minizStatus, 6, 13 * 4, 3 * 6, 255, 255, 255);
-    DisplayText("Errors:", 0, 4 * 6, 255, 255, 255);
+    display->DisplayText("Errors:", 0, 4 * 6, 255, 255, 255);
     DisplayNumber(errorCount, 5, 7 * 4, 4 * 6, 255, 0, 0);
 
     DisplayNumber(RomWidth, 3, TOTAL_WIDTH - 6 * 4, 0, 255, 255, 255);
-    DisplayText("x", TOTAL_WIDTH - 3 * 4, 0, 255, 255, 255);
+    display->DisplayText("x", TOTAL_WIDTH - 3 * 4, 0, 255, 255, 255);
     DisplayNumber(RomHeight, 2, TOTAL_WIDTH - 2 * 4, 0, 255, 255, 255);
     DisplayNumber(flowControlCounter, 2, TOTAL_WIDTH - 5 * 4, TOTAL_HEIGHT - 6,
                   0, 0, 255);
@@ -559,77 +540,6 @@ void ScaleImage(uint8_t colors) {
 }
 #endif
 
-void FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
-  uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
-  uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
-
-  for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
-    for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
-      uint16_t pos = (y * ZONE_WIDTH + x) * 3;
-
-      display->DrawPixel(x + xOffset, y + yOffset, pBuffer[pos],
-                                   pBuffer[pos + 1], pBuffer[pos + 2]);
-    }
-  }
-}
-
-void FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
-  uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
-  uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
-
-  for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
-    for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
-      uint16_t pos = (y * ZONE_WIDTH + x) * 2;
-      display->DrawPixel(
-          x + xOffset, y + yOffset,
-          (((uint16_t)pBuffer[pos + 1]) << 8) + pBuffer[pos]);
-    }
-  }
-}
-
-void FillPanelRaw() {
-  uint16_t pos;
-
-  for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
-    for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
-      pos = (y * TOTAL_WIDTH + x) * 3;
-
-      display->DrawPixel(x, y, renderBuffer[pos],
-                                   renderBuffer[pos + 1],
-                                   renderBuffer[pos + 2]);
-    }
-  }
-}
-
-void FillPanelUsingPalette() {
-  uint16_t pos;
-
-  for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
-    for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
-      pos = renderBuffer[y * TOTAL_WIDTH + x] * 3;
-
-      display->DrawPixel(x, y, palette[pos], palette[pos + 1],
-                                   palette[pos + 2]);
-    }
-  }
-}
-
-#if !defined(ZEDMD_WIFI)
-void FillPanelUsingChangedPalette(bool *paletteAffected) {
-  uint16_t pos;
-
-  for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
-    for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
-      pos = renderBuffer[y * TOTAL_WIDTH + x];
-      if (paletteAffected[pos]) {
-        pos *= 3;
-        display->DrawPixel(x, y, palette[pos], palette[pos + 1],
-                                     palette[pos + 2]);
-      }
-    }
-  }
-}
-#endif
 
 void LoadRgbOrder() {
   File f = LittleFS.open("/ordrergb.val", "r");
@@ -756,7 +666,7 @@ void DisplayLogo(void) {
 
   f.close();
 
-  FillPanelRaw();
+  display->FillPanelRaw(renderBuffer);
 
   free(renderBuffer);
 
@@ -797,7 +707,7 @@ void DisplayUpdate(void) {
   }
   f.close();
 
-  FillPanelRaw();
+  display->FillPanelRaw(renderBuffer);
 
   free(renderBuffer);
 
@@ -885,7 +795,7 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
         }
 
         for (uint8_t idx = 0; idx < numZones; idx++) {
-          FillZoneRaw(renderBuffer[idx * ZONE_SIZE + idx],
+          display->FillZoneRaw(renderBuffer[idx * ZONE_SIZE + idx],
                       &renderBuffer[idx * ZONE_SIZE + idx + 1]);
         }
 
@@ -922,7 +832,7 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
         }
 
         for (uint8_t idx = 0; idx < numZones; idx++) {
-          FillZoneRaw565(renderBuffer[idx * RGB565_ZONE_SIZE + idx],
+          display->FillZoneRaw565(renderBuffer[idx * RGB565_ZONE_SIZE + idx],
                          &renderBuffer[idx * RGB565_ZONE_SIZE + idx + 1]);
         }
 
@@ -1037,7 +947,7 @@ bool DisplayImage(const char *filename) {
         return false;
     }
 
-    FillPanelRaw();
+    display->FillPanelRaw(renderBuffer);
 
     jpeg.close();
     jpegFile.close();
@@ -1090,14 +1000,14 @@ void setup() {
 
 #ifdef DISPLAY_LILYGO_S3_AMOLED
   display = new LilygoS3Amoled();  // For AMOLED display
-#else            
+#elif defined (DISPLAY_LED_MATRIX)        
   display = new LedMatrix();  // For LED matrix display
 #endif
 
 
   if (!fileSystemOK) {
-    DisplayText("Error reading file system!", 4, 6, 255, 255, 255);
-    DisplayText("Try to flash the firmware again.", 4, 14, 255, 255, 255);
+    display->DisplayText("Error reading file system!", 4, 6, 255, 255, 255);
+    display->DisplayText("Try to flash the firmware again.", 4, 14, 255, 255, 255);
     // #ifdef ARDUINO_ESP32_S3_N16R8
     //     display->flipDMABuffer();
     // #endif
@@ -1254,7 +1164,7 @@ void UpdateColorRotations(void) {
     }
   }
 
-  if (rotfound == true) FillPanelUsingChangedPalette(rotPaletteAffected);
+  if (rotfound == true) display->FillPanelUsingChangedPalette(renderBuffer, palette, rotPaletteAffected);
 #endif
 }
 
@@ -1439,7 +1349,7 @@ void loop() {
           // successfully read the chunk.
           Serial.write('A');
         } else {
-          DisplayText("Unsupported chunk size:", 0, 0, 255, 0, 0);
+          display->DisplayText("Unsupported chunk size:", 0, 0, 255, 0, 0);
           DisplayNumber(tmpSerialTransferChunkSize, 5, 24 * 4, 0, 255, 0, 0);
           delay(5000);
 
@@ -1661,7 +1571,7 @@ void loop() {
                          (ZONE_SIZE + 1)) &&
                  (renderBuffer[idx] < TOTAL_ZONES) &&
                  (idx == 0 || renderBuffer[idx] > 0)) {
-            FillZoneRaw(renderBuffer[idx], &renderBuffer[++idx]);
+            display->FillZoneRaw(renderBuffer[idx], &renderBuffer[++idx]);
             idx += ZONE_SIZE;
           }
         }
@@ -1685,7 +1595,7 @@ void loop() {
                          (ZONE_SIZE + 1)) &&
                  (renderBuffer[idx] < TOTAL_ZONES) &&
                  (idx == 0 || renderBuffer[idx] > 0)) {
-            FillZoneRaw565(renderBuffer[idx], &renderBuffer[++idx]);
+            display->FillZoneRaw565(renderBuffer[idx], &renderBuffer[++idx]);
             idx += RGB565_ZONE_SIZE;
           }
         }
@@ -1706,7 +1616,7 @@ void loop() {
         if (SerialReadBuffer(renderBuffer, RomHeight * RomWidth * 3)) {
           mode64 = false;
           ScaleImage(3);
-          FillPanelRaw();
+          display->FillPanelRaw(renderBuffer);
         }
 
         free(renderBuffer);
@@ -1752,7 +1662,7 @@ void loop() {
           mode64 = false;
 
           ScaleImage(1);
-          FillPanelUsingPalette();
+          display->FillPanelUsingPalette(renderBuffer, palette);
 
           free(renderBuffer);
           free(palette);
@@ -1870,7 +1780,7 @@ void loop() {
           mode64 = false;
 
           ScaleImage(1);
-          FillPanelUsingPalette();
+          display->FillPanelUsingPalette(renderBuffer, palette);
 
           free(renderBuffer);
           free(palette);
@@ -1928,7 +1838,7 @@ void loop() {
           mode64 = false;
 
           ScaleImage(1);
-          FillPanelUsingPalette();
+          display->FillPanelUsingPalette(renderBuffer, palette);
 
           free(renderBuffer);
           free(palette);
@@ -2009,7 +1919,7 @@ void loop() {
           mode64 = true;
 
           ScaleImage(1);
-          FillPanelUsingPalette();
+          display->FillPanelUsingPalette(renderBuffer, palette);
 
           free(renderBuffer);
           free(palette);
@@ -2020,7 +1930,7 @@ void loop() {
       }
 #endif
       default: {
-        DisplayText("Unsupported render mode:", 0, 0, 255, 0, 0);
+        display->DisplayText("Unsupported render mode:", 0, 0, 255, 0, 0);
         DisplayNumber(c4, 3, 24 * 4, 0, 255, 0, 0);
         delay(5000);
         Serial.write('E');
