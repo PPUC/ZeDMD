@@ -102,7 +102,7 @@
 #ifdef LILYGO_S3_AMOLED
   #include "displays/LilygoS3Amoled.h"                    
 #else                
-  #include "displays/LedMatrix.h"
+  #include "displays/LEDMatrix.h"
 #endif
 
 

@@ -1,7 +1,7 @@
 #ifndef AMOLED_H
 #define AMOLED_H
 
-#include "DisplayDriver.h"
+#include "displayDriver.h"
 
 class LilygoS3Amoled : public DisplayDriver {
 public:

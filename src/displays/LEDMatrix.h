@@ -38,7 +38,7 @@
 
 #endif
 
-#include "DisplayDriver.h"
+#include "displayDriver.h"
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include "panel.h"  // Include ZeDMD panel constants
 
