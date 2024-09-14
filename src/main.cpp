@@ -99,9 +99,9 @@
 #include "displayConfig.h" // Variables shared by main and LedMatrix
 
 // To save RAM only include the driver we want to use.
-#ifdef LILYGO_S3_AMOLED
+#ifdef DISPLAY_LILYGO_S3_AMOLED
   #include "displays/LilygoS3Amoled.h"                    
-#else                
+#elif defined (DISPLAY_LED_MATRIX)          
   #include "displays/LEDMatrix.h"
 #endif
 
@@ -149,7 +149,7 @@ bool upscaling = true;
 #define RGB_ORDER_BUTTON_PIN 45
 #define BRIGHTNESS_BUTTON_PIN 48
 
-#elif defined(LILYGO_S3_AMOLED)
+#elif defined(DISPLAY_LILYGO_S3_AMOLED)
 
 #define RGB_ORDER_BUTTON_PIN 0
 #define BRIGHTNESS_BUTTON_PIN 21
@@ -1088,7 +1088,7 @@ void setup() {
   }
 
 
-#ifdef LILYGO_S3_AMOLED
+#ifdef DISPLAY_LILYGO_S3_AMOLED
   display = new LilygoS3Amoled();  // For AMOLED display
 #else            
   display = new LedMatrix();  // For LED matrix display

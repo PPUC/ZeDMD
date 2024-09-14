@@ -3,9 +3,9 @@
 
 #include <stdint.h>
 
-#define R 0
-#define G 1
-#define B 2
+#define RC 0
+#define GC 1
+#define BC 2
 
 // Global variables
 extern uint8_t rgbMode;

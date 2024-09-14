@@ -1,3 +1,4 @@
+#ifdef DISPLAY_LED_MATRIX
 #include "LEDMatrix.h"
 #include "displayConfig.h"
 
@@ -54,3 +55,4 @@ void LedMatrix::UpdateDisplayZone(uint16_t x, uint16_t y, uint16_t w, uint16_t h
 LedMatrix::~LedMatrix() {
     delete dma_display;
 }
+#endif
