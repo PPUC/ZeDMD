@@ -67,6 +67,13 @@ you need to adjust the colors. While the logo is visible you can press the RGB b
 
 Using the brightness butten you can adjust the brightness.
 
+## ZeDMD-WiFi
+
+After flashing the ZeDMD-WiFi firmware, connect your mobile device or laptop to the "ZeDMD-WiFi" network using the password zedmd1234.
+
+After connecting to the ZeDMD-WiFI network, open your web browser and navigate to http://ZeDMD-WiFi.local (IP: 192.168.4.1) to access the configuration settings.
+
+
 ## IMPORTANT LEGAL NOTICES:
 
 ZeDMD's firmware is open source and licensed as **GPLv2 or later** and can be ditributed under these terms.

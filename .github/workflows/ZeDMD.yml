@@ -17,9 +17,9 @@ jobs:
           fetch-depth: 0
       - id: version
         run: |
-          VERSION_MAJOR=$(grep -Eo "ZEDMD_VERSION_MAJOR\s+[0-9]+" src/main.cpp | grep -Eo "[0-9]+")
-          VERSION_MINOR=$(grep -Eo "ZEDMD_VERSION_MINOR\s+[0-9]+" src/main.cpp | grep -Eo "[0-9]+")
-          VERSION_PATCH=$(grep -Eo "ZEDMD_VERSION_PATCH\s+[0-9]+" src/main.cpp | grep -Eo "[0-9]+")
+          VERSION_MAJOR=$(grep -Eo "ZEDMD_VERSION_MAJOR\s+[0-9]+" src/version.h | grep -Eo "[0-9]+")
+          VERSION_MINOR=$(grep -Eo "ZEDMD_VERSION_MINOR\s+[0-9]+" src/version.h | grep -Eo "[0-9]+")
+          VERSION_PATCH=$(grep -Eo "ZEDMD_VERSION_PATCH\s+[0-9]+" src/version.h | grep -Eo "[0-9]+")
           TAG="${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}"
           echo "${TAG}"
           echo "tag=${TAG}" >> $GITHUB_OUTPUT

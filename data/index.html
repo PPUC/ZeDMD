@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>ZeDMD-WiFi</title>
+    <style>
+        /* Global styling for dark mode */
+        body {
+            background-color: #121212;
+            color: #e0e0e0;
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* Style the slider container */
+        .slider-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .slider-container span {
+            color: #e0e0e0;
+            font-size: 0.9em;
+        }
+
+        .slider-container input[type="range"] {
+            flex-grow: 1;
+            margin: 0 10px;
+        }
+
+        /* Align labels and inputs in a row */
+        .form-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .form-row label {
+            flex-basis: 30%;
+            /* Adjust this to control label width */
+            margin-right: 10px;
+        }
+
+        .form-row input,
+        .form-row select {
+            flex-grow: 1;
+        }
+
+        .form-row input[type="checkbox"] {
+            width: auto;
+            margin-right: 10px;
+        }
+
+        .form-row input[type="radio"] {
+            width: auto;
+            margin-right: 10px;
+        }
+
+
+        /* Main container for sections */
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            /* Adjust the maximum width for desktop layout */
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        /* Section container for each part */
+        .section {
+            background-color: #1e1e1e;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        /* Grid layout for sections: stack vertically on small screens, side by side on large screens */
+        .sections-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        @media (min-width: 768px) {
+            .sections-grid {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                /* 2 columns on tablet/desktop */
+                gap: 20px;
+            }
+        }
+
+        @media (min-width: 1200px) {
+            .sections-grid {
+                grid-template-columns: repeat(2, 1fr);
+                /* 2 columns on large screens */
+            }
+        }
+
+        /* Section headers */
+        .section-header {
+            font-size: 1.5em;
+            color: #007bff;
+            margin-bottom: 10px;
+        }
+
+        /* Style inputs and buttons */
+        input,
+        select {
+            background-color: #2c2c2c;
+            border: none;
+            color: #ffffff;
+            padding: 12px;
+            margin-bottom: 15px;
+            width: 100%;
+            box-sizing: border-box;
+            border-radius: 4px;
+        }
+
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px;
+            border: none;
+            border-radius: 4px;
+            width: 100%;
+            cursor: pointer;
+            margin-bottom: 15px;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        label {
+            font-size: 1em;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        .status-message {
+            color: green;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .status-message.warning {
+            color: orange;
+        }
+
+        .status-message.error {
+            color: red;
+        }
+
+        /* Style for the slider track */
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 20px;
+            /* Increase this value to make the slider track thicker */
+            background: #007bff;
+            border-radius: 10px;
+            /* Adjust the rounding of the track */
+            outline: none;
+            opacity: 0.8;
+        }
+
+        /* Style for the slider thumb (the part you grab) */
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 30px;
+            /* Adjust the width of the thumb */
+            height: 30px;
+            /* Adjust the height of the thumb */
+            border-radius: 50%;
+            /* Make it round */
+            background: #ffffff;
+            cursor: pointer;
+        }
+
+        /* For Firefox */
+        input[type="range"]::-moz-range-thumb {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: #ffffff;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="scroll-container">
+        <div class="container">
+            <h1 style="max-width: 100%; margin-bottom: 20px; display: block; margin: 0 auto;">ZeDMD-WiFi</h1>
+            <img src="ppuc.png" alt="PPUC Logo"
+                style="max-width: 100%; margin-bottom: 20px; display: block; margin: 0 auto;">
+            <br>
+            <div class="sections-grid">
+                <!-- WiFi Configuration Section -->
+                <div class="section">
+                    <h2 class="section-header">WiFi Configuration</h2>
+
+                    <div id="wifi-status" class="status-message"></div>
+                    <div id="signal-status" class="status-message"></div>
+                    <label for="ssid">WiFi network name:</label>
+                    <input type="text" id="ssid" name="ssid">
+                    <label for="password">WiFi password:</label>
+                    <input type="password" id="password" name="password">
+                    <label for="port">Port number:</label>
+                    <input type="number" id="port" name="port" min="1" max="65535">
+                    <div id="status" class="status-message"></div>
+                    <button onclick="saveWiFiConfig()">Save</button>
+                    <button onclick="resetWiFi()">Reset Wi-Fi</button>
+                </div>
+
+                <!-- Display Settings Section -->
+                <div class="section">
+                    <h2 class="section-header">Display Settings</h2>
+
+                    <!-- RGB Order Dropdown -->
+                    <label for="rgb-order">RGB Order:</label>
+                    <select id="rgb-order" name="rgbOrder" onchange="updateRgbOrder()">
+                        <option value="0">R, G, B</option>
+                        <option value="1">B, R, G</option>
+                        <option value="2">G, B, R</option>
+                        <option value="3">R, B, G</option>
+                        <option value="4">G, R, B</option>
+                        <option value="5">B, G, R</option>
+                    </select>
+
+                    <!-- Brightness Slider with Labels -->
+                    <label for="brightness">Brightness:</label>
+                    <div class="slider-container">
+                        <span>&#x1F311;</span>
+                        <input type="range" id="brightness" name="brightness" min="1" max="15"
+                            oninput="updateBrightness()">
+                        <span>&#x2600;</span>
+                    </div>
+                    <br>
+                    <!-- Status Message -->
+                    <div id="display-status" class="status-message"></div>
+                </div>
+
+                <!-- Screensaver Settings Section -->
+                <div class="section">
+                    <h2 class="section-header">Screensaver Settings</h2>
+                    <p>Only 128x32 or 256x64 .jpg images.</p>
+                    <input type="file" name="data" id="imageUpload" accept="image/*" onchange="previewImage()" /><br>
+                    <button onclick="uploadImage()">Upload</button>
+                    <button onclick="previewScreensaver()">Preview</button>
+                    <img id="preview" src="/screensaver.jpg" alt="Image preview"
+                    style="width: 100%; height: auto; display: block; margin: 0 auto;">
+                    <p id="uploadStatus"></p>
+
+                    <!-- Screensaver mode radio buttons -->
+                    <h3>Screensaver Mode</h3>
+                    <div class="form-row">
+                        <label for="clearDisplay">Turn off display</label>
+                        <input type="radio" id="dimScreen" name="screensaverMode" value="clearDisplay"
+                            onchange="toggleDimOptions()">
+                    </div>
+                    <div class="form-row">
+
+                        <label for="showImage">Show Image</label>
+                        <input type="radio" id="showImage" name="screensaverMode" value="showImage"
+                            onchange="toggleDimOptions()">
+                    </div>
+
+                    <!-- Dim screen options (visible only when "Show Image" is selected) -->
+                    <div id="dimOptions" style="display:none;">
+                        <div class="form-row">
+                            <label for="dimAfterTime">Dim display after time</label>
+                            <input type="checkbox" id="dimAfterTime">
+                        </div>
+                        <div class="form-row">
+                            <label for="dimTime">Time before dimming:</label>
+                            <select id="dimTime" name="dimTime">
+                                <option value="1">1 min</option>
+                                <option value="5">5 min</option>
+                                <option value="15">15 min</option>
+                                <option value="30">30 min</option>
+                                <option value="60">60 min</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button onclick="saveScreensaverSettings()">Save Screensaver Settings</button>
+                </div>
+
+                <!-- Information Section -->
+                <div class="section">
+                    <h2 class="section-header">Information</h2>
+                    <p id="zedmd-version"></p>
+                    <label for="toggleDebug">Show Debug Information</label>
+                    <input type="checkbox" id="toggleDebug" onclick="toggleDebugInfo()">
+                    <div id="debug-info">
+                        <h3>Debug Information</h3>
+                        <pre id="debug-content"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- JavaScript Functions -->
+    <script>
+        let debugInterval;
+
+        function fetchWiFiStatus() {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", "/wifi_status", true);
+
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
+                    var wifiInfo = JSON.parse(xhr.responseText);
+                    var wifiStatusElem = document.getElementById('wifi-status');
+                    var signalStatusElem = document.getElementById('signal-status');
+
+                    if (wifiInfo.connected) {
+                        wifiStatusElem.innerHTML = `Connected to ${wifiInfo.ssid} with ${wifiInfo.signal} dB strength.<br>`;
+                        wifiStatusElem.style.color = "green";
+
+                        // Display IP address and port number on the next line
+                        wifiStatusElem.innerHTML += `IP Address: ${wifiInfo.ip} Port: ${wifiInfo.port}`;
+
+                        // Warning for weak signal strength
+                        if (wifiInfo.signal < -78) {
+                            signalStatusElem.innerHTML = "Warning: Weak WiFi signal!";
+                            signalStatusElem.style.color = "orange";
+                        } else {
+                            signalStatusElem.innerHTML = "";
+                        }
+                    } else {
+                        wifiStatusElem.innerHTML = "Not connected to wifi network: Please configure wifi settings.";
+                        wifiStatusElem.style.color = "red";
+                    }
+                }
+            };
+            xhr.send();
+        }
+        setInterval(fetchWiFiStatus, 10000);
+        fetchWiFiStatus();
+
+        function resetWiFi() {
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", "/reset_wifi", true);
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
+                    alert("Wi-Fi settings reset. Device will reboot.");
+                }
+            };
+            xhr.send();
+        }
+
+        function saveWiFiConfig() {
+            var ssid = document.getElementById('ssid').value;
+            var password = document.getElementById('password').value;
+            var port = document.getElementById('port').value;
+
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", "/save_wifi", true);
+            xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+
+            xhr.onreadystatechange = function () {
+                var statusElem = document.getElementById('status');
+                if (xhr.readyState === XMLHttpRequest.DONE) {
+                    if (xhr.status === 200) {
+                        statusElem.innerText = "Success: " + xhr.responseText;
+                        statusElem.classList.remove('error');
+                        statusElem.classList.add('success');
+                    } else {
+                        statusElem.innerText = "Error: " + xhr.responseText;
+                        statusElem.classList.remove('success');
+                        statusElem.classList.add('error');
+                    }
+                }
+            };
+
+            var params = "ssid=" + encodeURIComponent(ssid) +
+                "&password=" + encodeURIComponent(password) +
+                "&port=" + encodeURIComponent(port);
+            xhr.send(params);
+        }
+
+        // Function to update the RGB order when the dropdown value changes
+        function updateRgbOrder() {
+            var rgbOrder = document.getElementById('rgb-order').value;
+
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", "/save_rgb_order", true);
+            xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+
+            xhr.onreadystatechange = function () {
+                var displayStatusElem = document.getElementById('display-status');
+                if (xhr.readyState === XMLHttpRequest.DONE) {
+                    if (xhr.status === 200) {
+                        displayStatusElem.innerText = "RGB Order updated successfully.";
+                        displayStatusElem.classList.remove('error');
+                        displayStatusElem.classList.add('success');
+                    } else {
+                        displayStatusElem.innerText = "Error: Could not update RGB Order.";
+                        displayStatusElem.classList.remove('success');
+                        displayStatusElem.classList.add('error');
+                    }
+                }
+            };
+
+            xhr.send(`rgbOrder=${rgbOrder}`);
+        }
+
+        // Function to update the brightness when the slider value changes
+        function updateBrightness() {
+            var brightness = document.getElementById('brightness').value;
+
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", "/save_brightness", true);
+            xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+
+            xhr.onreadystatechange = function () {
+                var displayStatusElem = document.getElementById('display-status');
+                if (xhr.readyState === XMLHttpRequest.DONE) {
+                    if (xhr.status === 200) {
+                        displayStatusElem.innerText = "Brightness updated successfully.";
+                        displayStatusElem.classList.remove('error');
+                        displayStatusElem.classList.add('success');
+                    } else {
+                        displayStatusElem.innerText = "Error: Could not update Brightness.";
+                        displayStatusElem.classList.remove('success');
+                        displayStatusElem.classList.add('error');
+                    }
+                }
+            };
+
+            xhr.send(`brightness=${brightness}`);
+        }
+
+
+        function toggleDebugInfo() {
+            var debugInfoDiv = document.getElementById('debug-info');
+            if (document.getElementById('toggleDebug').checked) {
+                debugInfoDiv.style.display = 'block';
+                debugInterval = setInterval(fetchDebugInfo, 5000);
+                fetchDebugInfo();
+            } else {
+                debugInfoDiv.style.display = 'none';
+                clearInterval(debugInterval);
+            }
+        }
+
+        function fetchDebugInfo() {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", "/debug_info", true);
+
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
+                    document.getElementById('debug-content').innerText = xhr.responseText;
+                }
+            };
+
+            xhr.send();
+        }
+
+        function fetchVersion() {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", "/get_version", true);
+
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
+                    document.getElementById('zedmd-version').innerText = "Running ZeDMD version: " + xhr.responseText;
+                }
+            };
+            xhr.send();
+        }
+        fetchVersion();
+
+        function previewImage() {
+            var file = document.getElementById('imageUpload').files[0];
+            var reader = new FileReader();
+            reader.onload = function (e) {
+                document.getElementById('preview').src = e.target.result;
+            };
+            if (file) {
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function uploadImage() {
+            var file = document.getElementById('imageUpload').files[0];
+            if (!file) {
+                alert("Please select an image first.");
+                return;
+            }
+
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", "/upload_image", true); // Changed to match your original form's action
+            xhr.setRequestHeader("enctype", "multipart/form-data");
+
+            var formData = new FormData();
+            formData.append("data", file); // Use "data" as in your original form
+
+            xhr.onreadystatechange = function () {
+                var uploadStatus = document.getElementById('uploadStatus');
+                if (xhr.readyState === XMLHttpRequest.DONE) {
+                    if (xhr.status === 200) {
+                        uploadStatus.innerText = "Upload successful: " + xhr.responseText;
+                    } else {
+                        uploadStatus.innerText = "Error: " + xhr.responseText;
+                    }
+                }
+            };
+
+            xhr.send(formData);
+        }
+
+        function previewScreensaver() {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", "/preview_screensaver", true);
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === XMLHttpRequest.DONE) {
+                    var uploadStatus = document.getElementById('uploadStatus');
+                    if (xhr.status === 200) {
+                        uploadStatus.innerText = "Preview successful!";
+                        document.getElementById('preview').src = "/screensaver.jpg"; // Display the saved image
+                    } else {
+                        uploadStatus.innerText = "Error: " + xhr.responseText;
+                    }
+                }
+            };
+            xhr.send();
+        }
+
+        function toggleDimOptions() {
+            var showImageChecked = document.getElementById('showImage').checked;
+            var dimOptions = document.getElementById('dimOptions');
+            dimOptions.style.display = showImageChecked ? 'block' : 'none';
+        }
+
+        function saveScreensaverSettings() {
+            // Get the selected screensaver mode
+            var screensaverMode;
+            if (document.querySelector('input[name="screensaverMode"]:checked').value == "showImage") {
+                screensaverMode = 1;
+            }
+            else
+            {
+                screensaverMode = 0;
+            }
+
+            var enableDimAfterTimeout = document.getElementById('dimAfterTime').checked ? 1 : 0;
+
+            var dimTime = document.getElementById('dimTime').value;
+
+            var params = `screensaverMode=${screensaverMode}&enableDimAfterTimeout=${enableDimAfterTimeout}&dimTime=${dimTime}`;
+
+            // Send the data to the ESP32 backend using XMLHttpRequest
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", "/save_screensaver_settings", true);
+            xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === XMLHttpRequest.DONE) {
+                    var uploadStatus = document.getElementById('uploadStatus');
+                    if (xhr.status === 200) {
+                        uploadStatus.innerText = "Settings saved successfully!";
+                        uploadStatus.style.color = "green";
+                    } else {
+                        uploadStatus.innerText = "Error saving settings.";
+                        uploadStatus.style.color = "red";
+                    }
+                }
+            };
+
+            // Send the data to the backend
+            xhr.send(params);
+        }
+
+        // Load the current config and populate the form fields
+        function loadConfig() {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", "/get_config", true);
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4 && xhr.status === 200) {
+                    var config = JSON.parse(xhr.responseText);
+                    document.getElementById("ssid").value = config.ssid;
+                    document.getElementById("port").value = config.port;
+                    document.getElementById("rgb-order").value = config.rgbOrder;
+                    document.getElementById("brightness").value = config.brightness;
+
+                    // Set the correct radio button for screensaverMode
+                    if (config.screensaverMode == 0) {
+                        document.getElementById("dimScreen").checked = true; // For clearscreen
+                    } else if (config.screensaverMode == 1) {
+                        document.getElementById("showImage").checked = true; // For show image
+                    }
+
+                    // Set the checkbox and dim timeout for dim options
+                    document.getElementById("dimAfterTime").checked = config.enableDimAfterTimeout == 1;
+                    document.getElementById("dimTime").value = config.dimTimeout;
+
+                    // Optionally, show/hide dim options if showImage is selected
+                    toggleDimOptions();
+                }
+            };
+            xhr.send();
+        }
+
+        // Load the current settings on page load
+        window.onload = function () {
+            loadConfig();
+        };
+    </script>
+</body>
+
+</html>
