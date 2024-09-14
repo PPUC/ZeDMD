@@ -1,5 +1,5 @@
 
-#ifdef ARDUINO_ESP32_S3_N16R8
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_LILYGO_S3_AMOLED)
 #define SERIAL_BAUD 8000000  // Serial baud rate.
 #else
 #define SERIAL_BAUD 921600  // Serial baud rate.
@@ -1020,7 +1020,7 @@ void setup() {
   }
 
   Serial.setRxBufferSize(SERIAL_BUFFER);
-#ifndef ARDUINO_ESP32_S3_N16R8
+#if !defined(ARDUINO_ESP32_S3_N16R8) || !defined(DISPLAY_LILYGO_S3_AMOLED)
   Serial.setTimeout(SERIAL_TIMEOUT);
 #endif
   Serial.begin(SERIAL_BAUD);
