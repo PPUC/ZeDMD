@@ -1,17 +1,3 @@
-#ifdef ZEDMD_HD
-#define PANEL_WIDTH 128  // Width: number of LEDs for 1 panel.
-#define PANEL_HEIGHT 64  // Height: number of LEDs.
-#define PANELS_NUMBER 2  // Number of horizontally chained panels.
-#elif ZEDMD_HD_HALF
-#define PANEL_WIDTH 128  // Width: number of LEDs for 1 panel.
-#define PANEL_HEIGHT 64  // Height: number of LEDs.
-#define PANELS_NUMBER 1  // Number of horizontally chained panels.
-#endif
-#ifndef PANEL_WIDTH
-#define PANEL_WIDTH 64   // Width: number of LEDs for 1 panel.
-#define PANEL_HEIGHT 32  // Height: number of LEDs.
-#define PANELS_NUMBER 2  // Number of horizontally chained panels.
-#endif
 
 #ifdef ARDUINO_ESP32_S3_N16R8
 #define SERIAL_BAUD 8000000  // Serial baud rate.
@@ -26,9 +12,6 @@
 #define FLOW_CONTROL_TIMEOUT \
   4  // Time in milliseconds to wait before sending a new ready signal.
 #define BUFFER_OVERHEAD 4
-#define R 0
-#define G 1
-#define B 2
 #define DISPLAY_STATUS_SCREEN_SAVER 0           // screen saver
 #define DISPLAY_STATUS_NORMAL_OPERATION 1       // ZeDMD logo / normal operation mode
 #define DISPLAY_STATUS_INFO 2                   // PPUC info screen
@@ -97,35 +80,31 @@
 // 98: disable debug mode
 // 99: enable debug mode
 
-#define TOTAL_WIDTH (PANEL_WIDTH * PANELS_NUMBER)
-#define TOTAL_WIDTH_PLANE (TOTAL_WIDTH >> 3)
-#ifdef ZEDMD_HD_HALF
-#define TOTAL_HEIGHT (PANEL_HEIGHT / 2)
-#endif
-#ifndef TOTAL_HEIGHT
-#define TOTAL_HEIGHT PANEL_HEIGHT
-#endif
-#define TOTAL_BYTES (TOTAL_WIDTH * TOTAL_HEIGHT * 3)
-#define ZONE_WIDTH (TOTAL_WIDTH / 16)
-#define ZONE_HEIGHT (TOTAL_HEIGHT / 8)
-#define ZONES_PER_ROW (TOTAL_WIDTH / ZONE_WIDTH)
-#define TOTAL_ZONES ((TOTAL_HEIGHT / ZONE_HEIGHT) * ZONES_PER_ROW)
-#define ZONE_SIZE (ZONE_WIDTH * ZONE_HEIGHT * 3)
-#define RGB565_ZONE_SIZE (ZONE_WIDTH * ZONE_HEIGHT * 2)
+
 #define MAX_COLOR_ROTATIONS 8
 #define LED_CHECK_DELAY 1000  // ms per color
 #define DEBUG_DELAY 5000      // ms
 
 #include <Arduino.h>
 #include <Bounce2.h>
-#include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include <LittleFS.h>
 
 #include <cstring>
 
 #include "fonts/tiny4x6.h"
 #include "miniz/miniz.h"
-#include "version.h"  // Include version constants
+#include "version.h"       // Version constants
+#include "panel.h"         // ZeDMD panel constants
+#include "displayDriver.h" // Base class for all display drivers'
+#include "displayConfig.h" // Variables shared by main and LedMatrix
+
+// To save RAM only include the driver we want to use.
+#ifdef LILYGO_S3_AMOLED
+  #include "displays/LilygoS3Amoled.h"                    
+#else                
+  #include "displays/LedMatrix.h"
+#endif
+
 
 #ifdef ZEDMD_WIFI
 #include <AsyncUDP.h>
@@ -134,6 +113,7 @@
 #include <JPEGDEC.h>
 #include <WiFi.h>
 #include "webserver.h"
+
 
 String ssid;
 String pwd;
@@ -165,74 +145,33 @@ bool upscaling = true;
 #endif
 
 #ifdef ARDUINO_ESP32_S3_N16R8
-#define R1_PIN 4
-#define G1_PIN 5
-#define B1_PIN 6
-#define R2_PIN 7
-#define G2_PIN 15
-#define B2_PIN 16
-#define A_PIN 18
-#define B_PIN 8
-// #define C_PIN 3
-#define C_PIN 46
-#define D_PIN 42
-#define E_PIN 1  // required for 1/32 scan panels, like 64x64.
-#define LAT_PIN 40
-#define OE_PIN 2
-#define CLK_PIN 41
 
 #define RGB_ORDER_BUTTON_PIN 45
 #define BRIGHTNESS_BUTTON_PIN 48
+
+#elif defined(LILYGO_S3_AMOLED)
+
+#define RGB_ORDER_BUTTON_PIN 0
+#define BRIGHTNESS_BUTTON_PIN 21
+
 #else
-// Pinout derived from ESP32-HUB75-MatrixPanel-I2S-DMA.h
-#define R1_PIN 25
-#define G1_PIN 26
-#define B1_PIN 27
-#define R2_PIN 14
-#define G2_PIN 12
-#define B2_PIN 13
-#define A_PIN 23
-#define B_PIN 19
-#define C_PIN 5
-#define D_PIN 17
-#define E_PIN \
-  22  // required for 1/32 scan panels, like 64x64. Any available pin would do,
-      // i.e. IO32. If 1/16 scan panels, no connection to this pin needed
-#define LAT_PIN 4
-#define OE_PIN 15
-#define CLK_PIN 16
 
 #define RGB_ORDER_BUTTON_PIN 21
 #define BRIGHTNESS_BUTTON_PIN 33
+
 #endif
 
 #define N_CTRL_CHARS 6
 #define N_INTERMEDIATE_CTR_CHARS 4
 
-// !!!!! NE METTRE AUCUNE VALEURE IDENTIQUE !!!!!
+// !!!!! DO NOT PUT ANY IDENTICAL VALUE !!!!!
 uint8_t CtrlCharacters[6] = {0x5a, 0x65, 0x64, 0x72, 0x75, 0x6d};
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 Bounce2::Button *rgbOrderButton;
 Bounce2::Button *brightnessButton;
 
-const uint8_t lumval[16] = {
-    0,  2,  4,  7,   11,  18,  30,  40,
-    50, 65, 80, 100, 125, 160, 200, 255};  // Non-linear brightness progression
-
-uint8_t rgbMode = 0;
-uint8_t rgbModeLoaded = 0;
-const uint8_t rgbOrder[3 * 6] = {
-    R, G, B,  // rgbMode 0
-    B, R, G,  // rgbMode 1
-    G, B, R,  // rgbMode 2
-    R, B, G,  // rgbMode 3
-    G, R, B,  // rgbMode 4
-    B, G, R   // rgbMode 5
-};
-
-MatrixPanel_I2S_DMA *dma_display;
-
+DisplayDriver* display;  // Pointer to the base class
 
 bool debugMode = false;
 bool debugDelayOnError = false;
@@ -270,7 +209,7 @@ void DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t r, uint8_t g,
         if (transparent && !p) {
           continue;
         }
-        dma_display->drawPixelRGB888(x + pixel + (ti * 4), y + tj, r * p, g * p,
+        display->DrawPixel(x + pixel + (ti * 4), y + tj, r * p, g * p,
                                      b * p);
       }
     }
@@ -312,8 +251,8 @@ void DisplayLum(void) {
 void DisplayRGB(void) {
   DisplayText("red", 0, 0, 0, 0, 0, true, true);
   for (uint8_t i = 0; i < 6; i++) {
-    dma_display->drawPixelRGB888(TOTAL_WIDTH - (4 * 4) - 1, i, 0, 0, 0);
-    dma_display->drawPixelRGB888((TOTAL_WIDTH / 2) - (6 * 4) - 1, i, 0, 0, 0);
+    display->DrawPixel(TOTAL_WIDTH - (4 * 4) - 1, i, 0, 0, 0);
+    display->DrawPixel((TOTAL_WIDTH / 2) - (6 * 4) - 1, i, 0, 0, 0);
   }
   DisplayText("blue", TOTAL_WIDTH - (4 * 4), 0, 0, 0, 0, true, true);
   DisplayText("green", 0, TOTAL_HEIGHT - 6, 0, 0, 0, true, true);
@@ -346,11 +285,11 @@ void DisplayDebugInfo(void) {
 
 /// @brief Changes brightness of the LED Matrix panel, needed for webserver
 void SetBrightness(uint8_t level) { 
-  dma_display->setBrightness8(lumval[level]);
+  display->SetBrightness(level);
 }
 
 void ClearScreen() {
-  dma_display->clearScreen();
+  display->ClearScreen();
   SetBrightness(lumstep);
 }
 
@@ -628,7 +567,7 @@ void FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
     for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
       uint16_t pos = (y * ZONE_WIDTH + x) * 3;
 
-      dma_display->drawPixelRGB888(x + xOffset, y + yOffset, pBuffer[pos],
+      display->DrawPixel(x + xOffset, y + yOffset, pBuffer[pos],
                                    pBuffer[pos + 1], pBuffer[pos + 2]);
     }
   }
@@ -641,7 +580,7 @@ void FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
   for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
     for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
       uint16_t pos = (y * ZONE_WIDTH + x) * 2;
-      dma_display->drawPixel(
+      display->DrawPixel(
           x + xOffset, y + yOffset,
           (((uint16_t)pBuffer[pos + 1]) << 8) + pBuffer[pos]);
     }
@@ -655,7 +594,7 @@ void FillPanelRaw() {
     for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
       pos = (y * TOTAL_WIDTH + x) * 3;
 
-      dma_display->drawPixelRGB888(x, y, renderBuffer[pos],
+      display->DrawPixel(x, y, renderBuffer[pos],
                                    renderBuffer[pos + 1],
                                    renderBuffer[pos + 2]);
     }
@@ -669,7 +608,7 @@ void FillPanelUsingPalette() {
     for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
       pos = renderBuffer[y * TOTAL_WIDTH + x] * 3;
 
-      dma_display->drawPixelRGB888(x, y, palette[pos], palette[pos + 1],
+      display->DrawPixel(x, y, palette[pos], palette[pos + 1],
                                    palette[pos + 2]);
     }
   }
@@ -684,7 +623,7 @@ void FillPanelUsingChangedPalette(bool *paletteAffected) {
       pos = renderBuffer[y * TOTAL_WIDTH + x];
       if (paletteAffected[pos]) {
         pos *= 3;
-        dma_display->drawPixelRGB888(x, y, palette[pos], palette[pos + 1],
+        display->DrawPixel(x, y, palette[pos], palette[pos + 1],
                                      palette[pos + 2]);
       }
     }
@@ -773,16 +712,16 @@ bool SaveScreensaverConfig() {
 #endif
 
 void LedTester(void) {
-  dma_display->fillScreenRGB888(255, 0, 0);
+  display->FillScreen(255, 0, 0);
   delay(LED_CHECK_DELAY);
 
-  dma_display->fillScreenRGB888(0, 255, 0);
+  display->FillScreen(0, 255, 0);
   delay(LED_CHECK_DELAY);
 
-  dma_display->fillScreenRGB888(0, 0, 255);
+  display->FillScreen(0, 0, 255);
   delay(LED_CHECK_DELAY);
 
-  dma_display->clearScreen();
+  display->ClearScreen();
 }
 
 void DisplayLogo(void) {
@@ -870,7 +809,7 @@ void DisplayUpdate(void) {
 #if !defined(ZEDMD_WIFI)
 void ScreenSaver(void) {
   ClearScreen();
-  dma_display->setBrightness8(lumval[1]);
+  display->SetBrightness(1);
   DisplayVersion();
 
   displayStatus = DISPLAY_STATUS_SCREEN_SAVER;
@@ -1148,36 +1087,13 @@ void setup() {
     LoadLum();
   }
 
-  const uint8_t colorPins1[3] = {R1_PIN, G1_PIN, B1_PIN};
-  const uint8_t colorPins2[3] = {R2_PIN, G2_PIN, B2_PIN};
-  const HUB75_I2S_CFG::i2s_pins _pins = {colorPins1[rgbOrder[rgbMode * 3]],
-                                         colorPins1[rgbOrder[rgbMode * 3 + 1]],
-                                         colorPins1[rgbOrder[rgbMode * 3 + 2]],
-                                         colorPins2[rgbOrder[rgbMode * 3]],
-                                         colorPins2[rgbOrder[rgbMode * 3 + 1]],
-                                         colorPins2[rgbOrder[rgbMode * 3 + 2]],
-                                         A_PIN,
-                                         B_PIN,
-                                         C_PIN,
-                                         D_PIN,
-                                         E_PIN,
-                                         LAT_PIN,
-                                         OE_PIN,
-                                         CLK_PIN};
 
-  HUB75_I2S_CFG mxconfig(PANEL_WIDTH,    // width
-                         PANEL_HEIGHT,   // height
-                         PANELS_NUMBER,  // chain length
-                         _pins           // pin mapping
-                         // HUB75_I2S_CFG::FM6126A  // driver chip
-  );
-  mxconfig.clkphase =
-      false;  // change if you have some parts of the panel with a shift
-              // #ifdef ARDUINO_ESP32_S3_N16R8
-              //  mxconfig.double_buff = true; // Turn on double buffer
-              // #endif
-  dma_display = new MatrixPanel_I2S_DMA(mxconfig);
-  dma_display->begin();
+#ifdef LILYGO_S3_AMOLED
+  display = new LilygoS3Amoled();  // For AMOLED display
+#else            
+  display = new LedMatrix();  // For LED matrix display
+#endif
+
 
   if (!fileSystemOK) {
     DisplayText("Error reading file system!", 4, 6, 255, 255, 255);
