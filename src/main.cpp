@@ -104,6 +104,11 @@
   #include "displays/LEDMatrix.h"
 #endif
 
+// Specific improvements and #define for the ESP32 S3 series
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_LILYGO_S3_AMOLED)
+  #include "S3Specific.h"
+#endif
+
 
 #ifdef ZEDMD_WIFI
 #include <AsyncUDP.h>
