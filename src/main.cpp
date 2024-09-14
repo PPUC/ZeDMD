@@ -1058,7 +1058,7 @@ void RefreshScreen() {
 void ScreenSaver(void) {
   if (screensaverMode == SCREENSAVER_MODE_CLEAR_SCREEN) {
     ClearScreen();
-    dma_display->setBrightness8(lumval[1]);
+    display->SetBrightness(1);
     DisplayVersion();
   } else if (screensaverMode == SCREENSAVER_MODE_SHOW_IMAGE) {
     ClearScreen();
