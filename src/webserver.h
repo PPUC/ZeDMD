@@ -2,7 +2,8 @@
 #ifndef WEBSERVER_H
 #define WEBSERVER_H
 
-//#include <ESPAsyncWebServer.h>
+#include "displayDriver.h"
+
 
 // Global variables to be shared between webserver.cpp and main.cpp
 extern String ssid;
@@ -23,7 +24,7 @@ void SaveRgbOrder();
 void SaveLum();
 bool VerifyImage(const char *filename);
 bool DisplayImage(const char *filename);
-void SetBrightness(uint8_t lumstep);
+DisplayDriver* GetDisplayObject();
 void RefreshScreen();
 bool SaveScreensaverConfig();
 

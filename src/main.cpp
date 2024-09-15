@@ -269,14 +269,14 @@ void DisplayDebugInfo(void) {
   }
 }
 
-/// @brief Changes brightness of the LED Matrix panel, needed for webserver
-void SetBrightness(uint8_t level) { 
-  display->SetBrightness(level);
+/// @brief Get DisplayDriver object, required for webserver
+DisplayDriver* GetDisplayObject() { 
+  return display;
 }
 
 void ClearScreen() {
   display->ClearScreen();
-  SetBrightness(lumstep);
+  display->SetBrightness(lumstep);
 }
 
 #if !defined(ZEDMD_WIFI)
@@ -763,7 +763,7 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
 
     if (displayStatus == DISPLAY_STATUS_DIM || displayStatus == DISPLAY_STATUS_SCREEN_SAVER)
     {
-      SetBrightness(lumstep);
+      display->SetBrightness(lumstep);
       displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
     } 
 
@@ -1258,7 +1258,7 @@ void loop() {
       rotNextRotationTime[0] = millis();
       lumstep++;
       if (lumstep >= 16) lumstep = 1;
-      SetBrightness(lumstep);
+      display->SetBrightness(lumstep);
       SaveLum();
       DisplayRGB();
       DisplayLum();
@@ -1286,7 +1286,7 @@ void loop() {
                  screensaverMode == SCREENSAVER_MODE_SHOW_IMAGE) {
         if ((millis() - rotNextRotationTime[0]) > dimTimeout) {
           displayStatus = DISPLAY_STATUS_DIM;
-          SetBrightness(1);
+          display->SetBrightness(1);
         }
       }
 #endif
@@ -1403,7 +1403,7 @@ void loop() {
         if (SerialReadBuffer(tbuf, 1)) {
           if (tbuf[0] > 0 && tbuf[0] < 16) {
             lumstep = tbuf[0];
-            SetBrightness(lumstep);
+            display->SetBrightness(lumstep);
             Serial.write('A');
           } else {
             Serial.write('E');
