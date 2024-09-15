@@ -15,8 +15,8 @@ private:
   TFT_eSPI tft;
   TFT_eSprite sprite;
   TFT_eSprite zoneSprite;
-  const uint8_t lumval[16] = {0,  10,  20,  30,  40,  50,  60,  80,
-                                100, 120, 140, 160, 180, 200, 225, 254};
+  const uint8_t lumval[16] = {0,  50,  66,  82,  98,  114,  130,  146,  
+                            162, 178, 194, 210, 226, 242, 250, 254};
 public:
     LilygoS3Amoled();
     virtual void DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g, uint8_t b) override;

@@ -95,7 +95,7 @@
 #include "version.h"       // Version constants
 #include "panel.h"         // ZeDMD panel constants
 #include "displayDriver.h" // Base class for all display drivers'
-#include "displayConfig.h" // Variables shared by main and LedMatrix
+#include "displayConfig.h" // Variables shared by main and displayDrivers
 
 // To save RAM only include the driver we want to use.
 #ifdef DISPLAY_LILYGO_S3_AMOLED
@@ -188,7 +188,7 @@ uint8_t *renderBuffer;
 bool mode64 = false;
 uint16_t RomWidth = 128, RomHeight = 32;
 uint8_t RomWidthPlane = 128 >> 3;
-uint8_t lumstep = 1;
+uint8_t lumstep = 10; //Init display on 70% brightness, otherwise i starts up black on some displays
 bool MireActive = false;
 uint8_t displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
 bool handshakeSucceeded = false;
@@ -1280,7 +1280,7 @@ void loop() {
                 displayStatus != DISPLAY_STATUS_DIM) {
         ScreenSaver();
       } 
-#ifdef ZEDMD_WIFI      
+      #ifdef ZEDMD_WIFI      
       else if (enableDimAfterTimeout &&
                  displayStatus == DISPLAY_STATUS_SCREEN_SAVER &&
                  screensaverMode == SCREENSAVER_MODE_SHOW_IMAGE) {
