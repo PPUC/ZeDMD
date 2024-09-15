@@ -1280,7 +1280,7 @@ void loop() {
                 displayStatus != DISPLAY_STATUS_DIM) {
         ScreenSaver();
       } 
-      #ifdef ZEDMD_WIFI      
+#ifdef ZEDMD_WIFI      
       else if (enableDimAfterTimeout &&
                  displayStatus == DISPLAY_STATUS_SCREEN_SAVER &&
                  screensaverMode == SCREENSAVER_MODE_SHOW_IMAGE) {
