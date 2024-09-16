@@ -10,7 +10,7 @@
 // Scale pixels 4x for almost full display coverage
 #define DISPLAY_SCALE 4
 
-class LilygoS3Amoled : public DisplayDriver {
+class Rm67162Amoled : public DisplayDriver {
 private:
   TFT_eSPI tft;
   TFT_eSprite sprite;
@@ -18,7 +18,7 @@ private:
   const uint8_t lumval[16] = {0,  50,  66,  82,  98,  114,  130,  146,  
                             162, 178, 194, 210, 226, 242, 250, 254};
 public:
-    LilygoS3Amoled();
+    Rm67162Amoled();
     virtual void DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g, uint8_t b) override;
     virtual void DrawPixel(uint16_t x, uint16_t y, uint16_t color) override;
     virtual void ClearScreen() override;
@@ -34,7 +34,7 @@ public:
     virtual void FillPanelUsingChangedPalette(uint8_t *pBuffer, uint8_t *palette, bool *paletteAffected) override; 
 #endif
 
-    ~LilygoS3Amoled();
+    ~Rm67162Amoled();
 };
 
 #endif // AMOLED_H

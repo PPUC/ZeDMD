@@ -1,12 +1,12 @@
-#ifdef DISPLAY_LILYGO_S3_AMOLED
-#include "LilygoS3Amoled.h"
+#ifdef DISPLAY_RM67162_AMOLED
+#include "Rm67162Amoled.h"
 #include "displayConfig.h"
 #include "fonts/tiny4x6.h"
 
 ///// LILYGO S3 AMOLED DRIVER
 ///// No 24 BIT rendering supported, internally everything will be decoded to 16 bit.
 
-LilygoS3Amoled::LilygoS3Amoled() : tft(), sprite(&tft), zoneSprite(&tft)  {
+Rm67162Amoled::Rm67162Amoled() : tft(), sprite(&tft), zoneSprite(&tft)  {
 
   // Sprite for fullscreen stuff
   sprite.createSprite(536, 240);
@@ -20,7 +20,7 @@ LilygoS3Amoled::LilygoS3Amoled() : tft(), sprite(&tft), zoneSprite(&tft)  {
   lcd_setRotation(1);
 }
 
-void LilygoS3Amoled::DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g,
+void Rm67162Amoled::DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g,
                                uint8_t b) {
   // AMOLED works with 16 bit only; 24 bit gets converted
   uint16_t color =
@@ -30,27 +30,27 @@ void LilygoS3Amoled::DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g,
                   DISPLAY_SCALE, color);
 }
 
-void LilygoS3Amoled::DrawPixel(uint16_t x, uint16_t y, uint16_t color) {
+void Rm67162Amoled::DrawPixel(uint16_t x, uint16_t y, uint16_t color) {
   sprite.fillRect(x * DISPLAY_SCALE, y * DISPLAY_SCALE, DISPLAY_SCALE,
                   DISPLAY_SCALE, color);
 }
 
-void LilygoS3Amoled::ClearScreen() {
+void Rm67162Amoled::ClearScreen() {
   sprite.fillSprite(TFT_BLACK);
   lcd_PushColors(0, 0, 536, 240, (uint16_t *)sprite.getPointer());
 }
 
-void LilygoS3Amoled::SetBrightness(uint8_t level) {
+void Rm67162Amoled::SetBrightness(uint8_t level) {
   lcd_brightness(lumval[level]);
 }
 
-void LilygoS3Amoled::FillScreen(uint8_t r, uint8_t g, uint8_t b) {
+void Rm67162Amoled::FillScreen(uint8_t r, uint8_t g, uint8_t b) {
   uint16_t color = sprite.color565(r,g,b);
   sprite.fillScreen(color);
   lcd_PushColors(0, 0, 536, 240, (uint16_t *)sprite.getPointer());
 }
 
-void LilygoS3Amoled::DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t r, uint8_t g,
+void Rm67162Amoled::DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t r, uint8_t g,
                  uint8_t b, bool transparent, bool inverted) {
   for (uint8_t ti = 0; ti < strlen(text); ti++) {
     for (uint8_t tj = 0; tj <= 5; tj++) {
@@ -72,7 +72,7 @@ void LilygoS3Amoled::DisplayText(const char *text, uint16_t x, uint16_t y, uint8
   lcd_PushColors(0, 0, 536, 240, (uint16_t *)sprite.getPointer());
 }
 
-void IRAM_ATTR LilygoS3Amoled::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
+void IRAM_ATTR Rm67162Amoled::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
   uint16_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT * DISPLAY_SCALE;
   uint16_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH * DISPLAY_SCALE;
 
@@ -90,7 +90,7 @@ void IRAM_ATTR LilygoS3Amoled::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
   lcd_PushColors(xOffset, yOffset, ZONE_WIDTH * DISPLAY_SCALE, ZONE_HEIGHT * DISPLAY_SCALE, (uint16_t *)zoneSprite.getPointer());
 }
 
-void IRAM_ATTR LilygoS3Amoled::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
+void IRAM_ATTR Rm67162Amoled::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
    uint16_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT * DISPLAY_SCALE;
   uint16_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH * DISPLAY_SCALE;
 
@@ -107,7 +107,7 @@ void IRAM_ATTR LilygoS3Amoled::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
                  (uint16_t *)zoneSprite.getPointer());
 }
 
-void IRAM_ATTR LilygoS3Amoled::FillPanelRaw(uint8_t *pBuffer) {
+void IRAM_ATTR Rm67162Amoled::FillPanelRaw(uint8_t *pBuffer) {
   uint16_t pos;
 
   for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
@@ -122,7 +122,7 @@ void IRAM_ATTR LilygoS3Amoled::FillPanelRaw(uint8_t *pBuffer) {
   lcd_PushColors(0, 0, 536, 240, (uint16_t *)sprite.getPointer());
 }
 
-void LilygoS3Amoled::FillPanelUsingPalette(uint8_t *pBuffer, uint8_t *palette) {
+void Rm67162Amoled::FillPanelUsingPalette(uint8_t *pBuffer, uint8_t *palette) {
   uint16_t pos;
 
   for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
@@ -139,7 +139,7 @@ void LilygoS3Amoled::FillPanelUsingPalette(uint8_t *pBuffer, uint8_t *palette) {
 }
 
 #if !defined(ZEDMD_WIFI)
-void LilygoS3Amoled::FillPanelUsingChangedPalette(uint8_t *pBuffer, uint8_t *palette, bool *paletteAffected) {
+void Rm67162Amoled::FillPanelUsingChangedPalette(uint8_t *pBuffer, uint8_t *palette, bool *paletteAffected) {
   uint16_t pos;
 
   for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
@@ -160,7 +160,7 @@ void LilygoS3Amoled::FillPanelUsingChangedPalette(uint8_t *pBuffer, uint8_t *pal
 #endif
 
 
-LilygoS3Amoled::~LilygoS3Amoled() {
+Rm67162Amoled::~Rm67162Amoled() {
   // Clean up resources if necessary
 }
 #endif

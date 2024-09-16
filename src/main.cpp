@@ -1,5 +1,5 @@
 
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_LILYGO_S3_AMOLED)
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
 #define SERIAL_BAUD 8000000  // Serial baud rate.
 #else
 #define SERIAL_BAUD 921600  // Serial baud rate.
@@ -98,14 +98,14 @@
 #include "displayConfig.h" // Variables shared by main and displayDrivers
 
 // To save RAM only include the driver we want to use.
-#ifdef DISPLAY_LILYGO_S3_AMOLED
-  #include "displays/LilygoS3Amoled.h"                    
+#ifdef DISPLAY_RM67162_AMOLED
+  #include "displays/Rm67162Amoled.h"                    
 #elif defined (DISPLAY_LED_MATRIX)          
   #include "displays/LEDMatrix.h"
 #endif
 
 // Specific improvements and #define for the ESP32 S3 series
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_LILYGO_S3_AMOLED)
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
   #include "S3Specific.h"
 #endif
 
@@ -153,7 +153,7 @@ bool upscaling = true;
 #define RGB_ORDER_BUTTON_PIN 45
 #define BRIGHTNESS_BUTTON_PIN 48
 
-#elif defined(DISPLAY_LILYGO_S3_AMOLED)
+#elif defined(DISPLAY_RM67162_AMOLED)
 
 #define RGB_ORDER_BUTTON_PIN 0
 #define BRIGHTNESS_BUTTON_PIN 21
@@ -1003,8 +1003,8 @@ void setup() {
   }
 
 
-#ifdef DISPLAY_LILYGO_S3_AMOLED
-  display = new LilygoS3Amoled();  // For AMOLED display
+#ifdef DISPLAY_RM67162_AMOLED
+  display = new Rm67162Amoled();  // For AMOLED display
 #elif defined (DISPLAY_LED_MATRIX)        
   display = new LedMatrix();  // For LED matrix display
 #endif
@@ -1020,7 +1020,7 @@ void setup() {
   }
 
   Serial.setRxBufferSize(SERIAL_BUFFER);
-#if !defined(ARDUINO_ESP32_S3_N16R8) || !defined(DISPLAY_LILYGO_S3_AMOLED)
+#if !defined(ARDUINO_ESP32_S3_N16R8) || !defined(DISPLAY_RM67162_AMOLED)
   Serial.setTimeout(SERIAL_TIMEOUT);
 #endif
   Serial.begin(SERIAL_BAUD);
