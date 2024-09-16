@@ -25,52 +25,30 @@ LedMatrix::LedMatrix() {
     dma_display->begin();
 }
 
-/// @brief Draw a RGB888 pixel
-/// @param x X coordinate
-/// @param y Y coordinate
-/// @param r 8 bit red color
-/// @param g 8 bit green color
-/// @param b 8 bit blue color
+
 void LedMatrix::DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g, uint8_t b) {
     dma_display->drawPixelRGB888(x, y, r, g, b);
 }
 
-/// @brief Draw a RGB565 pixel
-/// @param x X coordinate
-/// @param y Y coordinate
-/// @param color 16 bit RGB565 color
+
 void LedMatrix::DrawPixel(uint16_t x, uint16_t y, uint16_t color) {
     dma_display->drawPixel(x, y, color);
 }
 
-/// @brief Clear screen
+
 void LedMatrix::ClearScreen() {
     dma_display->clearScreen();
 }
 
-/// @brief Set brightness of display
-/// @param level 0-15 levels
+
 void LedMatrix::SetBrightness(uint8_t level) {
     dma_display->setBrightness8(lumval[level]);
 }
 
-/// @brief Fill entire screen with one color
-/// @param r 8 bit red color
-/// @param g 8 bit green color
-/// @param b 8 bit blue color
 void LedMatrix::FillScreen(uint8_t r, uint8_t g, uint8_t b) {
     dma_display->fillScreenRGB888(r, g, b);
 }
 
-/// @brief Write text to display
-/// @param text string of text
-/// @param x X coordinate
-/// @param y Y coordinate
-/// @param r 8 bit red color
-/// @param g 8 bit green color
-/// @param b 8 bit blue color
-/// @param transparent background transparent
-/// @param inverted colors inverted
 void LedMatrix::DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t r, uint8_t g,
                  uint8_t b, bool transparent, bool inverted) {
   for (uint8_t ti = 0; ti < strlen(text); ti++) {
@@ -91,10 +69,6 @@ void LedMatrix::DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t r,
   }
 }
 
-/// @brief RGB888 24bit Zone fill
-/// @param idx index
-/// @param pBuffer buffer with pixel data [R,G,B]
-/// @return 
 void IRAM_ATTR LedMatrix::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
   uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
   uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
@@ -109,10 +83,6 @@ void IRAM_ATTR LedMatrix::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
   }
 }
 
-/// @brief RGB565 16 bit Zone Fill
-/// @param idx index
-/// @param pBuffer buffer with pixel data 16 bits
-/// @return 
 void IRAM_ATTR LedMatrix::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
   uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
   uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
@@ -126,8 +96,6 @@ void IRAM_ATTR LedMatrix::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
   }
 }
 
-/// @brief Fill fullscreen with current renderBuffer
-/// @return 
 void IRAM_ATTR LedMatrix::FillPanelRaw(uint8_t *pBuffer) {
   uint16_t pos;
 
@@ -141,8 +109,6 @@ void IRAM_ATTR LedMatrix::FillPanelRaw(uint8_t *pBuffer) {
   }
 }
 
-/// @brief Fill fullscreen with pallete
-/// @return 
 void LedMatrix::FillPanelUsingPalette(uint8_t *pBuffer, uint8_t *palette) {
   uint16_t pos;
 
@@ -157,10 +123,7 @@ void LedMatrix::FillPanelUsingPalette(uint8_t *pBuffer, uint8_t *palette) {
 }
 
 #if !defined(ZEDMD_WIFI)
-/// @brief Fill fullscreen with changed palette
-/// @param pBuffer Pixel buffer RGB888
-/// @param palette Palette
-/// @param paletteAffected Affected palette 
+
 void LedMatrix::FillPanelUsingChangedPalette(uint8_t *pBuffer, uint8_t *palette, bool *paletteAffected) {
   uint16_t pos;
 
