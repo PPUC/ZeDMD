@@ -188,7 +188,7 @@ uint8_t *renderBuffer;
 bool mode64 = false;
 uint16_t RomWidth = 128, RomHeight = 32;
 uint8_t RomWidthPlane = 128 >> 3;
-uint8_t lumstep = 10; //Init display on 70% brightness, otherwise it starts up black on some displays
+uint8_t lumstep = 5; //Init display on medium brightness, otherwise it starts up black on some displays
 bool MireActive = false;
 uint8_t displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
 bool handshakeSucceeded = false;
