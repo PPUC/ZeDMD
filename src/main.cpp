@@ -175,7 +175,7 @@ uint8_t CtrlCharacters[6] = {0x5a, 0x65, 0x64, 0x72, 0x75, 0x6d};
 Bounce2::Button *rgbOrderButton;
 Bounce2::Button *brightnessButton;
 
-DisplayDriver* display;  // Pointer to the base class
+DisplayDriver* display;
 
 bool debugMode = false;
 bool debugDelayOnError = false;
