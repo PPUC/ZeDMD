@@ -7,6 +7,11 @@
 ///// No 24 BIT rendering supported, internally everything will be decoded to 16 bit.
 
 Rm67162Amoled::Rm67162Amoled() : tft(), sprite(&tft), zoneSprite(&tft)  {
+  
+  // On a LilyGo S3 Amoled V2 we need to enable these pins, 
+  // but on V1 we want to disable this; because of the nasty green led
+  pinMode(38, OUTPUT);
+  digitalWrite(38, HIGH);
 
   // Sprite for fullscreen stuff
   sprite.createSprite(536, 240);
