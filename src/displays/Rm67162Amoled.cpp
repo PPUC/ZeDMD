@@ -77,7 +77,7 @@ void Rm67162Amoled::DisplayText(const char *text, uint16_t x, uint16_t y, uint8_
   lcd_PushColors(0, 0, 536, 240, (uint16_t *)sprite.getPointer());
 }
 
-void IRAM_ATTR Rm67162Amoled::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
+/*void IRAM_ATTR Rm67162Amoled::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
   uint16_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT * DISPLAY_SCALE;
   uint16_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH * DISPLAY_SCALE;
 
@@ -93,9 +93,55 @@ void IRAM_ATTR Rm67162Amoled::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
     }
   }
   lcd_PushColors(xOffset, yOffset, ZONE_WIDTH * DISPLAY_SCALE, ZONE_HEIGHT * DISPLAY_SCALE, (uint16_t *)zoneSprite.getPointer());
+}*/
+
+void IRAM_ATTR Rm67162Amoled::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
+  uint16_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT * DISPLAY_SCALE;
+  uint16_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH * DISPLAY_SCALE;
+
+  for (uint16_t y = 0; y < ZONE_HEIGHT; y++) {
+    for (uint16_t x = 0; x < ZONE_WIDTH; x++) {
+      uint16_t pos = (y * ZONE_WIDTH + x) * 3;
+      uint16_t color = zoneSprite.color565(pBuffer[pos], pBuffer[pos + 1], pBuffer[pos + 2]);
+      uint16_t black = zoneSprite.color565(0, 0, 0); // Black color
+
+      // Loop through each pixel in the scale block
+      for (uint16_t i = 0; i < DISPLAY_SCALE; i++) {
+        for (uint16_t j = 0; j < DISPLAY_SCALE; j++) {
+          uint16_t drawColor = black;  // Default is black for borders
+          
+          switch (AMOLED_SCALE_MODE) {
+            case 1:
+              drawColor = color;  // Normal 4x4 block
+              break;
+            case 2:
+              // 2x2 center pixels in color, rest black
+              if (i > 0 && i < DISPLAY_SCALE - 1 && j > 0 && j < DISPLAY_SCALE - 1) {
+                drawColor = color;
+              }
+              break;
+            case 3:
+              // 3x3 center pixels in color, rest black
+              if (i > 0 && i < DISPLAY_SCALE && j > 0 && j < DISPLAY_SCALE) {
+                drawColor = color;
+              }
+              break;
+            default:
+              drawColor = color;  // Fallback
+          }
+
+          // Draw pixel
+          zoneSprite.drawPixel(x * DISPLAY_SCALE + i, y * DISPLAY_SCALE + j, drawColor);
+        }
+      }
+    }
+  }
+
+  lcd_PushColors(xOffset, yOffset, ZONE_WIDTH * DISPLAY_SCALE, ZONE_HEIGHT * DISPLAY_SCALE, (uint16_t *)zoneSprite.getPointer());
 }
 
-void IRAM_ATTR Rm67162Amoled::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
+
+/*void IRAM_ATTR Rm67162Amoled::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
    uint16_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT * DISPLAY_SCALE;
   uint16_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH * DISPLAY_SCALE;
 
@@ -110,9 +156,55 @@ void IRAM_ATTR Rm67162Amoled::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
   }
   lcd_PushColors(xOffset, yOffset, ZONE_WIDTH * DISPLAY_SCALE, ZONE_HEIGHT * DISPLAY_SCALE,
                  (uint16_t *)zoneSprite.getPointer());
+}*/
+
+void IRAM_ATTR Rm67162Amoled::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
+  uint16_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT * DISPLAY_SCALE;
+  uint16_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH * DISPLAY_SCALE;
+
+  for (uint16_t y = 0; y < ZONE_HEIGHT; y++) {
+    for (uint16_t x = 0; x < ZONE_WIDTH; x++) {
+      uint16_t pos = (y * ZONE_WIDTH + x) * 2;
+      uint16_t color = ((((uint16_t)pBuffer[pos + 1]) << 8) + pBuffer[pos]);
+      uint16_t black = zoneSprite.color565(0, 0, 0); // Black color
+
+      // Loop through each pixel in the scale block
+      for (uint16_t i = 0; i < DISPLAY_SCALE; i++) {
+        for (uint16_t j = 0; j < DISPLAY_SCALE; j++) {
+          uint16_t drawColor = black;  // Default is black for borders
+          
+          switch (AMOLED_SCALE_MODE) {
+            case 1:
+              drawColor = color;  // Normal 4x4 block
+              break;
+            case 2:
+              // 2x2 center pixels in color, rest black
+              if (i > 0 && i < DISPLAY_SCALE - 1 && j > 0 && j < DISPLAY_SCALE - 1) {
+                drawColor = color;
+              }
+              break;
+            case 3:
+              // 3x3 center pixels in color, rest black
+              if (i > 0 && i < DISPLAY_SCALE && j > 0 && j < DISPLAY_SCALE) {
+                drawColor = color;
+              }
+              break;
+            default:
+              drawColor = color;  // Fallback
+          }
+
+          // Draw pixel
+          zoneSprite.drawPixel(x * DISPLAY_SCALE + i, y * DISPLAY_SCALE + j, drawColor);
+        }
+      }
+    }
+  }
+
+  lcd_PushColors(xOffset, yOffset, ZONE_WIDTH * DISPLAY_SCALE, ZONE_HEIGHT * DISPLAY_SCALE, (uint16_t *)zoneSprite.getPointer());
 }
 
-void IRAM_ATTR Rm67162Amoled::FillPanelRaw(uint8_t *pBuffer) {
+
+/*void IRAM_ATTR Rm67162Amoled::FillPanelRaw(uint8_t *pBuffer) {
   uint16_t pos;
 
   for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
@@ -124,6 +216,50 @@ void IRAM_ATTR Rm67162Amoled::FillPanelRaw(uint8_t *pBuffer) {
       sprite.fillRect(x * DISPLAY_SCALE, y * DISPLAY_SCALE, DISPLAY_SCALE, DISPLAY_SCALE, color);
     }
   }
+  lcd_PushColors(0, 0, 536, 240, (uint16_t *)sprite.getPointer());
+}*/
+
+void IRAM_ATTR Rm67162Amoled::FillPanelRaw(uint8_t *pBuffer) {
+  uint16_t pos;
+
+  for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
+    for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
+      pos = (y * TOTAL_WIDTH + x) * 3;
+      uint16_t color = sprite.color565(pBuffer[pos], pBuffer[pos + 1], pBuffer[pos + 2]);
+      uint16_t black = sprite.color565(0, 0, 0); // Black color
+
+      // Loop through each pixel in the scale block
+      for (uint16_t i = 0; i < DISPLAY_SCALE; i++) {
+        for (uint16_t j = 0; j < DISPLAY_SCALE; j++) {
+          uint16_t drawColor = black;  // Default is black for borders
+          
+          switch (AMOLED_SCALE_MODE) {
+            case 1:
+              drawColor = color;  // Normal 4x4 block
+              break;
+            case 2:
+              // 2x2 center pixels in color, rest black
+              if (i > 0 && i < DISPLAY_SCALE - 1 && j > 0 && j < DISPLAY_SCALE - 1) {
+                drawColor = color;
+              }
+              break;
+            case 3:
+              // 3x3 center pixels in color, rest black
+              if (i > 0 && i < DISPLAY_SCALE && j > 0 && j < DISPLAY_SCALE) {
+                drawColor = color;
+              }
+              break;
+            default:
+              drawColor = color;  // Fallback
+          }
+
+          // Draw pixel
+          sprite.drawPixel(x * DISPLAY_SCALE + i, y * DISPLAY_SCALE + j, drawColor);
+        }
+      }
+    }
+  }
+
   lcd_PushColors(0, 0, 536, 240, (uint16_t *)sprite.getPointer());
 }
 
