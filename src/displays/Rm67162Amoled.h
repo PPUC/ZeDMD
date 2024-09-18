@@ -18,7 +18,6 @@ class Rm67162Amoled : public DisplayDriver {
 private:
   TFT_eSPI tft;
   TFT_eSprite sprite;
-  TFT_eSprite zoneSprite;
   const uint8_t lumval[16] = {0,  50,  66,  82,  98,  114,  130,  146,  
                             162, 178, 194, 210, 226, 242, 250, 254};
 public:
