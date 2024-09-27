@@ -203,7 +203,8 @@ void runWebServer() {
     json += "\"brightness\":" + String(lumstep) + ",";
     json += "\"screensaverMode\":" + String(screensaverMode) + ",";
     json += "\"enableDimAfterTimeout\":" + String(enableDimAfterTimeout) + ",";
-    json += "\"dimTimeout\":" + String(dimTimeout / MINUTES_TO_MS);
+    json += "\"dimTimeout\":" + String(dimTimeout / MINUTES_TO_MS) + ",";
+    json += "\"scaleMode\":" + String(display->GetCurrentScalingMode());
     json += "}";
     request->send(200, "application/json", json);
   });
@@ -255,6 +256,7 @@ server.on("/save_scaling_mode", HTTP_POST, [](AsyncWebServerRequest *request) {
 
         // Update the scaling mode using the global display object
         display->SetCurrentScalingMode(scalingMode);
+        SaveScale();
         request->send(200, "text/plain", "Scaling mode updated successfully");
     } else {
         request->send(400, "text/plain", "Missing scaling mode parameter");

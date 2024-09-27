@@ -570,6 +570,19 @@ void SaveLum() {
   f.close();
 }
 
+void LoadScale() {
+  File f = LittleFS.open("/scale.val", "r");
+  if (!f) return;
+  display->SetCurrentScalingMode(f.read());
+  f.close();
+}
+
+void SaveScale() {
+  File f = LittleFS.open("/scale.val", "w");
+  f.write(display->GetCurrentScalingMode());
+  f.close();
+}
+
 #ifdef ZEDMD_WIFI
 bool LoadWiFiConfig() {
   File wifiConfig = LittleFS.open("/wifi_config.txt", "r");
@@ -995,17 +1008,18 @@ void setup() {
   brightnessButton->interval(100);
   brightnessButton->setPressedState(LOW);
 
-  bool fileSystemOK;
-  if (fileSystemOK = LittleFS.begin()) {
-    LoadRgbOrder();
-    LoadLum();
-  }
-
 #ifdef DISPLAY_RM67162_AMOLED
   display = new Rm67162Amoled();  // For AMOLED display
 #elif defined(DISPLAY_LED_MATRIX)
   display = new LedMatrix();  // For LED matrix display
 #endif
+
+  bool fileSystemOK;
+  if (fileSystemOK = LittleFS.begin()) {
+    LoadRgbOrder();
+    LoadLum();
+    LoadScale();
+  }
 
   if (!fileSystemOK) {
     display->DisplayText("Error reading file system!", 4, 6, 255, 255, 255);

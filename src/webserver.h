@@ -23,6 +23,7 @@ extern DisplayDriver *display;
 bool SaveWiFiConfig();
 void SaveRgbOrder();
 void SaveLum();
+void SaveScale();
 bool VerifyImage(const char *filename);
 bool DisplayImage(const char *filename);
 DisplayDriver* GetDisplayObject();
