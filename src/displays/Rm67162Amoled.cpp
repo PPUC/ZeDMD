@@ -56,12 +56,12 @@ void Rm67162Amoled::DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g,
   // AMOLED works with 16 bit only; 24 bit gets converted
   uint16_t color = sprite.color565(r, g, b);
 
-  sprite.fillRect(x * DISPLAY_SCALE, y * DISPLAY_SCALE, DISPLAY_SCALE,
+  sprite.fillRect(x * DISPLAY_SCALE, y * DISPLAY_SCALE + DISPLAY_Y_OFFSET, DISPLAY_SCALE,
                   DISPLAY_SCALE, color);
 }
 
 void Rm67162Amoled::DrawPixel(uint16_t x, uint16_t y, uint16_t color) {
-  sprite.fillRect(x * DISPLAY_SCALE, y * DISPLAY_SCALE, DISPLAY_SCALE,
+  sprite.fillRect(x * DISPLAY_SCALE, y * DISPLAY_SCALE + DISPLAY_Y_OFFSET, DISPLAY_SCALE,
                   DISPLAY_SCALE, color);
 }
 
@@ -97,7 +97,7 @@ void Rm67162Amoled::DisplayText(const char *text, uint16_t x, uint16_t y,
         uint16_t color = sprite.color565(r * p, g * p, b * p);
 
         sprite.fillRect((x + pixel + (ti * 4)) * DISPLAY_SCALE,
-                        (y + tj) * DISPLAY_SCALE, DISPLAY_SCALE, DISPLAY_SCALE,
+                        (y + tj) * DISPLAY_SCALE + DISPLAY_Y_OFFSET, DISPLAY_SCALE, DISPLAY_SCALE,
                         color);
       }
     }
@@ -107,7 +107,7 @@ void Rm67162Amoled::DisplayText(const char *text, uint16_t x, uint16_t y,
 
 // Speed optimized version
 void IRAM_ATTR Rm67162Amoled::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
-  uint16_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT * DISPLAY_SCALE;
+  uint16_t yOffset = ((idx / ZONES_PER_ROW) * ZONE_HEIGHT * DISPLAY_SCALE) + DISPLAY_Y_OFFSET;
   uint16_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH * DISPLAY_SCALE;
 
   // Buffer to store the pixel data in byte format for SPI (2 bytes per pixel)
@@ -213,7 +213,7 @@ void IRAM_ATTR Rm67162Amoled::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
 
 // Speed optimized version
 void IRAM_ATTR Rm67162Amoled::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
-  uint16_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT * DISPLAY_SCALE;
+  uint16_t yOffset = ((idx / ZONES_PER_ROW) * ZONE_HEIGHT * DISPLAY_SCALE) + DISPLAY_Y_OFFSET;
   uint16_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH * DISPLAY_SCALE;
 
   // Buffer to store the pixel data in byte format for SPI (2 bytes per pixel)
@@ -358,7 +358,7 @@ void IRAM_ATTR Rm67162Amoled::FillPanelRaw(uint8_t *pBuffer) {
           }
 
           // Draw pixel
-          sprite.drawPixel(x * DISPLAY_SCALE + i, y * DISPLAY_SCALE + j,
+          sprite.drawPixel(x * DISPLAY_SCALE + i, y * DISPLAY_SCALE + j + DISPLAY_Y_OFFSET, 
                            drawColor);
         }
       }

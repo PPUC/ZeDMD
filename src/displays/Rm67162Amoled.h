@@ -10,7 +10,14 @@
 // Scale pixels 4x for almost full display coverage
 #define DISPLAY_SCALE 4
 
-// 9 = 4x4 pixel blocks
+#define DISPLAY_Y_OFFSET 48 // Move the display down x pixels to center the image
+                            // You need be able to divide by 16 for the partial refreshes to work
+
+// SCALING MODES: You can set these via the webui. 
+// If you are implementing a custom display driver, define the scaling methods in your .h and .cpp files. 
+// The web UI will automatically populate the dropdown menu with the scaling modes specified in your driver implementation.
+// AMOLED Scaling modes:
+// 0 = 4x4 pixel blocks
 // 1 = 2x2 pixel blocks, other pixels black (DMD style)
 // 2 = 3x3 pixel blocks, other pixels black (DMD style #2)
 // 3 = Argyle(diamond) pixel blocks, other pixels black (DMD style #3)
