@@ -10,9 +10,10 @@
 // Scale pixels 4x for almost full display coverage
 #define DISPLAY_SCALE 4
 
-#define AMOLED_SCALE_MODE 3 // 1 = 4x4 pixel blocks
-                            // 2 = 2x2 pixel blocks, other pixels black (DMD style)
-                            // 3 = 3x3 pixel blocks, other pixels black (DMD style #2)
+// 9 = 4x4 pixel blocks
+// 1 = 2x2 pixel blocks, other pixels black (DMD style)
+// 2 = 3x3 pixel blocks, other pixels black (DMD style #2)
+// 3 = Argyle(diamond) pixel blocks, other pixels black (DMD style #3)
 
 class Rm67162Amoled : public DisplayDriver {
 private:
@@ -20,8 +21,21 @@ private:
   TFT_eSprite sprite;
   const uint8_t lumval[16] = {0,  50,  66,  82,  98,  114,  130,  146,  
                             162, 178, 194, 210, 226, 242, 250, 254};
+
+  static const char* scalingModes[4];  // Static array of scaling mode names
+  static const uint8_t modeCount = 4;  // Number of scaling modes
+
+  uint8_t currentScalingMode;
+
 public:
     Rm67162Amoled();
+
+    bool HasScalingModes();
+    const char** GetScalingModes();
+    uint8_t GetScalingModeCount();
+    uint8_t GetCurrentScalingMode();
+    void SetCurrentScalingMode(uint8_t mode);
+
     void DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g, uint8_t b);
     void DrawPixel(uint16_t x, uint16_t y, uint16_t color);
     void ClearScreen();

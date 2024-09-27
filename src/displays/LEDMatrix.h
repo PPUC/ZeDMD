@@ -51,6 +51,13 @@ private:
 
 public:
     LedMatrix(); // Constructor
+
+    bool HasScalingModes();
+    const char** GetScalingModes();
+    uint8_t GetScalingModeCount();
+    uint8_t GetCurrentScalingMode();
+    void SetCurrentScalingMode(uint8_t mode);
+
     void DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g, uint8_t b);
     void DrawPixel(uint16_t x, uint16_t y, uint16_t color);
     void ClearScreen();

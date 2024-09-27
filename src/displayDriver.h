@@ -7,6 +7,26 @@
 
 class DisplayDriver {
 public:
+
+    /// @brief Check if display has scaling modes
+    /// @return true if scaling modes are available
+    virtual bool HasScalingModes() = 0;
+
+    /// @brief Get the names of the scaling modes
+    /// @return a static array of scaling mode names
+    virtual const char** GetScalingModes() = 0;
+
+    /// @brief Get the number of available scaling modes
+    /// @return the count of available scaling modes
+    virtual uint8_t GetScalingModeCount() = 0;
+
+    /// @brief Get the current scaling mode
+    /// @return the count of available scaling modes
+    virtual uint8_t GetCurrentScalingMode() = 0;
+
+    /// @brief Set the scaling mode
+    virtual void SetCurrentScalingMode(uint8_t mode) = 0;
+
     /// @brief Draw a RGB888 pixel
     /// @param x X coordinate
     /// @param y Y coordinate

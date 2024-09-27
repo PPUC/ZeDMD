@@ -25,6 +25,24 @@ LedMatrix::LedMatrix() {
     dma_display->begin();
 }
 
+bool LedMatrix::HasScalingModes() {
+  return false; //This display does not support subpixel scaling  
+}
+
+const char** LedMatrix::GetScalingModes()  {
+  return nullptr; 
+}
+
+uint8_t LedMatrix::GetScalingModeCount() {
+  return 0;
+}
+
+uint8_t LedMatrix::GetCurrentScalingMode() {
+  return 0;
+}
+
+void LedMatrix::SetCurrentScalingMode(uint8_t mode) {}
+
 
 void LedMatrix::DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g, uint8_t b) {
     dma_display->drawPixelRGB888(x, y, r, g, b);

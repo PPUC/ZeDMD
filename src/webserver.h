@@ -4,7 +4,6 @@
 
 #include "displayDriver.h"
 
-
 // Global variables to be shared between webserver.cpp and main.cpp
 extern String ssid;
 extern String pwd;
@@ -17,6 +16,8 @@ extern bool enableDimAfterTimeout;
 extern uint8_t screensaverMode;
 extern uint8_t lumstep;
 extern uint8_t rgbMode;
+extern DisplayDriver *display;
+
 
 // Declare missing functions
 bool SaveWiFiConfig();
