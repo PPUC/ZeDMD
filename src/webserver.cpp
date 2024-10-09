@@ -1,8 +1,10 @@
 
 #ifdef ZEDMD_WIFI
+#include "webserver.h"
+
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
-#include "webserver.h"
+
 #include "version.h"
 
 #define MINUTES_TO_MS 60000
@@ -209,59 +211,62 @@ void runWebServer() {
     request->send(200, "application/json", json);
   });
 
-server.on("/get_scaling_modes", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server.on("/get_scaling_modes", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!display) {
-        request->send(500, "application/json", "{\"error\":\"Display object not initialized\"}");
-        return;
+      request->send(500, "application/json",
+                    "{\"error\":\"Display object not initialized\"}");
+      return;
     }
 
     String jsonResponse;
     if (display->HasScalingModes()) {
-        jsonResponse = "{";
-        jsonResponse += "\"hasScalingModes\":true,";
+      jsonResponse = "{";
+      jsonResponse += "\"hasScalingModes\":true,";
 
-        // Fetch current scaling mode
-        uint8_t currentMode = display->GetCurrentScalingMode();
-        jsonResponse += "\"currentMode\":" + String(currentMode) + ",";
+      // Fetch current scaling mode
+      uint8_t currentMode = display->GetCurrentScalingMode();
+      jsonResponse += "\"currentMode\":" + String(currentMode) + ",";
 
-        // Add the list of available scaling modes
-        jsonResponse += "\"modes\":[";
-        const char **scalingModes = display->GetScalingModes();
-        uint8_t modeCount = display->GetScalingModeCount();
-        for (uint8_t i = 0; i < modeCount; i++) {
-            jsonResponse += "\"" + String(scalingModes[i]) + "\"";
-            if (i < modeCount - 1) {
-                jsonResponse += ",";
-            }
+      // Add the list of available scaling modes
+      jsonResponse += "\"modes\":[";
+      const char **scalingModes = display->GetScalingModes();
+      uint8_t modeCount = display->GetScalingModeCount();
+      for (uint8_t i = 0; i < modeCount; i++) {
+        jsonResponse += "\"" + String(scalingModes[i]) + "\"";
+        if (i < modeCount - 1) {
+          jsonResponse += ",";
         }
-        jsonResponse += "]";
-        jsonResponse += "}";
+      }
+      jsonResponse += "]";
+      jsonResponse += "}";
     } else {
-        jsonResponse = "{\"hasScalingModes\":false}";
+      jsonResponse = "{\"hasScalingModes\":false}";
     }
 
     request->send(200, "application/json", jsonResponse);
-});
+  });
 
-// POST request to save the selected scaling mode
-server.on("/save_scaling_mode", HTTP_POST, [](AsyncWebServerRequest *request) {
-    if (!display) {
-        request->send(500, "text/plain", "Display object not initialized");
-        return;
-    }
+  // POST request to save the selected scaling mode
+  server.on(
+      "/save_scaling_mode", HTTP_POST, [](AsyncWebServerRequest *request) {
+        if (!display) {
+          request->send(500, "text/plain", "Display object not initialized");
+          return;
+        }
 
-    if (request->hasParam("scalingMode", true)) {
-        String scalingModeValue = request->getParam("scalingMode", true)->value();
-        uint8_t scalingMode = scalingModeValue.toInt();
+        if (request->hasParam("scalingMode", true)) {
+          String scalingModeValue =
+              request->getParam("scalingMode", true)->value();
+          uint8_t scalingMode = scalingModeValue.toInt();
 
-        // Update the scaling mode using the global display object
-        display->SetCurrentScalingMode(scalingMode);
-        SaveScale();
-        request->send(200, "text/plain", "Scaling mode updated successfully");
-    } else {
-        request->send(400, "text/plain", "Missing scaling mode parameter");
-    }
-});
+          // Update the scaling mode using the global display object
+          display->SetCurrentScalingMode(scalingMode);
+          SaveScale();
+          request->send(200, "text/plain", "Scaling mode updated successfully");
+        } else {
+          request->send(400, "text/plain", "Missing scaling mode parameter");
+        }
+      });
 
   server.begin();  // Start the web server
 }

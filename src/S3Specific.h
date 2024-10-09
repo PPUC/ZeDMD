@@ -20,4 +20,4 @@
 
 #endif
 
-#endif // VERSION_H
+#endif  // S3SPECIFIC_H

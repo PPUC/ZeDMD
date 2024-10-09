@@ -6,4 +6,4 @@
 #define ZEDMD_VERSION_MINOR 0
 #define ZEDMD_VERSION_PATCH 0
 
-#endif // VERSION_H
+#endif  // VERSION_H

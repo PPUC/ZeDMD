@@ -6,7 +6,7 @@
 
 ///// LILYGO S3 AMOLED DRIVER
 ///// No 24 BIT rendering supported, internally everything will be decoded to 16
-///bit.
+/// bit.
 
 Rm67162Amoled::Rm67162Amoled() : tft(), sprite(&tft), currentScalingMode(0) {
   // On a LilyGo S3 Amoled V2 we need to enable these pins,
@@ -22,28 +22,26 @@ Rm67162Amoled::Rm67162Amoled() : tft(), sprite(&tft), currentScalingMode(0) {
   lcd_setRotation(1);
 }
 
-const char* Rm67162Amoled::scalingModes[4] = { "4x4 square pixels (4x Upscale)", 
-                                                "2x2 square pixels (DMD Effect #1)", 
-                                                "3x3 square pixels (DMD Effect #2)", 
-                                                "Argyle (Diamond) pixels (DMD Effect #3)" };
-
-
+const char *Rm67162Amoled::scalingModes[4] = {
+    "4x4 square pixels (4x Upscale)", "2x2 square pixels (DMD Effect #1)",
+    "3x3 square pixels (DMD Effect #2)",
+    "Argyle (Diamond) pixels (DMD Effect #3)"};
 
 bool Rm67162Amoled::HasScalingModes() {
-  return true; //This display supports subpixel scaling  
+  return true;  // This display supports subpixel scaling
 }
 
-const char** Rm67162Amoled::GetScalingModes()  {
+const char **Rm67162Amoled::GetScalingModes() {
   return scalingModes;  // Return the static array of mode names
 }
 
 uint8_t Rm67162Amoled::GetScalingModeCount() {
-  return sizeof(scalingModes) / sizeof(scalingModes[0]);  // Return the number of available scaling modes
+  return sizeof(scalingModes) /
+         sizeof(
+             scalingModes[0]);  // Return the number of available scaling modes
 }
 
-uint8_t Rm67162Amoled::GetCurrentScalingMode() {
-  return currentScalingMode;
-}
+uint8_t Rm67162Amoled::GetCurrentScalingMode() { return currentScalingMode; }
 
 void Rm67162Amoled::SetCurrentScalingMode(uint8_t mode) {
   if (mode >= 0 && mode <= 3) {  // Ensure the mode is within valid range
@@ -56,13 +54,13 @@ void Rm67162Amoled::DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g,
   // AMOLED works with 16 bit only; 24 bit gets converted
   uint16_t color = sprite.color565(r, g, b);
 
-  sprite.fillRect(x * DISPLAY_SCALE, y * DISPLAY_SCALE + DISPLAY_Y_OFFSET, DISPLAY_SCALE,
-                  DISPLAY_SCALE, color);
+  sprite.fillRect(x * DISPLAY_SCALE, y * DISPLAY_SCALE + DISPLAY_Y_OFFSET,
+                  DISPLAY_SCALE, DISPLAY_SCALE, color);
 }
 
 void Rm67162Amoled::DrawPixel(uint16_t x, uint16_t y, uint16_t color) {
-  sprite.fillRect(x * DISPLAY_SCALE, y * DISPLAY_SCALE + DISPLAY_Y_OFFSET, DISPLAY_SCALE,
-                  DISPLAY_SCALE, color);
+  sprite.fillRect(x * DISPLAY_SCALE, y * DISPLAY_SCALE + DISPLAY_Y_OFFSET,
+                  DISPLAY_SCALE, DISPLAY_SCALE, color);
 }
 
 void Rm67162Amoled::ClearScreen() {
@@ -97,8 +95,8 @@ void Rm67162Amoled::DisplayText(const char *text, uint16_t x, uint16_t y,
         uint16_t color = sprite.color565(r * p, g * p, b * p);
 
         sprite.fillRect((x + pixel + (ti * 4)) * DISPLAY_SCALE,
-                        (y + tj) * DISPLAY_SCALE + DISPLAY_Y_OFFSET, DISPLAY_SCALE, DISPLAY_SCALE,
-                        color);
+                        (y + tj) * DISPLAY_SCALE + DISPLAY_Y_OFFSET,
+                        DISPLAY_SCALE, DISPLAY_SCALE, color);
       }
     }
   }
@@ -107,7 +105,8 @@ void Rm67162Amoled::DisplayText(const char *text, uint16_t x, uint16_t y,
 
 // Speed optimized version
 void IRAM_ATTR Rm67162Amoled::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
-  uint16_t yOffset = ((idx / ZONES_PER_ROW) * ZONE_HEIGHT * DISPLAY_SCALE) + DISPLAY_Y_OFFSET;
+  uint16_t yOffset =
+      ((idx / ZONES_PER_ROW) * ZONE_HEIGHT * DISPLAY_SCALE) + DISPLAY_Y_OFFSET;
   uint16_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH * DISPLAY_SCALE;
 
   // Buffer to store the pixel data in byte format for SPI (2 bytes per pixel)
@@ -213,7 +212,8 @@ void IRAM_ATTR Rm67162Amoled::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
 
 // Speed optimized version
 void IRAM_ATTR Rm67162Amoled::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
-  uint16_t yOffset = ((idx / ZONES_PER_ROW) * ZONE_HEIGHT * DISPLAY_SCALE) + DISPLAY_Y_OFFSET;
+  uint16_t yOffset =
+      ((idx / ZONES_PER_ROW) * ZONE_HEIGHT * DISPLAY_SCALE) + DISPLAY_Y_OFFSET;
   uint16_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH * DISPLAY_SCALE;
 
   // Buffer to store the pixel data in byte format for SPI (2 bytes per pixel)
@@ -253,7 +253,7 @@ void IRAM_ATTR Rm67162Amoled::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
             }
           }
           break;
-        case 2: 
+        case 2:
           // 3x3 center pixels in color, rest black
           for (uint16_t i = 0; i < DISPLAY_SCALE; i++) {
             for (uint16_t j = 0; j < DISPLAY_SCALE; j++) {
@@ -349,7 +349,7 @@ void IRAM_ATTR Rm67162Amoled::FillPanelRaw(uint8_t *pBuffer) {
               break;
             case 3:
               // Argyle (diamond) pattern
-              if ((i == j) || (i + j == DISPLAY_SCALE - 1)) { 
+              if ((i == j) || (i + j == DISPLAY_SCALE - 1)) {
                 drawColor = color;  // Diagonal pixels
               }
               break;
@@ -358,8 +358,8 @@ void IRAM_ATTR Rm67162Amoled::FillPanelRaw(uint8_t *pBuffer) {
           }
 
           // Draw pixel
-          sprite.drawPixel(x * DISPLAY_SCALE + i, y * DISPLAY_SCALE + j + DISPLAY_Y_OFFSET, 
-                           drawColor);
+          sprite.drawPixel(x * DISPLAY_SCALE + i,
+                           y * DISPLAY_SCALE + j + DISPLAY_Y_OFFSET, drawColor);
         }
       }
     }

@@ -38,42 +38,44 @@
 
 #endif
 
-#include "displayDriver.h"
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
+
+#include "displayDriver.h"
 #include "panel.h"  // Include ZeDMD panel constants
 
-
 class LedMatrix : public DisplayDriver {
-private:
-    MatrixPanel_I2S_DMA* dma_display;
-    const uint8_t lumval[16] = {0,  2,  4,  7,  11,  18,  30,  40,
-                                50, 65, 80, 100, 125, 160, 200, 255};
+ private:
+  MatrixPanel_I2S_DMA *dma_display;
+  const uint8_t lumval[16] = {0,  2,  4,  7,   11,  18,  30,  40,
+                              50, 65, 80, 100, 125, 160, 200, 255};
 
-public:
-    LedMatrix(); // Constructor
+ public:
+  LedMatrix();  // Constructor
 
-    bool HasScalingModes();
-    const char** GetScalingModes();
-    uint8_t GetScalingModeCount();
-    uint8_t GetCurrentScalingMode();
-    void SetCurrentScalingMode(uint8_t mode);
+  bool HasScalingModes();
+  const char **GetScalingModes();
+  uint8_t GetScalingModeCount();
+  uint8_t GetCurrentScalingMode();
+  void SetCurrentScalingMode(uint8_t mode);
 
-    void DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g, uint8_t b);
-    void DrawPixel(uint16_t x, uint16_t y, uint16_t color);
-    void ClearScreen();
-    void SetBrightness(uint8_t level);
-    void FillScreen(uint8_t r, uint8_t g, uint8_t b);
-    void DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t r, uint8_t g,
-                 uint8_t b, bool transparent = false, bool inverted = false);
-    void FillZoneRaw(uint8_t idx, uint8_t *pBuffer);
-    void FillZoneRaw565(uint8_t idx, uint8_t *pBuffer);
-    void FillPanelRaw(uint8_t *pBuffer) override;
-    void FillPanelUsingPalette(uint8_t *pBuffer, uint8_t *palette);
+  void DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g, uint8_t b);
+  void DrawPixel(uint16_t x, uint16_t y, uint16_t color);
+  void ClearScreen();
+  void SetBrightness(uint8_t level);
+  void FillScreen(uint8_t r, uint8_t g, uint8_t b);
+  void DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t r,
+                   uint8_t g, uint8_t b, bool transparent = false,
+                   bool inverted = false);
+  void FillZoneRaw(uint8_t idx, uint8_t *pBuffer);
+  void FillZoneRaw565(uint8_t idx, uint8_t *pBuffer);
+  void FillPanelRaw(uint8_t *pBuffer) override;
+  void FillPanelUsingPalette(uint8_t *pBuffer, uint8_t *palette);
 #if !defined(ZEDMD_WIFI)
-    virtual void FillPanelUsingChangedPalette(uint8_t *pBuffer, uint8_t *palette, bool *paletteAffected); 
+  virtual void FillPanelUsingChangedPalette(uint8_t *pBuffer, uint8_t *palette,
+                                            bool *paletteAffected);
 #endif
-    
-    ~LedMatrix(); // Destructor
+
+  ~LedMatrix();  // Destructor
 };
 
-#endif // LEDMATRIX_H
+#endif  // LEDMATRIX_H

@@ -14,4 +14,4 @@ extern uint8_t rgbModeLoaded;
 // Constant array
 extern const uint8_t rgbOrder[3 * 6];
 
-#endif // DISPLAYCONFIG_H
+#endif  // DISPLAYCONFIG_H

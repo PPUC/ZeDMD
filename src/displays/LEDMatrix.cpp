@@ -1,74 +1,68 @@
 #ifdef DISPLAY_LED_MATRIX
 #include "LEDMatrix.h"
+
 #include "displayConfig.h"
 #include "fonts/tiny4x6.h"
 
-
 LedMatrix::LedMatrix() {
-    const uint8_t colorPins1[3] = {R1_PIN, G1_PIN, B1_PIN};
-    const uint8_t colorPins2[3] = {R2_PIN, G2_PIN, B2_PIN};
-    const HUB75_I2S_CFG::i2s_pins pins = {
-        colorPins1[rgbOrder[rgbMode * 3]],
-        colorPins1[rgbOrder[rgbMode * 3 + 1]],
-        colorPins1[rgbOrder[rgbMode * 3 + 2]],
-        colorPins2[rgbOrder[rgbMode * 3]],
-        colorPins2[rgbOrder[rgbMode * 3 + 1]],
-        colorPins2[rgbOrder[rgbMode * 3 + 2]],
-        A_PIN, B_PIN, C_PIN, D_PIN, E_PIN,
-        LAT_PIN, OE_PIN, CLK_PIN
-    };
+  const uint8_t colorPins1[3] = {R1_PIN, G1_PIN, B1_PIN};
+  const uint8_t colorPins2[3] = {R2_PIN, G2_PIN, B2_PIN};
+  const HUB75_I2S_CFG::i2s_pins pins = {colorPins1[rgbOrder[rgbMode * 3]],
+                                        colorPins1[rgbOrder[rgbMode * 3 + 1]],
+                                        colorPins1[rgbOrder[rgbMode * 3 + 2]],
+                                        colorPins2[rgbOrder[rgbMode * 3]],
+                                        colorPins2[rgbOrder[rgbMode * 3 + 1]],
+                                        colorPins2[rgbOrder[rgbMode * 3 + 2]],
+                                        A_PIN,
+                                        B_PIN,
+                                        C_PIN,
+                                        D_PIN,
+                                        E_PIN,
+                                        LAT_PIN,
+                                        OE_PIN,
+                                        CLK_PIN};
 
-    HUB75_I2S_CFG mxconfig(PANEL_WIDTH, PANEL_HEIGHT, PANELS_NUMBER, pins);
-    mxconfig.clkphase = false;
+  HUB75_I2S_CFG mxconfig(PANEL_WIDTH, PANEL_HEIGHT, PANELS_NUMBER, pins);
+  mxconfig.clkphase = false;
 
-    dma_display = new MatrixPanel_I2S_DMA(mxconfig);
-    dma_display->begin();
+  dma_display = new MatrixPanel_I2S_DMA(mxconfig);
+  dma_display->begin();
 }
 
 bool LedMatrix::HasScalingModes() {
-  return false; //This display does not support subpixel scaling  
+  return false;  // This display does not support subpixel scaling
 }
 
-const char** LedMatrix::GetScalingModes()  {
-  return nullptr; 
-}
+const char **LedMatrix::GetScalingModes() { return nullptr; }
 
-uint8_t LedMatrix::GetScalingModeCount() {
-  return 0;
-}
+uint8_t LedMatrix::GetScalingModeCount() { return 0; }
 
-uint8_t LedMatrix::GetCurrentScalingMode() {
-  return 0;
-}
+uint8_t LedMatrix::GetCurrentScalingMode() { return 0; }
 
 void LedMatrix::SetCurrentScalingMode(uint8_t mode) {}
 
-
-void LedMatrix::DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g, uint8_t b) {
-    dma_display->drawPixelRGB888(x, y, r, g, b);
+void LedMatrix::DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g,
+                          uint8_t b) {
+  dma_display->drawPixelRGB888(x, y, r, g, b);
 }
-
 
 void LedMatrix::DrawPixel(uint16_t x, uint16_t y, uint16_t color) {
-    dma_display->drawPixel(x, y, color);
+  dma_display->drawPixel(x, y, color);
 }
 
-
-void LedMatrix::ClearScreen() {
-    dma_display->clearScreen();
-}
-
+void LedMatrix::ClearScreen() { dma_display->clearScreen(); }
 
 void LedMatrix::SetBrightness(uint8_t level) {
-    dma_display->setBrightness8(lumval[level]);
+  dma_display->setBrightness8(lumval[level]);
 }
 
 void LedMatrix::FillScreen(uint8_t r, uint8_t g, uint8_t b) {
-    dma_display->fillScreenRGB888(r, g, b);
+  dma_display->fillScreenRGB888(r, g, b);
 }
 
-void LedMatrix::DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t r, uint8_t g,
-                 uint8_t b, bool transparent, bool inverted) {
+void LedMatrix::DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t r,
+                            uint8_t g, uint8_t b, bool transparent,
+                            bool inverted) {
   for (uint8_t ti = 0; ti < strlen(text); ti++) {
     for (uint8_t tj = 0; tj <= 5; tj++) {
       uint8_t fourPixels = getFontLine(text[ti], tj);
@@ -108,7 +102,8 @@ void IRAM_ATTR LedMatrix::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
   for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
     for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
       uint16_t pos = (y * ZONE_WIDTH + x) * 2;
-      dma_display->drawPixel(x + xOffset, y + yOffset,
+      dma_display->drawPixel(
+          x + xOffset, y + yOffset,
           (((uint16_t)pBuffer[pos + 1]) << 8) + pBuffer[pos]);
     }
   }
@@ -122,7 +117,7 @@ void IRAM_ATTR LedMatrix::FillPanelRaw(uint8_t *pBuffer) {
       pos = (y * TOTAL_WIDTH + x) * 3;
 
       dma_display->drawPixelRGB888(x, y, pBuffer[pos], pBuffer[pos + 1],
-                        pBuffer[pos + 2]);
+                                   pBuffer[pos + 2]);
     }
   }
 }
@@ -142,7 +137,8 @@ void LedMatrix::FillPanelUsingPalette(uint8_t *pBuffer, uint8_t *palette) {
 
 #if !defined(ZEDMD_WIFI)
 
-void LedMatrix::FillPanelUsingChangedPalette(uint8_t *pBuffer, uint8_t *palette, bool *paletteAffected) {
+void LedMatrix::FillPanelUsingChangedPalette(uint8_t *pBuffer, uint8_t *palette,
+                                             bool *paletteAffected) {
   uint16_t pos;
 
   for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
@@ -158,8 +154,5 @@ void LedMatrix::FillPanelUsingChangedPalette(uint8_t *pBuffer, uint8_t *palette,
 }
 #endif
 
-
-LedMatrix::~LedMatrix() {
-    delete dma_display;
-}
+LedMatrix::~LedMatrix() { delete dma_display; }
 #endif

@@ -1046,8 +1046,8 @@ void setup() {
     WiFi.onEvent(WiFiEvent);
     WiFi.begin(ssid.substring(0, ssid_length).c_str(),
                pwd.substring(0, pwd_length).c_str());
-    
-    WiFi.setSleep(false); // WiFi speed improvement on ESP32 S3 and others.
+
+    WiFi.setSleep(false);  // WiFi speed improvement on ESP32 S3 and others.
 
     if (WiFi.waitForConnectResult() != WL_CONNECTED) {
       WiFi.softAP(apSSID, apPassword);  // Start AP if WiFi fails to connect

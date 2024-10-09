@@ -18,7 +18,6 @@ extern uint8_t lumstep;
 extern uint8_t rgbMode;
 extern DisplayDriver *display;
 
-
 // Declare missing functions
 bool SaveWiFiConfig();
 void SaveRgbOrder();
@@ -26,13 +25,14 @@ void SaveLum();
 void SaveScale();
 bool VerifyImage(const char *filename);
 bool DisplayImage(const char *filename);
-DisplayDriver* GetDisplayObject();
+DisplayDriver *GetDisplayObject();
 void RefreshScreen();
 bool SaveScreensaverConfig();
 
 // Functions in webserver.cpp
 void runWebServer();
-void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final);
+void handleUpload(AsyncWebServerRequest *request, String filename, size_t index,
+                  uint8_t *data, size_t len, bool final);
 
 #endif  // WEBSERVER_H
-#endif // ZEDMD_WIFI
+#endif  // ZEDMD_WIFI

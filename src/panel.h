@@ -32,4 +32,4 @@
 #define ZONE_SIZE (ZONE_WIDTH * ZONE_HEIGHT * 3)
 #define RGB565_ZONE_SIZE (ZONE_WIDTH * ZONE_HEIGHT * 2)
 
-#endif // PANEL_H
+#endif  // PANEL_H
