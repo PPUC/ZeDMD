@@ -2,6 +2,8 @@
 #ifndef WEBSERVER_H
 #define WEBSERVER_H
 
+#include <ESPAsyncWebServer.h>
+
 #include "displayDriver.h"
 
 // Global variables to be shared between webserver.cpp and main.cpp

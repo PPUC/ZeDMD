@@ -2,7 +2,6 @@
 #ifdef ZEDMD_WIFI
 #include "webserver.h"
 
-#include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
 
 #include "version.h"
