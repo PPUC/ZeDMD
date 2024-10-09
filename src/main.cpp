@@ -21,7 +21,6 @@
   0  // Screensaver is set to clear screen mode
 #define SCREENSAVER_MODE_SHOW_IMAGE 1  // Screensaver is set to show image mode
 #define SCREENSAVER_DEFAULT_DIM_TIMEOUT 60000  // Default dim timeout
-#define SCREENSAVER_INACTIVITY_TIMEOUT 5000    // Default inactivity timeout
 
 // ----------------- ZeDMD by MK47 & Zedrummer (http://ppuc.org) ---------------
 // - If you have blurry pictures, the display is not clean, try to reduce the
@@ -134,8 +133,6 @@ uint8_t screensaverMode = SCREENSAVER_MODE_CLEAR_SCREEN;
 uint32_t dimTimeout =
     SCREENSAVER_DEFAULT_DIM_TIMEOUT;  // Timeout for dimming the screen
 bool enableDimAfterTimeout = false;   // Should dim after timeout
-
-unsigned long rotNextRotationTime[1];
 #else
 // color rotation
 uint8_t rotFirstColor[MAX_COLOR_ROTATIONS];
@@ -146,6 +143,8 @@ uint8_t tmpColor[3] = {0};
 
 bool upscaling = true;
 #endif
+
+unsigned long displayTimeout = 0;
 
 #ifdef ARDUINO_ESP32_S3_N16R8
 
@@ -698,8 +697,7 @@ void DisplayLogo(void) {
 
   displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
   MireActive = true;
-  // Re-use this variable to save memory
-  rotNextRotationTime[0] = millis();
+  displayTimeout = millis();
 }
 
 void DisplayUpdate(void) {
@@ -728,8 +726,7 @@ void DisplayUpdate(void) {
   free(renderBuffer);
 
   displayStatus = DISPLAY_STATUS_INFO;
-  // Re-use this variable to save memory
-  rotNextRotationTime[0] = millis() - (LOGO_TIMEOUT / 2);
+  displayTimeout = millis() - (LOGO_TIMEOUT / 2);
 }
 
 #if !defined(ZEDMD_WIFI)
@@ -769,8 +766,8 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
       ClearScreen();
     }
 
-    rotNextRotationTime[0] = millis();  // Update timer on every packet
-                                        // received.
+    displayTimeout = millis();  // Update timer on every packet
+                                // received.
 
     if (displayStatus == DISPLAY_STATUS_DIM ||
         displayStatus == DISPLAY_STATUS_SCREEN_SAVER) {
@@ -992,8 +989,7 @@ void ScreenSaver(void) {
     DisplayImage("/screensaver.jpg");
   }
   displayStatus = DISPLAY_STATUS_SCREEN_SAVER;
-  // Re-use this variable to save memory
-  rotNextRotationTime[0] = millis();
+  displayTimeout = millis();
 }
 #endif
 
@@ -1211,21 +1207,12 @@ bool WaitForCtrlChars(void) {
       }
     }
 
-    if (!MireActive && displayStatus == DISPLAY_STATUS_NORMAL_OPERATION &&
-        nCtrlCharFound == 0 &&
-        (millis() - rotNextRotationTime[0]) > SCREENSAVER_INACTIVITY_TIMEOUT) {
-      MireActive = true;
-      displayStatus =
-          DISPLAY_STATUS_INFO;  // Skip to Info page to get to the screensaver
-      return false;
-    }
-
     if (displayStatus == DISPLAY_STATUS_NORMAL_OPERATION && mode64 &&
         nCtrlCharFound == 0) {
       // While waiting for the next frame, perform in-frame color rotations.
       UpdateColorRotations();
     } else if (displayStatus == DISPLAY_STATUS_CLEAR &&
-               (millis() - rotNextRotationTime[0]) > LOGO_TIMEOUT) {
+               (millis() - displayTimeout) > LOGO_TIMEOUT) {
       ScreenSaver();
     }
 
@@ -1262,7 +1249,7 @@ void loop() {
         continue;
       }
 
-      rotNextRotationTime[0] = millis();
+      displayTimeout = millis();
       rgbMode++;
       if (rgbMode > 5) rgbMode = 0;
       SaveRgbOrder();
@@ -1280,7 +1267,7 @@ void loop() {
         continue;
       }
 
-      rotNextRotationTime[0] = millis();
+      displayTimeout = millis();
       lumstep++;
       if (lumstep >= 16) lumstep = 1;
       display->SetBrightness(lumstep);
@@ -1295,7 +1282,7 @@ void loop() {
       }
       ClearScreen();
       MireActive = false;
-    } else if ((millis() - rotNextRotationTime[0]) > LOGO_TIMEOUT) {
+    } else if ((millis() - displayTimeout) > LOGO_TIMEOUT) {
       if (displayStatus == DISPLAY_STATUS_NORMAL_OPERATION) {
         if (rgbMode != rgbModeLoaded) {
           ESP.restart();
@@ -1309,7 +1296,7 @@ void loop() {
       else if (enableDimAfterTimeout &&
                displayStatus == DISPLAY_STATUS_SCREEN_SAVER &&
                screensaverMode == SCREENSAVER_MODE_SHOW_IMAGE) {
-        if ((millis() - rotNextRotationTime[0]) > dimTimeout) {
+        if ((millis() - displayTimeout) > dimTimeout) {
           displayStatus = DISPLAY_STATUS_DIM;
           display->SetBrightness(1);
         }
@@ -1582,7 +1569,7 @@ void loop() {
         Serial.write('A');
         ClearScreen();
         displayStatus = DISPLAY_STATUS_CLEAR;
-        rotNextRotationTime[0] = millis();
+        displayTimeout = millis();
         break;
       }
 
