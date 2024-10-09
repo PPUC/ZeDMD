@@ -91,7 +91,7 @@
 #include <cstring>
 
 #include "displayConfig.h"  // Variables shared by main and displayDrivers
-#include "displayDriver.h"  // Base class for all display drivers'
+#include "displayDriver.h"  // Base class for all display drivers
 #include "miniz/miniz.h"
 #include "panel.h"    // ZeDMD panel constants
 #include "version.h"  // Version constants
@@ -1008,18 +1008,18 @@ void setup() {
   brightnessButton->interval(100);
   brightnessButton->setPressedState(LOW);
 
-#ifdef DISPLAY_RM67162_AMOLED
-  display = new Rm67162Amoled();  // For AMOLED display
-#elif defined(DISPLAY_LED_MATRIX)
-  display = new LedMatrix();  // For LED matrix display
-#endif
-
   bool fileSystemOK;
   if (fileSystemOK = LittleFS.begin()) {
     LoadRgbOrder();
     LoadLum();
     LoadScale();
   }
+
+#ifdef DISPLAY_RM67162_AMOLED
+  display = new Rm67162Amoled();  // For AMOLED display
+#elif defined(DISPLAY_LED_MATRIX)
+  display = new LedMatrix();  // For LED matrix display
+#endif
 
   if (!fileSystemOK) {
     display->DisplayText("Error reading file system!", 4, 6, 255, 255, 255);
