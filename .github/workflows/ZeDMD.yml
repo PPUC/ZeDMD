@@ -29,7 +29,7 @@ jobs:
     needs: [ version ]
     strategy:
       matrix:
-        panels: ['128x32', '256x64', '128x64', '128x32_wifi', '256x64_wifi', '128x64_wifi', 'S3-N16R8_128x32', 'S3-N16R8_256x64', 'S3-N16R8_128x64']
+        panels: ['128x32', '256x64', '128x64', '128x32_wifi', '256x64_wifi', '128x64_wifi', 'S3-N16R8_128x32', 'S3-N16R8_256x64', 'S3-N16R8_128x64', 'LilygoS3Amoled_128x32','LilygoS3Amoled_128x32_wifi']
 
     name: ZeDMD ${{ matrix.panels }}
 
@@ -52,7 +52,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install --upgrade platformio
 
-      - if: (!(matrix.panels == 'S3-N16R8_128x32') && !(matrix.panels == 'S3-N16R8_256x64') && !(matrix.panels == 'S3-N16R8_128x64'))
+      - if: (!(matrix.panels == 'S3-N16R8_128x32') && !(matrix.panels == 'S3-N16R8_256x64') && !(matrix.panels == 'S3-N16R8_128x64') && !(matrix.panels == 'LilygoS3Amoled_128x32') && !(matrix.panels == 'LilygoS3Amoled_128x32_wifi'))
         name: Build ZeDMD
         run: |
           pio run -e ${{ matrix.panels }}
@@ -64,7 +64,7 @@ jobs:
             0x10000 .pio/build/${{ matrix.panels }}/firmware.bin \
             0x210000 .pio/build/${{ matrix.panels }}/littlefs.bin
 
-      - if: (matrix.panels == 'S3-N16R8_128x32' || matrix.panels == 'S3-N16R8_256x64' || matrix.panels == 'S3-N16R8_128x64')
+      - if: (matrix.panels == 'S3-N16R8_128x32' || matrix.panels == 'S3-N16R8_256x64' || matrix.panels == 'S3-N16R8_128x64' || matrix.panels == 'LilygoS3Amoled_128x32' || matrix.panels == 'LilygoS3Amoled_128x32_wifi')
         name: Build ZeDMD S3
         run: |
           pio run -e ${{ matrix.panels }}
@@ -117,6 +117,12 @@ jobs:
             cd ../ZeDMD-S3-N16R8_128x64
             echo "${{ needs.version.outputs.tag }}" > version.txt
             zip ../ZeDMD-S3-N16R8_128x64.zip ZeDMD.bin version.txt
+            cd ../ZeDMD-LilygoS3Amoled_128x32.zip
+            echo "${{ needs.version.outputs.tag }}" > version.txt
+            zip ../ZeDMD-LilygoS3Amoled_128x32.zip ZeDMD.bin version.txt
+            cd ../ZeDMD-LilygoS3Amoled_128x32_wifi.zip
+            echo "${{ needs.version.outputs.tag }}" > version.txt
+            zip ../ZeDMD-LilygoS3Amoled_128x32_wifi.zip ZeDMD.bin version.txt
             cd ..
       - name: Release
         uses: softprops/action-gh-release@v1
@@ -133,3 +139,5 @@ jobs:
             ZeDMD-S3-N16R8_128x32.zip
             ZeDMD-S3-N16R8_256x64.zip
             ZeDMD-S3-N16R8_128x64.zip
+            ZeDMD-S3-LilygoS3Amoled_128x32.zip
+            ZeDMD-S3-LilygoS3Amoled_128x32_wifi.zip

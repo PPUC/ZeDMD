@@ -2,8 +2,8 @@
 #ifdef ZEDMD_WIFI
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
-#include "version.h"
 #include "webserver.h"
+#include "version.h"
 
 #define MINUTES_TO_MS 60000
 
@@ -37,8 +37,7 @@ void handleUpload(AsyncWebServerRequest *request, String filename, size_t index,
       return;
     }
     DisplayImage(imagePath.c_str());
-    request->send(200, "text/plain",
-                  "Image uploaded succesfully");
+    request->send(200, "text/plain", "Image uploaded succesfully");
   }
 }
 
@@ -63,7 +62,7 @@ void runWebServer() {
       if (success) {
         request->send(200, "text/plain", "Config saved successfully!");
         delay(1000);
-        ESP.restart(); 
+        ESP.restart();
       } else {
         request->send(500, "text/plain", "Failed to save config!");
       }
@@ -95,7 +94,7 @@ void runWebServer() {
       rgbMode =
           rgbOrderValue.toInt();  // Convert to integer and set the RGB mode
       RefreshScreen();
-      SaveRgbOrder(); 
+      SaveRgbOrder();
       request->send(200, "text/plain", "RGB Order updated successfully");
     } else {
       request->send(400, "text/plain", "Missing RGB order parameter");
@@ -107,8 +106,8 @@ void runWebServer() {
     if (request->hasParam("brightness", true)) {
       String brightnessValue = request->getParam("brightness", true)->value();
       lumstep = brightnessValue.toInt();
-      SetBrightness(lumstep);
-      SaveLum(); 
+      GetDisplayObject()->SetBrightness(lumstep);
+      SaveLum();
       request->send(200, "text/plain", "Brightness updated successfully");
     } else {
       request->send(400, "text/plain", "Missing brightness parameter");
@@ -116,21 +115,28 @@ void runWebServer() {
   });
 
   // Save screensaver settings
-  server.on("/save_screensaver_settings", HTTP_POST, [](AsyncWebServerRequest *request) {
-        if (request->hasParam("screensaverMode", true) && 
-            request->hasParam("enableDimAfterTimeout", true) &&
-            request->hasParam("dimTime", true)) {
-          screensaverMode = request->getParam("screensaverMode", true)->value().toInt();
-          enableDimAfterTimeout = request->getParam("enableDimAfterTimeout", true)->value().toInt() == 1;
-          dimTimeout = request->getParam("dimTime", true)->value().toInt() * MINUTES_TO_MS;
+  server.on("/save_screensaver_settings", HTTP_POST,
+            [](AsyncWebServerRequest *request) {
+              if (request->hasParam("screensaverMode", true) &&
+                  request->hasParam("enableDimAfterTimeout", true) &&
+                  request->hasParam("dimTime", true)) {
+                screensaverMode =
+                    request->getParam("screensaverMode", true)->value().toInt();
+                enableDimAfterTimeout =
+                    request->getParam("enableDimAfterTimeout", true)
+                        ->value()
+                        .toInt() == 1;
+                dimTimeout =
+                    request->getParam("dimTime", true)->value().toInt() *
+                    MINUTES_TO_MS;
 
-          SaveScreensaverConfig();
+                SaveScreensaverConfig();
 
-          request->send(200, "text/plain", "Settings saved successfully");
-        } else {
-          request->send(400, "text/plain", "Invalid settings");
-        }
-  });
+                request->send(200, "text/plain", "Settings saved successfully");
+              } else {
+                request->send(400, "text/plain", "Invalid settings");
+              }
+            });
 
   server.on("/get_version", HTTP_GET, [](AsyncWebServerRequest *request) {
     String version = String(ZEDMD_VERSION_MAJOR) + "." +
@@ -197,10 +203,65 @@ void runWebServer() {
     json += "\"brightness\":" + String(lumstep) + ",";
     json += "\"screensaverMode\":" + String(screensaverMode) + ",";
     json += "\"enableDimAfterTimeout\":" + String(enableDimAfterTimeout) + ",";
-    json += "\"dimTimeout\":" + String(dimTimeout / MINUTES_TO_MS);
+    json += "\"dimTimeout\":" + String(dimTimeout / MINUTES_TO_MS) + ",";
+    json += "\"scaleMode\":" + String(display->GetCurrentScalingMode());
     json += "}";
     request->send(200, "application/json", json);
   });
+
+server.on("/get_scaling_modes", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!display) {
+        request->send(500, "application/json", "{\"error\":\"Display object not initialized\"}");
+        return;
+    }
+
+    String jsonResponse;
+    if (display->HasScalingModes()) {
+        jsonResponse = "{";
+        jsonResponse += "\"hasScalingModes\":true,";
+
+        // Fetch current scaling mode
+        uint8_t currentMode = display->GetCurrentScalingMode();
+        jsonResponse += "\"currentMode\":" + String(currentMode) + ",";
+
+        // Add the list of available scaling modes
+        jsonResponse += "\"modes\":[";
+        const char **scalingModes = display->GetScalingModes();
+        uint8_t modeCount = display->GetScalingModeCount();
+        for (uint8_t i = 0; i < modeCount; i++) {
+            jsonResponse += "\"" + String(scalingModes[i]) + "\"";
+            if (i < modeCount - 1) {
+                jsonResponse += ",";
+            }
+        }
+        jsonResponse += "]";
+        jsonResponse += "}";
+    } else {
+        jsonResponse = "{\"hasScalingModes\":false}";
+    }
+
+    request->send(200, "application/json", jsonResponse);
+});
+
+// POST request to save the selected scaling mode
+server.on("/save_scaling_mode", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!display) {
+        request->send(500, "text/plain", "Display object not initialized");
+        return;
+    }
+
+    if (request->hasParam("scalingMode", true)) {
+        String scalingModeValue = request->getParam("scalingMode", true)->value();
+        uint8_t scalingMode = scalingModeValue.toInt();
+
+        // Update the scaling mode using the global display object
+        display->SetCurrentScalingMode(scalingMode);
+        SaveScale();
+        request->send(200, "text/plain", "Scaling mode updated successfully");
+    } else {
+        request->send(400, "text/plain", "Missing scaling mode parameter");
+    }
+});
 
   server.begin();  // Start the web server
 }

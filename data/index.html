@@ -250,6 +250,14 @@
                         <span>&#x2600;</span>
                     </div>
                     <br>
+                    <!-- Scaling Mode Dropdown (Hidden by default) -->
+                    <div id="scaling-mode-container" style="display: none;">
+                        <label for="scaling-mode">Scaling Mode:</label>
+                        <select id="scaling-mode" name="scalingMode" onchange="updateScalingMode()">
+                            <!-- Options will be populated dynamically -->
+                        </select>
+                    </div>
+                    <br>
                     <!-- Status Message -->
                     <div id="display-status" class="status-message"></div>
                 </div>
@@ -262,7 +270,7 @@
                     <button onclick="uploadImage()">Upload</button>
                     <button onclick="previewScreensaver()">Preview</button>
                     <img id="preview" src="/screensaver.jpg" alt="Image preview"
-                    style="width: 100%; height: auto; display: block; margin: 0 auto;">
+                        style="width: 100%; height: auto; display: block; margin: 0 auto;">
                     <p id="uploadStatus"></p>
 
                     <!-- Screensaver mode radio buttons -->
@@ -554,8 +562,7 @@
             if (document.querySelector('input[name="screensaverMode"]:checked').value == "showImage") {
                 screensaverMode = 1;
             }
-            else
-            {
+            else {
                 screensaverMode = 0;
             }
 
@@ -610,6 +617,8 @@
                     document.getElementById("dimAfterTime").checked = config.enableDimAfterTimeout == 1;
                     document.getElementById("dimTime").value = config.dimTimeout;
 
+                    document.getElementById("scaling-mode").value = config.scaleMode;
+
                     // Optionally, show/hide dim options if showImage is selected
                     toggleDimOptions();
                 }
@@ -617,9 +626,74 @@
             xhr.send();
         }
 
+        // Function to fetch scaling modes from the server
+        function fetchScalingModes() {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", "/get_scaling_modes", true);
+
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
+                    var scalingModeData = JSON.parse(xhr.responseText);
+                    var scalingModeContainer = document.getElementById('scaling-mode-container');
+                    var scalingModeSelect = document.getElementById('scaling-mode');
+
+                    // Clear the previous options
+                    scalingModeSelect.innerHTML = "";
+
+                    if (scalingModeData.hasScalingModes) {
+                        // Populate the dropdown with scaling modes
+                        scalingModeData.modes.forEach((mode, index) => {
+                            var option = document.createElement("option");
+                            option.value = index;
+                            option.text = mode;
+                            scalingModeSelect.add(option);
+                        });
+
+                        // Set the current scaling mode as selected
+                        scalingModeSelect.value = scalingModeData.currentMode;
+
+                        // Show the dropdown container
+                        scalingModeContainer.style.display = 'block';
+                    } else {
+                        // Hide the dropdown container if no scaling modes are available
+                        scalingModeContainer.style.display = 'none';
+                    }
+                }
+            };
+            xhr.send();
+        }
+
+        // Function to update scaling mode when a new option is selected
+        function updateScalingMode() {
+            var scalingMode = document.getElementById('scaling-mode').value;
+
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", "/save_scaling_mode", true);
+            xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+
+            xhr.onreadystatechange = function () {
+                var displayStatusElem = document.getElementById('display-status');
+                if (xhr.readyState === XMLHttpRequest.DONE) {
+                    if (xhr.status === 200) {
+                        displayStatusElem.innerText = "Scaling mode updated successfully.";
+                        displayStatusElem.classList.remove('error');
+                        displayStatusElem.classList.add('success');
+                    } else {
+                        displayStatusElem.innerText = "Error: Could not update scaling mode.";
+                        displayStatusElem.classList.remove('success');
+                        displayStatusElem.classList.add('error');
+                    }
+                }
+            };
+
+            xhr.send(`scalingMode=${scalingMode}`);
+        }
+
+
         // Load the current settings on page load
         window.onload = function () {
             loadConfig();
+            fetchScalingModes();
         };
     </script>
 </body>

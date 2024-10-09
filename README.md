@@ -9,15 +9,19 @@ It is or will be supported by:
 * [VPX Standalone](https://github.com/vpinball/vpinball/tree/standalone)
 * [PPUC](https://github.com/PPUC/ppuc)
 * [batocera](https://batocera.org/)
-* ...
+* [libdmdutil](https://github.com/vpinball/libdmdutil)
 
 A full tutorial of its installation is available in [English](https://www.pincabpassion.net/t14796-tuto-zedmd-installation-english) and in [French](https://www.pincabpassion.net/t14798-tuto-installation-du-zedmd)
 
-There're four different "flawors" of the ZeDMD firmware. Because it pushes the cheap ESP32 to its limits, we can't provide a unified firmware, so you have to pick the appropriate one:
+There're four different "flavours" of the ZeDMD firmware. Because it pushes the cheap ESP32 to its limits, we can't provide a unified firmware, so you have to pick the appropriate one:
 * ZeDMD: using two 64x32 panels connected over USB
 * ZeDMD HD: using four 64x64 or two 128x64 panels connected over USB
-* ZeDMD WiFi: using two 64x32 panels connected over WiFi (after configured over USB)
-* ZeDMD HD WiFi: using four 64x64 or two 128x64 panels WiFi (after configured over USB)
+* ZeDMD WiFi: using two 64x32 panels connected over WiFi (webinterface or after configured over USB)
+* ZeDMD HD WiFi: using four 64x64 or two 128x64 panels WiFi (webinterface or after configured over USB)
+
+We also offer experimental builds for the newer ESP32 S3 boards. We advise to use the WiFi versions of these builds for now as the serial support of the S3 is not functional at the moment.
+
+There is also a version specific for the [Lilygo S3 Amoled development board](https://www.lilygo.cc/products/t-display-s3-amoled?variant=43506902368437). The build has been tested on the V2.0 non touch without pins. There is no specific pinout, flash the WiFi version and connect. 
 
 Here's a short demo of ZeDMD and ZeDMD HD in parallel:
 
@@ -85,6 +89,10 @@ ZeDMD uses
 * [Bounce2](https://github.com/thomasfredericks/Bounce2)
 * [miniz](https://github.com/richgel999/miniz)
 * [Tiny 4x6 Pixel Font](https://hackaday.io/project/6309-vga-graphics-over-spi-and-serial-vgatonic/log/20759-a-tiny-4x6-pixel-font-that-will-fit-on-almost-any-microcontroller-license-mit)
+* [ESPAsyncWebServer](https://github.com/me-no-dev/ESPAsyncWebServer)
+* [JPEGDEC](https://github.com/bitbank2/JPEGDEC)
+* [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI)
+* [RM67162 with fixes from Nikthefix](https://github.com/Xinyuan-LilyGO/T-Display-S3-AMOLED/issues/2)
 
 ## FAQ
 

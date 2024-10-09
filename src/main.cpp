@@ -1,19 +1,5 @@
-#ifdef ZEDMD_HD
-#define PANEL_WIDTH 128  // Width: number of LEDs for 1 panel.
-#define PANEL_HEIGHT 64  // Height: number of LEDs.
-#define PANELS_NUMBER 2  // Number of horizontally chained panels.
-#elif ZEDMD_HD_HALF
-#define PANEL_WIDTH 128  // Width: number of LEDs for 1 panel.
-#define PANEL_HEIGHT 64  // Height: number of LEDs.
-#define PANELS_NUMBER 1  // Number of horizontally chained panels.
-#endif
-#ifndef PANEL_WIDTH
-#define PANEL_WIDTH 64   // Width: number of LEDs for 1 panel.
-#define PANEL_HEIGHT 32  // Height: number of LEDs.
-#define PANELS_NUMBER 2  // Number of horizontally chained panels.
-#endif
 
-#ifdef ARDUINO_ESP32_S3_N16R8
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
 #define SERIAL_BAUD 8000000  // Serial baud rate.
 #else
 #define SERIAL_BAUD 921600  // Serial baud rate.
@@ -26,19 +12,16 @@
 #define FLOW_CONTROL_TIMEOUT \
   4  // Time in milliseconds to wait before sending a new ready signal.
 #define BUFFER_OVERHEAD 4
-#define R 0
-#define G 1
-#define B 2
-#define DISPLAY_STATUS_SCREEN_SAVER 0           // screen saver
-#define DISPLAY_STATUS_NORMAL_OPERATION 1       // ZeDMD logo / normal operation mode
-#define DISPLAY_STATUS_INFO 2                   // PPUC info screen
-#define DISPLAY_STATUS_CLEAR 3                  // clear screen (command received)
-#define DISPLAY_STATUS_DIM 4                    // dim screen 
-#define SCREENSAVER_MODE_CLEAR_SCREEN 0         // Screensaver is set to clear screen mode
-#define SCREENSAVER_MODE_SHOW_IMAGE 1           // Screensaver is set to show image mode
-#define SCREENSAVER_DEFAULT_DIM_TIMEOUT 60000   // Default dim timeout
-#define SCREENSAVER_INACTIVITY_TIMEOUT 5000     // Default inactivity timeout
-
+#define DISPLAY_STATUS_SCREEN_SAVER 0      // screen saver
+#define DISPLAY_STATUS_NORMAL_OPERATION 1  // ZeDMD logo / normal operation mode
+#define DISPLAY_STATUS_INFO 2              // PPUC info screen
+#define DISPLAY_STATUS_CLEAR 3             // clear screen (command received)
+#define DISPLAY_STATUS_DIM 4               // dim screen
+#define SCREENSAVER_MODE_CLEAR_SCREEN \
+  0  // Screensaver is set to clear screen mode
+#define SCREENSAVER_MODE_SHOW_IMAGE 1  // Screensaver is set to show image mode
+#define SCREENSAVER_DEFAULT_DIM_TIMEOUT 60000  // Default dim timeout
+#define SCREENSAVER_INACTIVITY_TIMEOUT 5000    // Default inactivity timeout
 
 // ----------------- ZeDMD by MK47 & Zedrummer (http://ppuc.org) ---------------
 // - If you have blurry pictures, the display is not clean, try to reduce the
@@ -97,35 +80,33 @@
 // 98: disable debug mode
 // 99: enable debug mode
 
-#define TOTAL_WIDTH (PANEL_WIDTH * PANELS_NUMBER)
-#define TOTAL_WIDTH_PLANE (TOTAL_WIDTH >> 3)
-#ifdef ZEDMD_HD_HALF
-#define TOTAL_HEIGHT (PANEL_HEIGHT / 2)
-#endif
-#ifndef TOTAL_HEIGHT
-#define TOTAL_HEIGHT PANEL_HEIGHT
-#endif
-#define TOTAL_BYTES (TOTAL_WIDTH * TOTAL_HEIGHT * 3)
-#define ZONE_WIDTH (TOTAL_WIDTH / 16)
-#define ZONE_HEIGHT (TOTAL_HEIGHT / 8)
-#define ZONES_PER_ROW (TOTAL_WIDTH / ZONE_WIDTH)
-#define TOTAL_ZONES ((TOTAL_HEIGHT / ZONE_HEIGHT) * ZONES_PER_ROW)
-#define ZONE_SIZE (ZONE_WIDTH * ZONE_HEIGHT * 3)
-#define RGB565_ZONE_SIZE (ZONE_WIDTH * ZONE_HEIGHT * 2)
 #define MAX_COLOR_ROTATIONS 8
 #define LED_CHECK_DELAY 1000  // ms per color
 #define DEBUG_DELAY 5000      // ms
 
 #include <Arduino.h>
 #include <Bounce2.h>
-#include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include <LittleFS.h>
 
 #include <cstring>
 
-#include "fonts/tiny4x6.h"
+#include "displayConfig.h"  // Variables shared by main and displayDrivers
+#include "displayDriver.h"  // Base class for all display drivers'
 #include "miniz/miniz.h"
-#include "version.h"  // Include version constants
+#include "panel.h"    // ZeDMD panel constants
+#include "version.h"  // Version constants
+
+// To save RAM only include the driver we want to use.
+#ifdef DISPLAY_RM67162_AMOLED
+#include "displays/Rm67162Amoled.h"
+#elif defined(DISPLAY_LED_MATRIX)
+#include "displays/LEDMatrix.h"
+#endif
+
+// Specific improvements and #define for the ESP32 S3 series
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
+#include "S3Specific.h"
+#endif
 
 #ifdef ZEDMD_WIFI
 #include <AsyncUDP.h>
@@ -133,11 +114,12 @@
 #include <ESPmDNS.h>
 #include <JPEGDEC.h>
 #include <WiFi.h>
+
 #include "webserver.h"
 
 String ssid;
 String pwd;
-uint16_t port;
+uint16_t port = 3333;
 uint8_t ssid_length;
 uint8_t pwd_length;
 
@@ -149,8 +131,9 @@ const char *apSSID = "ZeDMD-WiFi";
 const char *apPassword = "zedmd1234";
 
 uint8_t screensaverMode = SCREENSAVER_MODE_CLEAR_SCREEN;
-uint32_t dimTimeout = SCREENSAVER_DEFAULT_DIM_TIMEOUT;  // Timeout for dimming the screen
-bool enableDimAfterTimeout = false;         // Should dim after timeout
+uint32_t dimTimeout =
+    SCREENSAVER_DEFAULT_DIM_TIMEOUT;  // Timeout for dimming the screen
+bool enableDimAfterTimeout = false;   // Should dim after timeout
 
 unsigned long rotNextRotationTime[1];
 #else
@@ -165,74 +148,33 @@ bool upscaling = true;
 #endif
 
 #ifdef ARDUINO_ESP32_S3_N16R8
-#define R1_PIN 4
-#define G1_PIN 5
-#define B1_PIN 6
-#define R2_PIN 7
-#define G2_PIN 15
-#define B2_PIN 16
-#define A_PIN 18
-#define B_PIN 8
-// #define C_PIN 3
-#define C_PIN 46
-#define D_PIN 42
-#define E_PIN 1  // required for 1/32 scan panels, like 64x64.
-#define LAT_PIN 40
-#define OE_PIN 2
-#define CLK_PIN 41
 
 #define RGB_ORDER_BUTTON_PIN 45
 #define BRIGHTNESS_BUTTON_PIN 48
+
+#elif defined(DISPLAY_RM67162_AMOLED)
+
+#define RGB_ORDER_BUTTON_PIN 0
+#define BRIGHTNESS_BUTTON_PIN 21
+
 #else
-// Pinout derived from ESP32-HUB75-MatrixPanel-I2S-DMA.h
-#define R1_PIN 25
-#define G1_PIN 26
-#define B1_PIN 27
-#define R2_PIN 14
-#define G2_PIN 12
-#define B2_PIN 13
-#define A_PIN 23
-#define B_PIN 19
-#define C_PIN 5
-#define D_PIN 17
-#define E_PIN \
-  22  // required for 1/32 scan panels, like 64x64. Any available pin would do,
-      // i.e. IO32. If 1/16 scan panels, no connection to this pin needed
-#define LAT_PIN 4
-#define OE_PIN 15
-#define CLK_PIN 16
 
 #define RGB_ORDER_BUTTON_PIN 21
 #define BRIGHTNESS_BUTTON_PIN 33
+
 #endif
 
 #define N_CTRL_CHARS 6
 #define N_INTERMEDIATE_CTR_CHARS 4
 
-// !!!!! NE METTRE AUCUNE VALEURE IDENTIQUE !!!!!
+// !!!!! DO NOT PUT ANY IDENTICAL VALUE !!!!!
 uint8_t CtrlCharacters[6] = {0x5a, 0x65, 0x64, 0x72, 0x75, 0x6d};
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 Bounce2::Button *rgbOrderButton;
 Bounce2::Button *brightnessButton;
 
-const uint8_t lumval[16] = {
-    0,  2,  4,  7,   11,  18,  30,  40,
-    50, 65, 80, 100, 125, 160, 200, 255};  // Non-linear brightness progression
-
-uint8_t rgbMode = 0;
-uint8_t rgbModeLoaded = 0;
-const uint8_t rgbOrder[3 * 6] = {
-    R, G, B,  // rgbMode 0
-    B, R, G,  // rgbMode 1
-    G, B, R,  // rgbMode 2
-    R, B, G,  // rgbMode 3
-    G, R, B,  // rgbMode 4
-    B, G, R   // rgbMode 5
-};
-
-MatrixPanel_I2S_DMA *dma_display;
-
+DisplayDriver *display;
 
 bool debugMode = false;
 bool debugDelayOnError = false;
@@ -245,7 +187,8 @@ uint8_t *renderBuffer;
 bool mode64 = false;
 uint16_t RomWidth = 128, RomHeight = 32;
 uint8_t RomWidthPlane = 128 >> 3;
-uint8_t lumstep = 1;
+uint8_t lumstep = 5;  // Init display on medium brightness, otherwise it starts
+                      // up black on some displays
 bool MireActive = false;
 uint8_t displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
 bool handshakeSucceeded = false;
@@ -257,26 +200,6 @@ uint16_t frameCount = 0;
 uint16_t errorCount = 0;
 uint8_t flowControlCounter = 0;
 
-void DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t r, uint8_t g,
-                 uint8_t b, bool transparent = false, bool inverted = false) {
-  for (uint8_t ti = 0; ti < strlen(text); ti++) {
-    for (uint8_t tj = 0; tj <= 5; tj++) {
-      uint8_t fourPixels = getFontLine(text[ti], tj);
-      for (uint8_t pixel = 0; pixel < 4; pixel++) {
-        bool p = (fourPixels >> (3 - pixel)) & 0x1;
-        if (inverted) {
-          p = !p;
-        }
-        if (transparent && !p) {
-          continue;
-        }
-        dma_display->drawPixelRGB888(x + pixel + (ti * 4), y + tj, r * p, g * p,
-                                     b * p);
-      }
-    }
-  }
-}
-
 void DisplayNumber(uint32_t chf, uint8_t nc, uint16_t x, uint16_t y, uint8_t r,
                    uint8_t g, uint8_t b, bool transparent = false) {
   char text[nc];
@@ -285,11 +208,11 @@ void DisplayNumber(uint32_t chf, uint8_t nc, uint16_t x, uint16_t y, uint8_t r,
   uint8_t i = 0;
   if (strlen(text) < nc) {
     for (; i < (nc - strlen(text)); i++) {
-      DisplayText(" ", x + (4 * i), y, r, g, b, transparent);
+      display->DisplayText(" ", x + (4 * i), y, r, g, b, transparent);
     }
   }
 
-  DisplayText(text, x + (4 * i), y, r, g, b, transparent);
+  display->DisplayText(text, x + (4 * i), y, r, g, b, transparent);
 }
 
 void DisplayVersion(bool logo = false) {
@@ -297,46 +220,49 @@ void DisplayVersion(bool logo = false) {
   char version[10];
   snprintf(version, 9, "%d.%d.%d", ZEDMD_VERSION_MAJOR, ZEDMD_VERSION_MINOR,
            ZEDMD_VERSION_PATCH);
-  DisplayText(version, TOTAL_WIDTH - (strlen(version) * 4), TOTAL_HEIGHT - 5,
-              255 * !logo, 255 * !logo, 255 * !logo, logo);
+  display->DisplayText(version, TOTAL_WIDTH - (strlen(version) * 4),
+                       TOTAL_HEIGHT - 5, 255 * !logo, 255 * !logo, 255 * !logo,
+                       logo);
 }
 
 void DisplayLum(void) {
-  DisplayText(" ", (TOTAL_WIDTH / 2) - 26 - 1, TOTAL_HEIGHT - 6, 128, 128, 128);
-  DisplayText("Brightness:", (TOTAL_WIDTH / 2) - 26, TOTAL_HEIGHT - 6, 128, 128,
-              128);
+  display->DisplayText(" ", (TOTAL_WIDTH / 2) - 26 - 1, TOTAL_HEIGHT - 6, 128,
+                       128, 128);
+  display->DisplayText("Brightness:", (TOTAL_WIDTH / 2) - 26, TOTAL_HEIGHT - 6,
+                       128, 128, 128);
   DisplayNumber(lumstep, 2, (TOTAL_WIDTH / 2) + 18, TOTAL_HEIGHT - 6, 255, 191,
                 0);
 }
 
 void DisplayRGB(void) {
-  DisplayText("red", 0, 0, 0, 0, 0, true, true);
+  display->DisplayText("red", 0, 0, 0, 0, 0, true, true);
   for (uint8_t i = 0; i < 6; i++) {
-    dma_display->drawPixelRGB888(TOTAL_WIDTH - (4 * 4) - 1, i, 0, 0, 0);
-    dma_display->drawPixelRGB888((TOTAL_WIDTH / 2) - (6 * 4) - 1, i, 0, 0, 0);
+    display->DrawPixel(TOTAL_WIDTH - (4 * 4) - 1, i, 0, 0, 0);
+    display->DrawPixel((TOTAL_WIDTH / 2) - (6 * 4) - 1, i, 0, 0, 0);
   }
-  DisplayText("blue", TOTAL_WIDTH - (4 * 4), 0, 0, 0, 0, true, true);
-  DisplayText("green", 0, TOTAL_HEIGHT - 6, 0, 0, 0, true, true);
-  DisplayText("RGB Order:", (TOTAL_WIDTH / 2) - (6 * 4), 0, 128, 128, 128);
+  display->DisplayText("blue", TOTAL_WIDTH - (4 * 4), 0, 0, 0, 0, true, true);
+  display->DisplayText("green", 0, TOTAL_HEIGHT - 6, 0, 0, 0, true, true);
+  display->DisplayText("RGB Order:", (TOTAL_WIDTH / 2) - (6 * 4), 0, 128, 128,
+                       128);
   DisplayNumber(rgbMode, 2, (TOTAL_WIDTH / 2) + (4 * 4), 0, 255, 191, 0);
 }
 
 void DisplayDebugInfo(void) {
   // WTF not comparing against true kills the debug mode
   if (debugMode == true) {
-    DisplayText("Frames:", 0, 0, 255, 255, 255);
+    display->DisplayText("Frames:", 0, 0, 255, 255, 255);
     DisplayNumber(frameCount, 5, 7 * 4, 0, 0, 255, 0);
-    DisplayText("Transfer Buffer:", 0, 6, 255, 255, 255);
+    display->DisplayText("Transfer Buffer:", 0, 6, 255, 255, 255);
     DisplayNumber(transferBufferSize, 5, 16 * 4, 6, 255, 255, 255);
-    DisplayText("Received Bytes: ", 0, 2 * 6, 255, 255, 255);
+    display->DisplayText("Received Bytes: ", 0, 2 * 6, 255, 255, 255);
     DisplayNumber(receivedBytes, 5, 16 * 4, 2 * 6, 255, 255, 255);
-    DisplayText("Miniz Status:", 0, 3 * 6, 255, 255, 255);
+    display->DisplayText("Miniz Status:", 0, 3 * 6, 255, 255, 255);
     DisplayNumber(minizStatus, 6, 13 * 4, 3 * 6, 255, 255, 255);
-    DisplayText("Errors:", 0, 4 * 6, 255, 255, 255);
+    display->DisplayText("Errors:", 0, 4 * 6, 255, 255, 255);
     DisplayNumber(errorCount, 5, 7 * 4, 4 * 6, 255, 0, 0);
 
     DisplayNumber(RomWidth, 3, TOTAL_WIDTH - 6 * 4, 0, 255, 255, 255);
-    DisplayText("x", TOTAL_WIDTH - 3 * 4, 0, 255, 255, 255);
+    display->DisplayText("x", TOTAL_WIDTH - 3 * 4, 0, 255, 255, 255);
     DisplayNumber(RomHeight, 2, TOTAL_WIDTH - 2 * 4, 0, 255, 255, 255);
     DisplayNumber(flowControlCounter, 2, TOTAL_WIDTH - 5 * 4, TOTAL_HEIGHT - 6,
                   0, 0, 255);
@@ -344,14 +270,12 @@ void DisplayDebugInfo(void) {
   }
 }
 
-/// @brief Changes brightness of the LED Matrix panel, needed for webserver
-void SetBrightness(uint8_t level) { 
-  dma_display->setBrightness8(lumval[level]);
-}
+/// @brief Get DisplayDriver object, required for webserver
+DisplayDriver *GetDisplayObject() { return display; }
 
 void ClearScreen() {
-  dma_display->clearScreen();
-  SetBrightness(lumstep);
+  display->ClearScreen();
+  display->SetBrightness(lumstep);
 }
 
 #if !defined(ZEDMD_WIFI)
@@ -620,78 +544,6 @@ void ScaleImage(uint8_t colors) {
 }
 #endif
 
-void FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
-  uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
-  uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
-
-  for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
-    for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
-      uint16_t pos = (y * ZONE_WIDTH + x) * 3;
-
-      dma_display->drawPixelRGB888(x + xOffset, y + yOffset, pBuffer[pos],
-                                   pBuffer[pos + 1], pBuffer[pos + 2]);
-    }
-  }
-}
-
-void FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
-  uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
-  uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
-
-  for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
-    for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
-      uint16_t pos = (y * ZONE_WIDTH + x) * 2;
-      dma_display->drawPixel(
-          x + xOffset, y + yOffset,
-          (((uint16_t)pBuffer[pos + 1]) << 8) + pBuffer[pos]);
-    }
-  }
-}
-
-void FillPanelRaw() {
-  uint16_t pos;
-
-  for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
-    for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
-      pos = (y * TOTAL_WIDTH + x) * 3;
-
-      dma_display->drawPixelRGB888(x, y, renderBuffer[pos],
-                                   renderBuffer[pos + 1],
-                                   renderBuffer[pos + 2]);
-    }
-  }
-}
-
-void FillPanelUsingPalette() {
-  uint16_t pos;
-
-  for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
-    for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
-      pos = renderBuffer[y * TOTAL_WIDTH + x] * 3;
-
-      dma_display->drawPixelRGB888(x, y, palette[pos], palette[pos + 1],
-                                   palette[pos + 2]);
-    }
-  }
-}
-
-#if !defined(ZEDMD_WIFI)
-void FillPanelUsingChangedPalette(bool *paletteAffected) {
-  uint16_t pos;
-
-  for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
-    for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
-      pos = renderBuffer[y * TOTAL_WIDTH + x];
-      if (paletteAffected[pos]) {
-        pos *= 3;
-        dma_display->drawPixelRGB888(x, y, palette[pos], palette[pos + 1],
-                                     palette[pos + 2]);
-      }
-    }
-  }
-}
-#endif
-
 void LoadRgbOrder() {
   File f = LittleFS.open("/ordrergb.val", "r");
   if (!f) return;
@@ -715,6 +567,19 @@ void LoadLum() {
 void SaveLum() {
   File f = LittleFS.open("/lum.val", "w");
   f.write(lumstep);
+  f.close();
+}
+
+void LoadScale() {
+  File f = LittleFS.open("/scale.val", "r");
+  if (!f) return;
+  display->SetCurrentScalingMode(f.read());
+  f.close();
+}
+
+void SaveScale() {
+  File f = LittleFS.open("/scale.val", "w");
+  f.write(display->GetCurrentScalingMode());
   f.close();
 }
 
@@ -773,16 +638,16 @@ bool SaveScreensaverConfig() {
 #endif
 
 void LedTester(void) {
-  dma_display->fillScreenRGB888(255, 0, 0);
+  display->FillScreen(255, 0, 0);
   delay(LED_CHECK_DELAY);
 
-  dma_display->fillScreenRGB888(0, 255, 0);
+  display->FillScreen(0, 255, 0);
   delay(LED_CHECK_DELAY);
 
-  dma_display->fillScreenRGB888(0, 0, 255);
+  display->FillScreen(0, 0, 255);
   delay(LED_CHECK_DELAY);
 
-  dma_display->clearScreen();
+  display->ClearScreen();
 }
 
 void DisplayLogo(void) {
@@ -817,7 +682,7 @@ void DisplayLogo(void) {
 
   f.close();
 
-  FillPanelRaw();
+  display->FillPanelRaw(renderBuffer);
 
   free(renderBuffer);
 
@@ -858,7 +723,7 @@ void DisplayUpdate(void) {
   }
   f.close();
 
-  FillPanelRaw();
+  display->FillPanelRaw(renderBuffer);
 
   free(renderBuffer);
 
@@ -870,7 +735,7 @@ void DisplayUpdate(void) {
 #if !defined(ZEDMD_WIFI)
 void ScreenSaver(void) {
   ClearScreen();
-  dma_display->setBrightness8(lumval[1]);
+  display->SetBrightness(1);
   DisplayVersion();
 
   displayStatus = DISPLAY_STATUS_SCREEN_SAVER;
@@ -904,14 +769,14 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
       ClearScreen();
     }
 
+    rotNextRotationTime[0] = millis();  // Update timer on every packet
+                                        // received.
 
-    rotNextRotationTime[0] = millis(); //Update timer on every packet received.
-
-    if (displayStatus == DISPLAY_STATUS_DIM || displayStatus == DISPLAY_STATUS_SCREEN_SAVER)
-    {
-      SetBrightness(lumstep);
+    if (displayStatus == DISPLAY_STATUS_DIM ||
+        displayStatus == DISPLAY_STATUS_SCREEN_SAVER) {
+      display->SetBrightness(lumstep);
       displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
-    } 
+    }
 
     switch (pPacket[0]) {
       case 10:  // clear screen
@@ -946,8 +811,8 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
         }
 
         for (uint8_t idx = 0; idx < numZones; idx++) {
-          FillZoneRaw(renderBuffer[idx * ZONE_SIZE + idx],
-                      &renderBuffer[idx * ZONE_SIZE + idx + 1]);
+          display->FillZoneRaw(renderBuffer[idx * ZONE_SIZE + idx],
+                               &renderBuffer[idx * ZONE_SIZE + idx + 1]);
         }
 
         free(renderBuffer);
@@ -983,8 +848,9 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
         }
 
         for (uint8_t idx = 0; idx < numZones; idx++) {
-          FillZoneRaw565(renderBuffer[idx * RGB565_ZONE_SIZE + idx],
-                         &renderBuffer[idx * RGB565_ZONE_SIZE + idx + 1]);
+          display->FillZoneRaw565(
+              renderBuffer[idx * RGB565_ZONE_SIZE + idx],
+              &renderBuffer[idx * RGB565_ZONE_SIZE + idx + 1]);
         }
 
         free(renderBuffer);
@@ -1003,108 +869,108 @@ void RunMDNS() {
 }
 
 /// @brief Callback method for Verify JPEG Image
-/// @param pDraw 
+/// @param pDraw
 /// @return Always return 1
 int JPEGDrawNothing(JPEGDRAW *pDraw) {
-    return 1; // Return 1 (success), we are only verifying the image
+  return 1;  // Return 1 (success), we are only verifying the image
 }
 
 /// @brief Verify JPEG image
 bool VerifyImage(const char *filename) {
-    File jpegFile = LittleFS.open(filename, "r");
-    if (!jpegFile) {
-        return false;
-    }
+  File jpegFile = LittleFS.open(filename, "r");
+  if (!jpegFile) {
+    return false;
+  }
 
-    if (!jpeg.open(jpegFile, JPEGDrawNothing)) {
-        jpegFile.close();
-        return false;
-    }
+  if (!jpeg.open(jpegFile, JPEGDrawNothing)) {
+    jpegFile.close();
+    return false;
+  }
 
-    if (jpeg.getWidth() != TOTAL_WIDTH || jpeg.getHeight() != TOTAL_HEIGHT) {
-        jpeg.close();
-        jpegFile.close();
-        return false;
-    }
-
+  if (jpeg.getWidth() != TOTAL_WIDTH || jpeg.getHeight() != TOTAL_HEIGHT) {
     jpeg.close();
     jpegFile.close();
-    return true;
+    return false;
+  }
+
+  jpeg.close();
+  jpegFile.close();
+  return true;
 }
 
 /// @brief Callback method for DisplayImage
-/// @param pDraw 
+/// @param pDraw
 /// @return 1 is success, 0 is failure
 int JPEGDraw(JPEGDRAW *pDraw) {
-    for (int y = 0; y < pDraw->iHeight; y++) {
-        uint16_t *pSrc = (uint16_t *)(pDraw->pPixels + (y * pDraw->iWidth)); 
+  for (int y = 0; y < pDraw->iHeight; y++) {
+    uint16_t *pSrc = (uint16_t *)(pDraw->pPixels + (y * pDraw->iWidth));
 
-        uint8_t *pDest = renderBuffer + ((pDraw->y + y) * 128 * 3) + (pDraw->x * 3);
+    uint8_t *pDest = renderBuffer + ((pDraw->y + y) * 128 * 3) + (pDraw->x * 3);
 
-        for (int x = 0; x < pDraw->iWidth; x++) {
-            // Extract RGB values from RGB565
-            uint16_t color = pSrc[x];
-            uint8_t r = (color >> 11) & 0x1F;
-            uint8_t g = (color >> 5) & 0x3F;
-            uint8_t b = color & 0x1F;
+    for (int x = 0; x < pDraw->iWidth; x++) {
+      // Extract RGB values from RGB565
+      uint16_t color = pSrc[x];
+      uint8_t r = (color >> 11) & 0x1F;
+      uint8_t g = (color >> 5) & 0x3F;
+      uint8_t b = color & 0x1F;
 
-            // Convert 5-bit/6-bit values to 8-bit
-            r = (r << 3) | (r >> 2);
-            g = (g << 2) | (g >> 4);
-            b = (b << 3) | (b >> 2);
+      // Convert 5-bit/6-bit values to 8-bit
+      r = (r << 3) | (r >> 2);
+      g = (g << 2) | (g >> 4);
+      b = (b << 3) | (b >> 2);
 
-            // Store the RGB888 values in the renderBuffer
-            pDest[0] = r;
-            pDest[1] = g;
-            pDest[2] = b;
+      // Store the RGB888 values in the renderBuffer
+      pDest[0] = r;
+      pDest[1] = g;
+      pDest[2] = b;
 
-            // Move to the next pixel in the destination
-            pDest += 3;
-        }
+      // Move to the next pixel in the destination
+      pDest += 3;
     }
-    return 1;  // Success
+  }
+  return 1;  // Success
 }
 
 /// @brief Display JPEG image
 bool DisplayImage(const char *filename) {
-    File jpegFile = LittleFS.open(filename, "r");
-    if (!jpegFile) {
-        return false;
-    }
+  File jpegFile = LittleFS.open(filename, "r");
+  if (!jpegFile) {
+    return false;
+  }
 
-    renderBuffer = (uint8_t *)malloc(TOTAL_WIDTH * TOTAL_HEIGHT * 3);
-    if (renderBuffer == nullptr) {
-        jpegFile.close();
-        return false;
-    }
-
-    if (!jpeg.open(jpegFile, JPEGDraw)) {
-        free(renderBuffer); 
-        jpegFile.close();
-        return false;
-    }
-
-    if (jpeg.getWidth() != TOTAL_WIDTH || jpeg.getHeight() != TOTAL_HEIGHT) {
-        jpeg.close();
-        free(renderBuffer);
-        jpegFile.close();
-        return false;
-    }
-
-    if (jpeg.decode(0, 0, 0) != 1) { // 0, 0 as the starting position; no options
-        jpeg.close();
-        free(renderBuffer);
-        jpegFile.close();
-        return false;
-    }
-
-    FillPanelRaw();
-
-    jpeg.close();
+  renderBuffer = (uint8_t *)malloc(TOTAL_WIDTH * TOTAL_HEIGHT * 3);
+  if (renderBuffer == nullptr) {
     jpegFile.close();
-    free(renderBuffer);
+    return false;
+  }
 
-    return true;
+  if (!jpeg.open(jpegFile, JPEGDraw)) {
+    free(renderBuffer);
+    jpegFile.close();
+    return false;
+  }
+
+  if (jpeg.getWidth() != TOTAL_WIDTH || jpeg.getHeight() != TOTAL_HEIGHT) {
+    jpeg.close();
+    free(renderBuffer);
+    jpegFile.close();
+    return false;
+  }
+
+  if (jpeg.decode(0, 0, 0) != 1) {  // 0, 0 as the starting position; no options
+    jpeg.close();
+    free(renderBuffer);
+    jpegFile.close();
+    return false;
+  }
+
+  display->FillPanelRaw(renderBuffer);
+
+  jpeg.close();
+  jpegFile.close();
+  free(renderBuffer);
+
+  return true;
 }
 
 /// @brief Refreshes screen after color change, needed for webserver
@@ -1115,11 +981,11 @@ void RefreshScreen() {
 }
 
 /// @brief Screensaver method for ZeDMD-WiFi
-/// @param  
+/// @param
 void ScreenSaver(void) {
   if (screensaverMode == SCREENSAVER_MODE_CLEAR_SCREEN) {
     ClearScreen();
-    dma_display->setBrightness8(lumval[1]);
+    display->SetBrightness(1);
     DisplayVersion();
   } else if (screensaverMode == SCREENSAVER_MODE_SHOW_IMAGE) {
     ClearScreen();
@@ -1142,46 +1008,23 @@ void setup() {
   brightnessButton->interval(100);
   brightnessButton->setPressedState(LOW);
 
+#ifdef DISPLAY_RM67162_AMOLED
+  display = new Rm67162Amoled();  // For AMOLED display
+#elif defined(DISPLAY_LED_MATRIX)
+  display = new LedMatrix();  // For LED matrix display
+#endif
+
   bool fileSystemOK;
   if (fileSystemOK = LittleFS.begin()) {
     LoadRgbOrder();
     LoadLum();
+    LoadScale();
   }
 
-  const uint8_t colorPins1[3] = {R1_PIN, G1_PIN, B1_PIN};
-  const uint8_t colorPins2[3] = {R2_PIN, G2_PIN, B2_PIN};
-  const HUB75_I2S_CFG::i2s_pins _pins = {colorPins1[rgbOrder[rgbMode * 3]],
-                                         colorPins1[rgbOrder[rgbMode * 3 + 1]],
-                                         colorPins1[rgbOrder[rgbMode * 3 + 2]],
-                                         colorPins2[rgbOrder[rgbMode * 3]],
-                                         colorPins2[rgbOrder[rgbMode * 3 + 1]],
-                                         colorPins2[rgbOrder[rgbMode * 3 + 2]],
-                                         A_PIN,
-                                         B_PIN,
-                                         C_PIN,
-                                         D_PIN,
-                                         E_PIN,
-                                         LAT_PIN,
-                                         OE_PIN,
-                                         CLK_PIN};
-
-  HUB75_I2S_CFG mxconfig(PANEL_WIDTH,    // width
-                         PANEL_HEIGHT,   // height
-                         PANELS_NUMBER,  // chain length
-                         _pins           // pin mapping
-                         // HUB75_I2S_CFG::FM6126A  // driver chip
-  );
-  mxconfig.clkphase =
-      false;  // change if you have some parts of the panel with a shift
-              // #ifdef ARDUINO_ESP32_S3_N16R8
-              //  mxconfig.double_buff = true; // Turn on double buffer
-              // #endif
-  dma_display = new MatrixPanel_I2S_DMA(mxconfig);
-  dma_display->begin();
-
   if (!fileSystemOK) {
-    DisplayText("Error reading file system!", 4, 6, 255, 255, 255);
-    DisplayText("Try to flash the firmware again.", 4, 14, 255, 255, 255);
+    display->DisplayText("Error reading file system!", 4, 6, 255, 255, 255);
+    display->DisplayText("Try to flash the firmware again.", 4, 14, 255, 255,
+                         255);
     // #ifdef ARDUINO_ESP32_S3_N16R8
     //     display->flipDMABuffer();
     // #endif
@@ -1189,7 +1032,7 @@ void setup() {
   }
 
   Serial.setRxBufferSize(SERIAL_BUFFER);
-#ifndef ARDUINO_ESP32_S3_N16R8
+#if !defined(ARDUINO_ESP32_S3_N16R8) || !defined(DISPLAY_RM67162_AMOLED)
   Serial.setTimeout(SERIAL_TIMEOUT);
 #endif
   Serial.begin(SERIAL_BAUD);
@@ -1203,6 +1046,8 @@ void setup() {
     WiFi.onEvent(WiFiEvent);
     WiFi.begin(ssid.substring(0, ssid_length).c_str(),
                pwd.substring(0, pwd_length).c_str());
+    
+    WiFi.setSleep(false); // WiFi speed improvement on ESP32 S3 and others.
 
     if (WiFi.waitForConnectResult() != WL_CONNECTED) {
       WiFi.softAP(apSSID, apPassword);  // Start AP if WiFi fails to connect
@@ -1215,12 +1060,20 @@ void setup() {
   RunMDNS();       // Start the MDNS server for easy detection
   runWebServer();  // Start the web server
 
-  if (udp.listen(port)) {
-    udp.onPacket(HandlePacket);  // Start listering to ZeDMD UDP traffic
+  IPAddress ip;
+  if (WiFi.getMode() == WIFI_AP) {
+    ip = WiFi.softAPIP();
+  } else if (WiFi.getMode() == WIFI_STA) {
+    ip = WiFi.localIP();
   }
 
-  LoadScreensaverConfig(); // Load Screensaver config, this should be moved to all build 
-                           // configs but we will leave it in WiFi only for now.
+  if (udp.listen(ip, port)) {
+    udp.onPacket(HandlePacket);  // Start listening to ZeDMD UDP traffic
+  }
+
+  LoadScreensaverConfig();  // Load Screensaver config, this should be moved to
+                            // all build configs but we will leave it in WiFi
+                            // only for now.
 
 #endif
 }
@@ -1338,7 +1191,9 @@ void UpdateColorRotations(void) {
     }
   }
 
-  if (rotfound == true) FillPanelUsingChangedPalette(rotPaletteAffected);
+  if (rotfound == true)
+    display->FillPanelUsingChangedPalette(renderBuffer, palette,
+                                          rotPaletteAffected);
 #endif
 }
 
@@ -1356,13 +1211,14 @@ bool WaitForCtrlChars(void) {
       }
     }
 
-    if (!MireActive && displayStatus == DISPLAY_STATUS_NORMAL_OPERATION  && nCtrlCharFound == 0 &&
-     (millis() - rotNextRotationTime[0]) > SCREENSAVER_INACTIVITY_TIMEOUT) {
+    if (!MireActive && displayStatus == DISPLAY_STATUS_NORMAL_OPERATION &&
+        nCtrlCharFound == 0 &&
+        (millis() - rotNextRotationTime[0]) > SCREENSAVER_INACTIVITY_TIMEOUT) {
       MireActive = true;
-      displayStatus = DISPLAY_STATUS_INFO; //Skip to Info page to get to the screensaver
+      displayStatus =
+          DISPLAY_STATUS_INFO;  // Skip to Info page to get to the screensaver
       return false;
     }
-
 
     if (displayStatus == DISPLAY_STATUS_NORMAL_OPERATION && mode64 &&
         nCtrlCharFound == 0) {
@@ -1427,7 +1283,7 @@ void loop() {
       rotNextRotationTime[0] = millis();
       lumstep++;
       if (lumstep >= 16) lumstep = 1;
-      SetBrightness(lumstep);
+      display->SetBrightness(lumstep);
       SaveLum();
       DisplayRGB();
       DisplayLum();
@@ -1445,17 +1301,17 @@ void loop() {
           ESP.restart();
         }
         DisplayUpdate();
-      } else if (displayStatus != DISPLAY_STATUS_SCREEN_SAVER && 
-                displayStatus != DISPLAY_STATUS_DIM) {
+      } else if (displayStatus != DISPLAY_STATUS_SCREEN_SAVER &&
+                 displayStatus != DISPLAY_STATUS_DIM) {
         ScreenSaver();
-      } 
-#ifdef ZEDMD_WIFI      
+      }
+#ifdef ZEDMD_WIFI
       else if (enableDimAfterTimeout &&
-                 displayStatus == DISPLAY_STATUS_SCREEN_SAVER &&
-                 screensaverMode == SCREENSAVER_MODE_SHOW_IMAGE) {
+               displayStatus == DISPLAY_STATUS_SCREEN_SAVER &&
+               screensaverMode == SCREENSAVER_MODE_SHOW_IMAGE) {
         if ((millis() - rotNextRotationTime[0]) > dimTimeout) {
           displayStatus = DISPLAY_STATUS_DIM;
-          SetBrightness(1);
+          display->SetBrightness(1);
         }
       }
 #endif
@@ -1523,7 +1379,7 @@ void loop() {
           // successfully read the chunk.
           Serial.write('A');
         } else {
-          DisplayText("Unsupported chunk size:", 0, 0, 255, 0, 0);
+          display->DisplayText("Unsupported chunk size:", 0, 0, 255, 0, 0);
           DisplayNumber(tmpSerialTransferChunkSize, 5, 24 * 4, 0, 255, 0, 0);
           delay(5000);
 
@@ -1572,7 +1428,7 @@ void loop() {
         if (SerialReadBuffer(tbuf, 1)) {
           if (tbuf[0] > 0 && tbuf[0] < 16) {
             lumstep = tbuf[0];
-            SetBrightness(lumstep);
+            display->SetBrightness(lumstep);
             Serial.write('A');
           } else {
             Serial.write('E');
@@ -1745,7 +1601,7 @@ void loop() {
                          (ZONE_SIZE + 1)) &&
                  (renderBuffer[idx] < TOTAL_ZONES) &&
                  (idx == 0 || renderBuffer[idx] > 0)) {
-            FillZoneRaw(renderBuffer[idx], &renderBuffer[++idx]);
+            display->FillZoneRaw(renderBuffer[idx], &renderBuffer[++idx]);
             idx += ZONE_SIZE;
           }
         }
@@ -1769,7 +1625,7 @@ void loop() {
                          (ZONE_SIZE + 1)) &&
                  (renderBuffer[idx] < TOTAL_ZONES) &&
                  (idx == 0 || renderBuffer[idx] > 0)) {
-            FillZoneRaw565(renderBuffer[idx], &renderBuffer[++idx]);
+            display->FillZoneRaw565(renderBuffer[idx], &renderBuffer[++idx]);
             idx += RGB565_ZONE_SIZE;
           }
         }
@@ -1790,7 +1646,7 @@ void loop() {
         if (SerialReadBuffer(renderBuffer, RomHeight * RomWidth * 3)) {
           mode64 = false;
           ScaleImage(3);
-          FillPanelRaw();
+          display->FillPanelRaw(renderBuffer);
         }
 
         free(renderBuffer);
@@ -1836,7 +1692,7 @@ void loop() {
           mode64 = false;
 
           ScaleImage(1);
-          FillPanelUsingPalette();
+          display->FillPanelUsingPalette(renderBuffer, palette);
 
           free(renderBuffer);
           free(palette);
@@ -1954,7 +1810,7 @@ void loop() {
           mode64 = false;
 
           ScaleImage(1);
-          FillPanelUsingPalette();
+          display->FillPanelUsingPalette(renderBuffer, palette);
 
           free(renderBuffer);
           free(palette);
@@ -2012,7 +1868,7 @@ void loop() {
           mode64 = false;
 
           ScaleImage(1);
-          FillPanelUsingPalette();
+          display->FillPanelUsingPalette(renderBuffer, palette);
 
           free(renderBuffer);
           free(palette);
@@ -2093,7 +1949,7 @@ void loop() {
           mode64 = true;
 
           ScaleImage(1);
-          FillPanelUsingPalette();
+          display->FillPanelUsingPalette(renderBuffer, palette);
 
           free(renderBuffer);
           free(palette);
@@ -2104,7 +1960,7 @@ void loop() {
       }
 #endif
       default: {
-        DisplayText("Unsupported render mode:", 0, 0, 255, 0, 0);
+        display->DisplayText("Unsupported render mode:", 0, 0, 255, 0, 0);
         DisplayNumber(c4, 3, 24 * 4, 0, 255, 0, 0);
         delay(5000);
         Serial.write('E');
