@@ -109,6 +109,7 @@ void runWebServer() {
       String brightnessValue = request->getParam("brightness", true)->value();
       lumstep = brightnessValue.toInt();
       GetDisplayObject()->SetBrightness(lumstep);
+      RefreshScreen();
       SaveLum();
       request->send(200, "text/plain", "Brightness updated successfully");
     } else {

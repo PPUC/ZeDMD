@@ -544,14 +544,14 @@ void ScaleImage(uint8_t colors) {
 #endif
 
 void LoadRgbOrder() {
-  File f = LittleFS.open("/ordrergb.val", "r");
+  File f = LittleFS.open("/rgb_order.val", "r");
   if (!f) return;
   rgbMode = rgbModeLoaded = f.read();
   f.close();
 }
 
 void SaveRgbOrder() {
-  File f = LittleFS.open("/ordrergb.val", "w");
+  File f = LittleFS.open("/rgb_order.val", "w");
   f.write(rgbMode);
   f.close();
 }
