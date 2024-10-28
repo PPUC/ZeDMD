@@ -729,6 +729,13 @@ void DisplayUpdate(void) {
   displayTimeout = millis() - (LOGO_TIMEOUT / 2);
 }
 
+/// @brief Refreshes screen after color change, needed for webserver
+void RefreshSetupScreen() {
+  DisplayLogo();
+  DisplayRGB();
+  DisplayLum();
+}
+
 #if !defined(ZEDMD_WIFI)
 void ScreenSaver(void) {
   ClearScreen();
@@ -737,9 +744,7 @@ void ScreenSaver(void) {
 
   displayStatus = DISPLAY_STATUS_SCREEN_SAVER;
 }
-#endif
-
-#ifdef ZEDMD_WIFI
+#else
 // wifi event handler
 void WiFiEvent(WiFiEvent_t event) {
   switch (event) {
@@ -968,13 +973,6 @@ bool DisplayImage(const char *filename) {
   free(renderBuffer);
 
   return true;
-}
-
-/// @brief Refreshes screen after color change, needed for webserver
-void RefreshScreen() {
-  DisplayLogo();
-  DisplayRGB();
-  DisplayLum();
 }
 
 /// @brief Screensaver method for ZeDMD-WiFi
@@ -1243,9 +1241,7 @@ void loop() {
       }
 
       if (displayStatus != DISPLAY_STATUS_NORMAL_OPERATION) {
-        DisplayLogo();
-        DisplayRGB();
-        DisplayLum();
+        RefreshSetupScreen();
         continue;
       }
 
@@ -1253,17 +1249,13 @@ void loop() {
       rgbMode++;
       if (rgbMode > 5) rgbMode = 0;
       SaveRgbOrder();
-      DisplayLogo();
-      DisplayRGB();
-      DisplayLum();
+      RefreshSetupScreen();
     }
 
     brightnessButton->update();
     if (brightnessButton->pressed()) {
       if (displayStatus != DISPLAY_STATUS_NORMAL_OPERATION) {
-        DisplayLogo();
-        DisplayRGB();
-        DisplayLum();
+        RefreshSetupScreen();
         continue;
       }
 

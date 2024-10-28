@@ -92,12 +92,20 @@ void runWebServer() {
   // Route to save RGB order
   server.on("/save_rgb_order", HTTP_POST, [](AsyncWebServerRequest *request) {
     if (request->hasParam("rgbOrder", true)) {
+      if (rgbModeLoaded != 0) {
+        request->send(200, "text/plain", "ZeDMD needs to reboot first before the RGB order can be adjusted. Try again in a few seconds.");
+
+        rgbMode = 0;
+        SaveRgbOrder();
+        ESP.restart();
+      }
+
       String rgbOrderValue = request->getParam("rgbOrder", true)->value();
       rgbMode =
           rgbOrderValue.toInt();  // Convert to integer and set the RGB mode
-      RefreshScreen();
       SaveRgbOrder();
-      request->send(200, "text/plain", "RGB Order updated successfully");
+      RefreshSetupScreen();
+      request->send(200, "text/plain", "RGB order updated successfully");
     } else {
       request->send(400, "text/plain", "Missing RGB order parameter");
     }
@@ -109,8 +117,8 @@ void runWebServer() {
       String brightnessValue = request->getParam("brightness", true)->value();
       lumstep = brightnessValue.toInt();
       GetDisplayObject()->SetBrightness(lumstep);
-      RefreshScreen();
       SaveLum();
+      RefreshSetupScreen();
       request->send(200, "text/plain", "Brightness updated successfully");
     } else {
       request->send(400, "text/plain", "Missing brightness parameter");

@@ -18,6 +18,7 @@ extern bool enableDimAfterTimeout;
 extern uint8_t screensaverMode;
 extern uint8_t lumstep;
 extern uint8_t rgbMode;
+extern uint8_t rgbModeLoaded;
 extern DisplayDriver *display;
 
 // Declare missing functions
@@ -28,7 +29,7 @@ void SaveScale();
 bool VerifyImage(const char *filename);
 bool DisplayImage(const char *filename);
 DisplayDriver *GetDisplayObject();
-void RefreshScreen();
+void RefreshSetupScreen();
 bool SaveScreensaverConfig();
 
 // Functions in webserver.cpp
