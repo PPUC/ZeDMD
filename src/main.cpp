@@ -123,7 +123,6 @@ uint8_t ssid_length;
 uint8_t pwd_length;
 
 AsyncUDP udp;
-IPAddress ip;
 JPEGDEC jpeg;
 
 const char *apSSID = "ZeDMD-WiFi";
@@ -687,14 +686,6 @@ void DisplayLogo(void) {
 
   DisplayVersion(true);
 
-#ifdef ZEDMD_WIFI
-  if (ip = WiFi.localIP()) {
-    for (uint8_t i = 0; i < 4; i++) {
-      DisplayNumber(ip[i], 3, i * 3 * 4 + i, 0, 200, 200, 200);
-    }
-  }
-#endif
-
   displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
   MireActive = true;
   displayTimeout = millis();
@@ -745,22 +736,6 @@ void ScreenSaver(void) {
   displayStatus = DISPLAY_STATUS_SCREEN_SAVER;
 }
 #else
-// wifi event handler
-void WiFiEvent(WiFiEvent_t event) {
-  switch (event) {
-    case ARDUINO_EVENT_WIFI_STA_GOT_IP:
-      ip = WiFi.localIP();
-      for (int i = 0; i < 4; i++) {
-        DisplayNumber(ip[i], 3, i * 3 * 4 + i, 0, 200, 200, 200);
-      }
-      break;
-    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
-      break;
-    default:
-      break;
-  }
-}
-
 /// @brief Handles the UDP Packet parsing for ZeDMD WiFi and ZeDMD-HD WiFi
 /// @param packet
 void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
@@ -1037,7 +1012,6 @@ void setup() {
 #ifdef ZEDMD_WIFI
   if (LoadWiFiConfig()) {
     WiFi.disconnect(true);
-    WiFi.onEvent(WiFiEvent);
     WiFi.begin(ssid.substring(0, ssid_length).c_str(),
                pwd.substring(0, pwd_length).c_str());
 
@@ -1051,14 +1025,18 @@ void setup() {
     runWebServer();                   // Start web server for AP clients
   }
 
-  RunMDNS();       // Start the MDNS server for easy detection
   runWebServer();  // Start the web server
 
   IPAddress ip;
   if (WiFi.getMode() == WIFI_AP) {
     ip = WiFi.softAPIP();
+    RunMDNS();  // Start the MDNS server for easy detection
   } else if (WiFi.getMode() == WIFI_STA) {
     ip = WiFi.localIP();
+  }
+
+  for (uint8_t i = 0; i < 4; i++) {
+    DisplayNumber(ip[i], 3, i * 3 * 4 + i, 0, 200, 200, 200);
   }
 
   if (udp.listen(ip, port)) {
