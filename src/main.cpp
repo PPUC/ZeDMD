@@ -1254,9 +1254,11 @@ void loop() {
       MireActive = false;
     } else if ((millis() - displayTimeout) > LOGO_TIMEOUT) {
       if (displayStatus == DISPLAY_STATUS_NORMAL_OPERATION) {
+#if !defined(ZEDMD_WIFI)
         if (rgbMode != rgbModeLoaded) {
           ESP.restart();
         }
+#endif
         DisplayUpdate();
       } else if (displayStatus != DISPLAY_STATUS_SCREEN_SAVER &&
                  displayStatus != DISPLAY_STATUS_DIM) {
