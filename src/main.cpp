@@ -1026,11 +1026,11 @@ void setup() {
   }
 
   runWebServer();  // Start the web server
+  RunMDNS();       // Start the MDNS server for easy detection
 
   IPAddress ip;
   if (WiFi.getMode() == WIFI_AP) {
     ip = WiFi.softAPIP();
-    RunMDNS();  // Start the MDNS server for easy detection
   } else if (WiFi.getMode() == WIFI_STA) {
     ip = WiFi.localIP();
   }
