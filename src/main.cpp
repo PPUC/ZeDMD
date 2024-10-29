@@ -91,6 +91,7 @@
 
 #include "displayConfig.h"  // Variables shared by main and displayDrivers
 #include "displayDriver.h"  // Base class for all display drivers
+#include "esp_task_wdt.h"
 #include "miniz/miniz.h"
 #include "panel.h"    // ZeDMD panel constants
 #include "version.h"  // Version constants
@@ -132,6 +133,7 @@ uint8_t screensaverMode = SCREENSAVER_MODE_CLEAR_SCREEN;
 uint32_t dimTimeout =
     SCREENSAVER_DEFAULT_DIM_TIMEOUT;  // Timeout for dimming the screen
 bool enableDimAfterTimeout = false;   // Should dim after timeout
+bool drawingInProgress = false;
 #else
 // color rotation
 uint8_t rotFirstColor[MAX_COLOR_ROTATIONS];
@@ -739,6 +741,9 @@ void ScreenSaver(void) {
 /// @brief Handles the UDP Packet parsing for ZeDMD WiFi and ZeDMD-HD WiFi
 /// @param packet
 void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
+  if (drawingInProgress) return;
+  drawingInProgress = true;
+
   uint8_t *pPacket = packet.data();
   if (packet.length() >= 1) {
     if (MireActive) {
@@ -780,7 +785,12 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
 
           if (minizStatus != MZ_OK ||
               uncompressedBufferSize != (ZONE_SIZE * numZones + numZones)) {
+            free(renderBuffer);
             DisplayDebugInfo();
+            if (debugDelayOnError) {
+              delay(DEBUG_DELAY);
+            }
+            drawingInProgress = false;
             return;
           }
         } else {
@@ -817,7 +827,12 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
           if (minizStatus != MZ_OK ||
               uncompressedBufferSize !=
                   (RGB565_ZONE_SIZE * numZones + numZones)) {
+            free(renderBuffer);
             DisplayDebugInfo();
+            if (debugDelayOnError) {
+              delay(DEBUG_DELAY);
+            }
+            drawingInProgress = false;
             return;
           }
         } else {
@@ -835,6 +850,8 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
       }
     }
   }
+
+  drawingInProgress = false;
 }
 
 /// @brief Handles the mDNS Packets for ZeDMD WiFi, this allows autodiscovery
@@ -967,6 +984,8 @@ void ScreenSaver(void) {
 #endif
 
 void setup() {
+  esp_task_wdt_deinit();
+
   rgbOrderButton = new Bounce2::Button();
   rgbOrderButton->attach(RGB_ORDER_BUTTON_PIN, INPUT_PULLUP);
   rgbOrderButton->interval(100);
