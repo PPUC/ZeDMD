@@ -123,7 +123,6 @@ uint8_t ssid_length;
 uint8_t pwd_length;
 
 AsyncUDP udp;
-IPAddress ip;
 JPEGDEC jpeg;
 
 const char *apSSID = "ZeDMD-WiFi";
@@ -687,14 +686,6 @@ void DisplayLogo(void) {
 
   DisplayVersion(true);
 
-#ifdef ZEDMD_WIFI
-  if (ip = WiFi.localIP()) {
-    for (uint8_t i = 0; i < 4; i++) {
-      DisplayNumber(ip[i], 3, i * 3 * 4 + i, 0, 200, 200, 200);
-    }
-  }
-#endif
-
   displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
   MireActive = true;
   displayTimeout = millis();
@@ -729,6 +720,13 @@ void DisplayUpdate(void) {
   displayTimeout = millis() - (LOGO_TIMEOUT / 2);
 }
 
+/// @brief Refreshes screen after color change, needed for webserver
+void RefreshSetupScreen() {
+  DisplayLogo();
+  DisplayRGB();
+  DisplayLum();
+}
+
 #if !defined(ZEDMD_WIFI)
 void ScreenSaver(void) {
   ClearScreen();
@@ -737,25 +735,7 @@ void ScreenSaver(void) {
 
   displayStatus = DISPLAY_STATUS_SCREEN_SAVER;
 }
-#endif
-
-#ifdef ZEDMD_WIFI
-// wifi event handler
-void WiFiEvent(WiFiEvent_t event) {
-  switch (event) {
-    case ARDUINO_EVENT_WIFI_STA_GOT_IP:
-      ip = WiFi.localIP();
-      for (int i = 0; i < 4; i++) {
-        DisplayNumber(ip[i], 3, i * 3 * 4 + i, 0, 200, 200, 200);
-      }
-      break;
-    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
-      break;
-    default:
-      break;
-  }
-}
-
+#else
 /// @brief Handles the UDP Packet parsing for ZeDMD WiFi and ZeDMD-HD WiFi
 /// @param packet
 void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
@@ -970,13 +950,6 @@ bool DisplayImage(const char *filename) {
   return true;
 }
 
-/// @brief Refreshes screen after color change, needed for webserver
-void RefreshScreen() {
-  DisplayLogo();
-  DisplayRGB();
-  DisplayLum();
-}
-
 /// @brief Screensaver method for ZeDMD-WiFi
 /// @param
 void ScreenSaver(void) {
@@ -1039,7 +1012,6 @@ void setup() {
 #ifdef ZEDMD_WIFI
   if (LoadWiFiConfig()) {
     WiFi.disconnect(true);
-    WiFi.onEvent(WiFiEvent);
     WiFi.begin(ssid.substring(0, ssid_length).c_str(),
                pwd.substring(0, pwd_length).c_str());
 
@@ -1053,14 +1025,18 @@ void setup() {
     runWebServer();                   // Start web server for AP clients
   }
 
-  RunMDNS();       // Start the MDNS server for easy detection
   runWebServer();  // Start the web server
+  RunMDNS();       // Start the MDNS server for easy detection
 
   IPAddress ip;
   if (WiFi.getMode() == WIFI_AP) {
     ip = WiFi.softAPIP();
   } else if (WiFi.getMode() == WIFI_STA) {
     ip = WiFi.localIP();
+  }
+
+  for (uint8_t i = 0; i < 4; i++) {
+    DisplayNumber(ip[i], 3, i * 3 * 4 + i, 0, 200, 200, 200);
   }
 
   if (udp.listen(ip, port)) {
@@ -1243,9 +1219,7 @@ void loop() {
       }
 
       if (displayStatus != DISPLAY_STATUS_NORMAL_OPERATION) {
-        DisplayLogo();
-        DisplayRGB();
-        DisplayLum();
+        RefreshSetupScreen();
         continue;
       }
 
@@ -1253,17 +1227,13 @@ void loop() {
       rgbMode++;
       if (rgbMode > 5) rgbMode = 0;
       SaveRgbOrder();
-      DisplayLogo();
-      DisplayRGB();
-      DisplayLum();
+      RefreshSetupScreen();
     }
 
     brightnessButton->update();
     if (brightnessButton->pressed()) {
       if (displayStatus != DISPLAY_STATUS_NORMAL_OPERATION) {
-        DisplayLogo();
-        DisplayRGB();
-        DisplayLum();
+        RefreshSetupScreen();
         continue;
       }
 
@@ -1284,9 +1254,11 @@ void loop() {
       MireActive = false;
     } else if ((millis() - displayTimeout) > LOGO_TIMEOUT) {
       if (displayStatus == DISPLAY_STATUS_NORMAL_OPERATION) {
+#if !defined(ZEDMD_WIFI)
         if (rgbMode != rgbModeLoaded) {
           ESP.restart();
         }
+#endif
         DisplayUpdate();
       } else if (displayStatus != DISPLAY_STATUS_SCREEN_SAVER &&
                  displayStatus != DISPLAY_STATUS_DIM) {
