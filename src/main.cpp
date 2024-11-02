@@ -927,6 +927,7 @@ int JPEGDraw(JPEGDRAW *pDraw) {
 
 /// @brief Display JPEG image
 bool DisplayImage(const char *filename) {
+  bool status = false;
   File jpegFile = LittleFS.open(filename, "r");
   if (!jpegFile) {
     return false;
@@ -944,27 +945,16 @@ bool DisplayImage(const char *filename) {
     return false;
   }
 
-  if (jpeg.getWidth() != TOTAL_WIDTH || jpeg.getHeight() != TOTAL_HEIGHT) {
-    jpeg.close();
-    free(renderBuffer);
-    jpegFile.close();
-    return false;
+  if (jpeg.getWidth() == TOTAL_WIDTH && jpeg.getHeight() == TOTAL_HEIGHT && jpeg.decode(0, 0, 0) == 1) {
+    display->FillPanelRaw(renderBuffer);
+    status = true;
   }
-
-  if (jpeg.decode(0, 0, 0) != 1) {  // 0, 0 as the starting position; no options
-    jpeg.close();
-    free(renderBuffer);
-    jpegFile.close();
-    return false;
-  }
-
-  display->FillPanelRaw(renderBuffer);
 
   jpeg.close();
   jpegFile.close();
   free(renderBuffer);
 
-  return true;
+  return status;
 }
 
 /// @brief Screensaver method for ZeDMD-WiFi
