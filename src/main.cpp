@@ -334,8 +334,8 @@ void ScaleImage(uint8_t colors) {
 
   uint8_t *panel = (uint8_t *)malloc(RomWidth * RomHeight * colors);
   if (panel == nullptr) {
-    display->DisplayText("Error, out of memory in ScaleImage!", 4, 6, 255, 255,
-                         255);
+    display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
+    display->DisplayText("ScaleImage", 4, 14, 255, 255, 255);
     sleep(30);
     ESP.restart();
   }
@@ -675,8 +675,8 @@ void DisplayLogo(void) {
 
   renderBuffer = (uint8_t *)malloc(TOTAL_BYTES);
   if (renderBuffer == nullptr) {
-    display->DisplayText("Error, out of memory in DisplayLogo!", 4, 6, 255, 255,
-                         255);
+    display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
+    display->DisplayText("DisplayLogo", 4, 14, 255, 255, 255);
     sleep(30);
     ESP.restart();
   }
@@ -723,8 +723,8 @@ void DisplayUpdate(void) {
 
   renderBuffer = (uint8_t *)malloc(TOTAL_BYTES);
   if (renderBuffer == nullptr) {
-    display->DisplayText("Error, out of memory in DisplayUpdate!", 4, 6, 255,
-                         255, 255);
+    display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
+    display->DisplayText("DisplayUpdate", 4, 14, 255, 255, 255);
     sleep(30);
     ESP.restart();
   }
@@ -795,8 +795,8 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
 
         renderBuffer = (uint8_t *)malloc(ZONE_SIZE * numZones + numZones);
         if (renderBuffer == nullptr) {
-          display->DisplayText("Error, out of memory in HandlePacket!", 4, 6,
-                               255, 255, 255);
+          display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
+          display->DisplayText("HandlePacket", 4, 14, 255, 255, 255);
           sleep(30);
           ESP.restart();
         }
@@ -841,8 +841,8 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
         renderBuffer =
             (uint8_t *)malloc(RGB565_ZONE_SIZE * numZones + numZones);
         if (renderBuffer == nullptr) {
-          display->DisplayText("Error, out of memory in HandlePacket!", 4, 6,
-                               255, 255, 255);
+          display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
+          display->DisplayText("HandlePacket", 4, 14, 255, 255, 255);
           sleep(30);
           ESP.restart();
         }
@@ -967,8 +967,8 @@ bool DisplayImage(const char *filename) {
 
   renderBuffer = (uint8_t *)malloc(TOTAL_WIDTH * TOTAL_HEIGHT * 3);
   if (renderBuffer == nullptr) {
-    display->DisplayText("Error, out of memory in DisplayImage!", 4, 6, 255,
-                         255, 255);
+    display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
+    display->DisplayText("DisplayImage", 4, 14, 255, 255, 255);
     sleep(30);
     ESP.restart();
   }
@@ -1109,8 +1109,8 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
 
     transferBuffer = (uint8_t *)malloc(transferBufferSize + BUFFER_OVERHEAD);
     if (transferBuffer == nullptr) {
-      display->DisplayText("Error, out of memory in SerialReadBuffer!", 4, 6,
-                           255, 255, 255);
+      display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
+      display->DisplayText("SerialReadBuffer", 4, 14, 255, 255, 255);
       sleep(30);
       ESP.restart();
     }
@@ -1601,8 +1601,8 @@ void loop() {
         renderBuffer = (uint8_t *)malloc(TOTAL_ZONES * ZONE_SIZE +
                                          ZONES_PER_ROW + BUFFER_OVERHEAD);
         if (renderBuffer == nullptr) {
-          display->DisplayText("Error, out of memory in Command 4!", 4, 6, 255,
-                               255, 255);
+          display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
+          display->DisplayText("Command 4", 4, 14, 255, 255, 255);
           sleep(30);
           ESP.restart();
         }
@@ -1630,8 +1630,8 @@ void loop() {
         renderBuffer = (uint8_t *)malloc(TOTAL_ZONES * RGB565_ZONE_SIZE +
                                          ZONES_PER_ROW + BUFFER_OVERHEAD);
         if (renderBuffer == nullptr) {
-          display->DisplayText("Error, out of memory in Command 5!", 4, 6, 255,
-                               255, 255);
+          display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
+          display->DisplayText("Command 5", 4, 14, 255, 255, 255);
           sleep(30);
           ESP.restart();
         }
@@ -1664,8 +1664,8 @@ void loop() {
                 : RomWidth * RomHeight * 3;
         renderBuffer = (uint8_t *)malloc(renderBufferSize + BUFFER_OVERHEAD);
         if (renderBuffer == nullptr) {
-          display->DisplayText("Error, out of memory in Command 3!", 4, 6, 255,
-                               255, 255);
+          display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
+          display->DisplayText("Command 3", 4, 14, 255, 255, 255);
           sleep(30);
           ESP.restart();
         }
@@ -1686,8 +1686,8 @@ void loop() {
         uint16_t bufferSize = 12 + 2 * RomWidthPlane * RomHeight;
         uint8_t *buffer = (uint8_t *)malloc(bufferSize + BUFFER_OVERHEAD);
         if (buffer == nullptr) {
-          display->DisplayText("Error, out of memory in Command 8!", 4, 6, 255,
-                               255, 255);
+          display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
+          display->DisplayText("Command 8", 4, 14, 255, 255, 255);
           sleep(30);
           ESP.restart();
         }
@@ -1700,16 +1700,16 @@ void loop() {
                   : RomWidth * RomHeight;
           renderBuffer = (uint8_t *)malloc(renderBufferSize);
           if (renderBuffer == nullptr) {
-            display->DisplayText("Error, out of memory in Command 8!", 4, 6,
-                                 255, 255, 255);
+            display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
+            display->DisplayText("Command 8", 4, 14, 255, 255, 255);
             sleep(30);
             ESP.restart();
           }
           memset(renderBuffer, 0, renderBufferSize);
           palette = (uint8_t *)malloc(12);
           if (palette == nullptr) {
-            display->DisplayText("Error, out of memory in Command 5!", 4, 6,
-                                 255, 255, 255);
+            display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
+            display->DisplayText("Command 8", 4, 14, 255, 255, 255);
             sleep(30);
             ESP.restart();
           }
@@ -1753,8 +1753,8 @@ void loop() {
         uint16_t bufferSize = 12 + 4 * RomWidthPlane * RomHeight;
         uint8_t *buffer = (uint8_t *)malloc(bufferSize + BUFFER_OVERHEAD);
         if (buffer == nullptr) {
-          display->DisplayText("Error, out of memory in Command 7!", 4, 6, 255,
-                               255, 255);
+          display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
+          display->DisplayText("Command 7", 4, 14, 255, 255, 255);
           sleep(30);
           ESP.restart();
         }
@@ -1767,16 +1767,16 @@ void loop() {
                   : RomWidth * RomHeight;
           renderBuffer = (uint8_t *)malloc(renderBufferSize);
           if (renderBuffer == nullptr) {
-            display->DisplayText("Error, out of memory in Command 7!", 4, 6,
-                                 255, 255, 255);
+            display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
+            display->DisplayText("Command 7", 4, 14, 255, 255, 255);
             sleep(30);
             ESP.restart();
           }
           memset(renderBuffer, 0, renderBufferSize);
           palette = (uint8_t *)malloc(48);
           if (palette == nullptr) {
-            display->DisplayText("Error, out of memory in Command 7!", 4, 6,
-                                 255, 255, 255);
+            display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
+            display->DisplayText("Command 7", 4, 14, 255, 255, 255);
             sleep(30);
             ESP.restart();
           }
@@ -1890,8 +1890,8 @@ void loop() {
         uint16_t bufferSize = 48 + 4 * RomWidthPlane * RomHeight;
         uint8_t *buffer = (uint8_t *)malloc(bufferSize + BUFFER_OVERHEAD);
         if (buffer == nullptr) {
-          display->DisplayText("Error, out of memory in Command 9!", 4, 6, 255,
-                               255, 255);
+          display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
+          display->DisplayText("Command 9", 4, 14, 255, 255, 255);
           sleep(30);
           ESP.restart();
         }
@@ -1904,16 +1904,16 @@ void loop() {
                   : RomWidth * RomHeight;
           renderBuffer = (uint8_t *)malloc(renderBufferSize);
           if (renderBuffer == nullptr) {
-            display->DisplayText("Error, out of memory in Command 9!", 4, 6,
-                                 255, 255, 255);
+            display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
+            display->DisplayText("Command 9", 4, 14, 255, 255, 255);
             sleep(30);
             ESP.restart();
           }
           memset(renderBuffer, 0, renderBufferSize);
           palette = (uint8_t *)malloc(48);
           if (palette == nullptr) {
-            display->DisplayText("Error, out of memory in Command 9!", 4, 6,
-                                 255, 255, 255);
+            display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
+            display->DisplayText("Command 9", 4, 14, 255, 255, 255);
             sleep(30);
             ESP.restart();
           }
@@ -1968,8 +1968,8 @@ void loop() {
             192 + 6 * RomWidthPlane * RomHeight + 3 * MAX_COLOR_ROTATIONS;
         uint8_t *buffer = (uint8_t *)malloc(bufferSize + BUFFER_OVERHEAD);
         if (buffer == nullptr) {
-          display->DisplayText("Error, out of memory in Command 11!", 4, 6, 255,
-                               255, 255);
+          display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
+          display->DisplayText("Command 11", 4, 14, 255, 255, 255);
           sleep(30);
           ESP.restart();
         }
@@ -1982,16 +1982,16 @@ void loop() {
                   : RomWidth * RomHeight;
           renderBuffer = (uint8_t *)malloc(renderBufferSize);
           if (renderBuffer == nullptr) {
-            display->DisplayText("Error, out of memory in Command 11!", 4, 6,
-                                 255, 255, 255);
+            display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
+            display->DisplayText("Command 11", 4, 14, 255, 255, 255);
             sleep(30);
             ESP.restart();
           }
           memset(renderBuffer, 0, renderBufferSize);
           palette = (uint8_t *)malloc(192);
           if (palette == nullptr) {
-            display->DisplayText("Error, out of memory in Command 11!", 4, 6,
-                                 255, 255, 255);
+            display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
+            display->DisplayText("Command 11", 4, 14, 255, 255, 255);
             sleep(30);
             ESP.restart();
           }
