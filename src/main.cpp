@@ -884,6 +884,10 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
     }
   }
 
+  // An overflow of the unsigned int counters should not be an issue, they
+  // just reset to 0.
+  frameCount++;
+
   drawingInProgress = false;
 }
 
@@ -1070,7 +1074,8 @@ void setup() {
     runWebServer();                   // Start web server for AP clients
   }
 
-#if !defined(ZEDMD_HD) || defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
+#if !defined(ZEDMD_HD) || defined(ARDUINO_ESP32_S3_N16R8) || \
+    defined(DISPLAY_RM67162_AMOLED)
   runWebServer();  // Start the web server
   RunMDNS();       // Start the MDNS server for easy detection
 #endif
@@ -1601,8 +1606,8 @@ void loop() {
 #if !defined(ZEDMD_WIFI)
       case 4:  // mode RGB24 zones streaming
       {
-        renderBuffer = (uint8_t *)malloc(TOTAL_ZONES * ZONE_SIZE +
-                                         ZONES_PER_ROW);
+        renderBuffer =
+            (uint8_t *)malloc(TOTAL_ZONES * ZONE_SIZE + ZONES_PER_ROW);
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 4", 4, 14, 255, 255, 255);
@@ -1630,8 +1635,8 @@ void loop() {
 
       case 5:  // mode RGB565 zones streaming
       {
-        renderBuffer = (uint8_t *)malloc(TOTAL_ZONES * RGB565_ZONE_SIZE +
-                                         ZONES_PER_ROW);
+        renderBuffer =
+            (uint8_t *)malloc(TOTAL_ZONES * RGB565_ZONE_SIZE + ZONES_PER_ROW);
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 5", 4, 14, 255, 255, 255);
