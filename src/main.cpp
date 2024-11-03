@@ -11,7 +11,6 @@
 #define LOGO_TIMEOUT 20000  // Time in milliseconds before the logo vanishes.
 #define FLOW_CONTROL_TIMEOUT \
   4  // Time in milliseconds to wait before sending a new ready signal.
-#define BUFFER_OVERHEAD 4
 #define DISPLAY_STATUS_SCREEN_SAVER 0      // screen saver
 #define DISPLAY_STATUS_NORMAL_OPERATION 1  // ZeDMD logo / normal operation mode
 #define DISPLAY_STATUS_INFO 2              // PPUC info screen
@@ -765,7 +764,9 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
   drawingInProgress = true;
 
   uint8_t *pPacket = packet.data();
-  if (packet.length() >= 1) {
+  receivedBytes = packet.length();
+  if (receivedBytes >= 1) {
+    c4 = pPacket[0];
     if (MireActive) {
       MireActive = false;
       ClearScreen();
@@ -780,7 +781,7 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
       displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
     }
 
-    switch (pPacket[0]) {
+    switch (c4) {
       case 10:  // clear screen
       {
         ClearScreen();
@@ -1069,8 +1070,10 @@ void setup() {
     runWebServer();                   // Start web server for AP clients
   }
 
+#if !defined(ZEDMD_HD) || defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
   runWebServer();  // Start the web server
   RunMDNS();       // Start the MDNS server for easy detection
+#endif
 
   IPAddress ip;
   if (WiFi.getMode() == WIFI_AP) {
@@ -1107,7 +1110,7 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
     transferBufferSize =
         ((((uint16_t)byteArray[0]) << 8) + ((uint16_t)byteArray[1]));
 
-    transferBuffer = (uint8_t *)malloc(transferBufferSize + BUFFER_OVERHEAD);
+    transferBuffer = (uint8_t *)malloc(transferBufferSize);
     if (transferBuffer == nullptr) {
       display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
       display->DisplayText("SerialReadBuffer", 4, 14, 255, 255, 255);
@@ -1159,7 +1162,7 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
   }
 
   if (compression) {
-    mz_ulong uncompressed_buffer_size = (mz_ulong)BufferSize + BUFFER_OVERHEAD;
+    mz_ulong uncompressed_buffer_size = (mz_ulong)BufferSize;
     minizStatus =
         mz_uncompress2(pBuffer, &uncompressed_buffer_size, transferBuffer,
                        (mz_ulong *)&transferBufferSize);
@@ -1369,7 +1372,7 @@ void loop() {
 
       case 2:  // set rom frame size
       {
-        uint8_t tbuf[4 + BUFFER_OVERHEAD];
+        uint8_t tbuf[4];
         if (SerialReadBuffer(tbuf, 4)) {
           RomWidth = (int)(tbuf[0]) + (int)(tbuf[1] << 8);
           RomHeight = (int)(tbuf[2]) + (int)(tbuf[3] << 8);
@@ -1433,7 +1436,7 @@ void loop() {
 
       case 22:  // set brightness
       {
-        uint8_t tbuf[1 + BUFFER_OVERHEAD];
+        uint8_t tbuf[1];
         if (SerialReadBuffer(tbuf, 1)) {
           if (tbuf[0] > 0 && tbuf[0] < 16) {
             lumstep = tbuf[0];
@@ -1448,7 +1451,7 @@ void loop() {
 
       case 23:  // set RGB order
       {
-        uint8_t tbuf[1 + BUFFER_OVERHEAD];
+        uint8_t tbuf[1];
         if (SerialReadBuffer(tbuf, 1)) {
           if (tbuf[0] >= 0 && tbuf[0] < 6) {
             rgbMode = tbuf[0];
@@ -1485,7 +1488,7 @@ void loop() {
       // USB is turned off.
       case 27:  // set WiFi SSID
       {
-        uint8_t tbuf[33 + BUFFER_OVERHEAD];
+        uint8_t tbuf[33];
         if (SerialReadBuffer(tbuf, 33, false)) {
           // tbuf[0] now contains the length of the string
           ssid_length = tbuf[0];
@@ -1502,7 +1505,7 @@ void loop() {
 
       case 28:  // set WiFi password
       {
-        uint8_t tbuf[33 + BUFFER_OVERHEAD];
+        uint8_t tbuf[33];
         if (SerialReadBuffer(tbuf, 33, false)) {
           // tbuf[0] now contains the length of the string
           pwd_length = tbuf[0];
@@ -1519,7 +1522,7 @@ void loop() {
 
       case 29:  // set WiFi port
       {
-        uint8_t tbuf[2 + BUFFER_OVERHEAD];
+        uint8_t tbuf[2];
         if (SerialReadBuffer(tbuf, 2)) {
           port = ((((unsigned int)tbuf[0]) << 8) + ((unsigned int)tbuf[1]));
           Serial.write('A');
@@ -1599,7 +1602,7 @@ void loop() {
       case 4:  // mode RGB24 zones streaming
       {
         renderBuffer = (uint8_t *)malloc(TOTAL_ZONES * ZONE_SIZE +
-                                         ZONES_PER_ROW + BUFFER_OVERHEAD);
+                                         ZONES_PER_ROW);
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 4", 4, 14, 255, 255, 255);
@@ -1628,7 +1631,7 @@ void loop() {
       case 5:  // mode RGB565 zones streaming
       {
         renderBuffer = (uint8_t *)malloc(TOTAL_ZONES * RGB565_ZONE_SIZE +
-                                         ZONES_PER_ROW + BUFFER_OVERHEAD);
+                                         ZONES_PER_ROW);
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 5", 4, 14, 255, 255, 255);
@@ -1662,7 +1665,7 @@ void loop() {
             (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT)
                 ? TOTAL_BYTES
                 : RomWidth * RomHeight * 3;
-        renderBuffer = (uint8_t *)malloc(renderBufferSize + BUFFER_OVERHEAD);
+        renderBuffer = (uint8_t *)malloc(renderBufferSize);
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 3", 4, 14, 255, 255, 255);
@@ -1684,7 +1687,7 @@ void loop() {
                // de 4 pixels par byte
       {
         uint16_t bufferSize = 12 + 2 * RomWidthPlane * RomHeight;
-        uint8_t *buffer = (uint8_t *)malloc(bufferSize + BUFFER_OVERHEAD);
+        uint8_t *buffer = (uint8_t *)malloc(bufferSize);
         if (buffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 8", 4, 14, 255, 255, 255);
@@ -1751,7 +1754,7 @@ void loop() {
                // de 2 pixels par byte
       {
         uint16_t bufferSize = 12 + 4 * RomWidthPlane * RomHeight;
-        uint8_t *buffer = (uint8_t *)malloc(bufferSize + BUFFER_OVERHEAD);
+        uint8_t *buffer = (uint8_t *)malloc(bufferSize);
         if (buffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 7", 4, 14, 255, 255, 255);
@@ -1888,7 +1891,7 @@ void loop() {
                // bits 4*512 bytes)
       {
         uint16_t bufferSize = 48 + 4 * RomWidthPlane * RomHeight;
-        uint8_t *buffer = (uint8_t *)malloc(bufferSize + BUFFER_OVERHEAD);
+        uint8_t *buffer = (uint8_t *)malloc(bufferSize);
         if (buffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 9", 4, 14, 255, 255, 255);
@@ -1966,7 +1969,7 @@ void loop() {
       {
         uint16_t bufferSize =
             192 + 6 * RomWidthPlane * RomHeight + 3 * MAX_COLOR_ROTATIONS;
-        uint8_t *buffer = (uint8_t *)malloc(bufferSize + BUFFER_OVERHEAD);
+        uint8_t *buffer = (uint8_t *)malloc(bufferSize);
         if (buffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 11", 4, 14, 255, 255, 255);
