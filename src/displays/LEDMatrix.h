@@ -10,8 +10,7 @@
 #define B2_PIN 16
 #define A_PIN 18
 #define B_PIN 8
-// #define C_PIN 3
-#define C_PIN 46
+#define C_PIN 3
 #define D_PIN 42
 #define E_PIN 1  // required for 1/32 scan panels, like 64x64.
 #define LAT_PIN 40
