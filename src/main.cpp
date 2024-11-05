@@ -199,6 +199,19 @@ uint16_t frameCount = 0;
 uint16_t errorCount = 0;
 uint8_t flowControlCounter = 0;
 
+void DoRestart(int sec) {
+#ifdef ZEDMD_WIFI
+  MDNS.end();
+  WiFi.disconnect(true);
+#endif
+  sleep(1);
+  ESP.restart();
+}
+
+void Restart() { DoRestart(1); }
+
+void RestartAfterError() { DoRestart(30); }
+
 void DisplayNumber(uint32_t chf, uint8_t nc, uint16_t x, uint16_t y, uint8_t r,
                    uint8_t g, uint8_t b, bool transparent = false) {
   char text[nc];
@@ -335,8 +348,7 @@ void ScaleImage(uint8_t colors) {
   if (panel == nullptr) {
     display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
     display->DisplayText("ScaleImage", 4, 14, 255, 255, 255);
-    sleep(30);
-    ESP.restart();
+    RestartAfterError();
   }
 
   memcpy(panel, renderBuffer, RomWidth * RomHeight * colors);
@@ -676,8 +688,7 @@ void DisplayLogo(void) {
   if (renderBuffer == nullptr) {
     display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
     display->DisplayText("DisplayLogo", 4, 14, 255, 255, 255);
-    sleep(30);
-    ESP.restart();
+    RestartAfterError();
   }
 
   for (uint16_t tj = 0; tj < TOTAL_BYTES; tj += 3) {
@@ -724,8 +735,7 @@ void DisplayUpdate(void) {
   if (renderBuffer == nullptr) {
     display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
     display->DisplayText("DisplayUpdate", 4, 14, 255, 255, 255);
-    sleep(30);
-    ESP.restart();
+    RestartAfterError();
   }
 
   for (uint16_t tj = 0; tj < TOTAL_BYTES; tj++) {
@@ -782,12 +792,34 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
     }
 
     switch (c4) {
+      case 2:  // set rom frame size
+      {
+        RomWidth = (int)(pPacket[4]) + (int)(pPacket[5] << 8);
+        RomHeight = (int)(pPacket[6]) + (int)(pPacket[7] << 8);
+        RomWidthPlane = RomWidth >> 3;
+        break;
+      }
+
       case 10:  // clear screen
       {
         ClearScreen();
         displayStatus = DISPLAY_STATUS_CLEAR;
         break;
       }
+
+      case 98:  // disable debug mode
+      {
+        debugMode = false;
+        break;
+      }
+
+      case 99:  // enable debug mode
+      {
+        debugMode = true;
+        debugDelayOnError = true;
+        break;
+      }
+
       case 4:  // RGB24 Zones Stream
       {
         uint8_t compressed = pPacket[1] & 128;
@@ -798,8 +830,7 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("HandlePacket", 4, 14, 255, 255, 255);
-          sleep(30);
-          ESP.restart();
+          RestartAfterError();
         }
 
         if (compressed == 128) {
@@ -844,8 +875,7 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("HandlePacket", 4, 14, 255, 255, 255);
-          sleep(30);
-          ESP.restart();
+          RestartAfterError();
         }
 
         if (compressed == 128) {
@@ -887,6 +917,8 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
   // An overflow of the unsigned int counters should not be an issue, they
   // just reset to 0.
   frameCount++;
+
+  DisplayDebugInfo();
 
   drawingInProgress = false;
 }
@@ -974,8 +1006,7 @@ bool DisplayImage(const char *filename) {
   if (renderBuffer == nullptr) {
     display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
     display->DisplayText("DisplayImage", 4, 14, 255, 255, 255);
-    sleep(30);
-    ESP.restart();
+    RestartAfterError();
   }
 
   if (!jpeg.open(jpegFile, JPEGDraw)) {
@@ -1119,8 +1150,7 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
     if (transferBuffer == nullptr) {
       display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
       display->DisplayText("SerialReadBuffer", 4, 14, 255, 255, 255);
-      sleep(30);
-      ESP.restart();
+      RestartAfterError();
     }
   } else {
     transferBuffer = pBuffer;
@@ -1273,7 +1303,7 @@ void loop() {
       if (rgbModeLoaded != 0) {
         rgbMode = 0;
         SaveRgbOrder();
-        ESP.restart();
+        Restart();
       }
 
       if (displayStatus != DISPLAY_STATUS_NORMAL_OPERATION) {
@@ -1306,7 +1336,7 @@ void loop() {
 
     if (Serial.available() > 0) {
       if (rgbMode != rgbModeLoaded) {
-        ESP.restart();
+        Restart();
       }
       ClearScreen();
       MireActive = false;
@@ -1314,7 +1344,7 @@ void loop() {
       if (displayStatus == DISPLAY_STATUS_NORMAL_OPERATION) {
 #if !defined(ZEDMD_WIFI)
         if (rgbMode != rgbModeLoaded) {
-          ESP.restart();
+          Restart();
         }
 #endif
         DisplayUpdate();
@@ -1551,7 +1581,7 @@ void loop() {
 
       case 31:  // reset
       {
-        ESP.restart();
+        Restart();
         break;
       }
 
@@ -1611,8 +1641,7 @@ void loop() {
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 4", 4, 14, 255, 255, 255);
-          sleep(30);
-          ESP.restart();
+          RestartAfterError();
         }
         if (SerialReadBuffer(renderBuffer,
                              TOTAL_ZONES * ZONE_SIZE + ZONES_PER_ROW, false)) {
@@ -1640,8 +1669,7 @@ void loop() {
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 5", 4, 14, 255, 255, 255);
-          sleep(30);
-          ESP.restart();
+          RestartAfterError();
         }
         if (SerialReadBuffer(renderBuffer,
                              TOTAL_ZONES * RGB565_ZONE_SIZE + ZONES_PER_ROW,
@@ -1674,8 +1702,7 @@ void loop() {
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 3", 4, 14, 255, 255, 255);
-          sleep(30);
-          ESP.restart();
+          RestartAfterError();
         }
 
         if (SerialReadBuffer(renderBuffer, RomHeight * RomWidth * 3)) {
@@ -1696,8 +1723,7 @@ void loop() {
         if (buffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 8", 4, 14, 255, 255, 255);
-          sleep(30);
-          ESP.restart();
+          RestartAfterError();
         }
 
         if (SerialReadBuffer(buffer, bufferSize)) {
@@ -1710,16 +1736,14 @@ void loop() {
           if (renderBuffer == nullptr) {
             display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
             display->DisplayText("Command 8", 4, 14, 255, 255, 255);
-            sleep(30);
-            ESP.restart();
+            RestartAfterError();
           }
           memset(renderBuffer, 0, renderBufferSize);
           palette = (uint8_t *)malloc(12);
           if (palette == nullptr) {
             display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
             display->DisplayText("Command 8", 4, 14, 255, 255, 255);
-            sleep(30);
-            ESP.restart();
+            RestartAfterError();
           }
           memcpy(palette, buffer, 12);
 
@@ -1763,8 +1787,7 @@ void loop() {
         if (buffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 7", 4, 14, 255, 255, 255);
-          sleep(30);
-          ESP.restart();
+          RestartAfterError();
         }
 
         if (SerialReadBuffer(buffer, bufferSize)) {
@@ -1777,16 +1800,14 @@ void loop() {
           if (renderBuffer == nullptr) {
             display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
             display->DisplayText("Command 7", 4, 14, 255, 255, 255);
-            sleep(30);
-            ESP.restart();
+            RestartAfterError();
           }
           memset(renderBuffer, 0, renderBufferSize);
           palette = (uint8_t *)malloc(48);
           if (palette == nullptr) {
             display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
             display->DisplayText("Command 7", 4, 14, 255, 255, 255);
-            sleep(30);
-            ESP.restart();
+            RestartAfterError();
           }
           memcpy(palette, buffer, 48);
 
@@ -1900,8 +1921,7 @@ void loop() {
         if (buffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 9", 4, 14, 255, 255, 255);
-          sleep(30);
-          ESP.restart();
+          RestartAfterError();
         }
 
         if (SerialReadBuffer(buffer, bufferSize)) {
@@ -1914,16 +1934,14 @@ void loop() {
           if (renderBuffer == nullptr) {
             display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
             display->DisplayText("Command 9", 4, 14, 255, 255, 255);
-            sleep(30);
-            ESP.restart();
+            RestartAfterError();
           }
           memset(renderBuffer, 0, renderBufferSize);
           palette = (uint8_t *)malloc(48);
           if (palette == nullptr) {
             display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
             display->DisplayText("Command 9", 4, 14, 255, 255, 255);
-            sleep(30);
-            ESP.restart();
+            RestartAfterError();
           }
           memcpy(palette, buffer, 48);
 
@@ -1978,8 +1996,7 @@ void loop() {
         if (buffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 11", 4, 14, 255, 255, 255);
-          sleep(30);
-          ESP.restart();
+          RestartAfterError();
         }
 
         if (SerialReadBuffer(buffer, bufferSize)) {
@@ -1992,16 +2009,14 @@ void loop() {
           if (renderBuffer == nullptr) {
             display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
             display->DisplayText("Command 11", 4, 14, 255, 255, 255);
-            sleep(30);
-            ESP.restart();
+            RestartAfterError();
           }
           memset(renderBuffer, 0, renderBufferSize);
           palette = (uint8_t *)malloc(192);
           if (palette == nullptr) {
             display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
             display->DisplayText("Command 11", 4, 14, 255, 255, 255);
-            sleep(30);
-            ESP.restart();
+            RestartAfterError();
           }
           memcpy(palette, buffer, 192);
 

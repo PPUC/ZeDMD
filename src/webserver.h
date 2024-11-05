@@ -22,6 +22,7 @@ extern uint8_t rgbModeLoaded;
 extern DisplayDriver *display;
 
 // Declare missing functions
+void Restart();
 bool SaveWiFiConfig();
 void SaveRgbOrder();
 void SaveLum();

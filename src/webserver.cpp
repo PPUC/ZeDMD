@@ -5,6 +5,7 @@
 #include <LittleFS.h>
 
 #include "webserver.h"
+#include "panel.h"  // Include ZeDMD panel constants
 #include "version.h"
 
 #define MINUTES_TO_MS 60000
@@ -63,8 +64,7 @@ void runWebServer() {
       bool success = SaveWiFiConfig();
       if (success) {
         request->send(200, "text/plain", "Config saved successfully!");
-        delay(1000);
-        ESP.restart();
+        Restart();
       } else {
         request->send(500, "text/plain", "Failed to save config!");
       }
@@ -93,11 +93,13 @@ void runWebServer() {
   server.on("/save_rgb_order", HTTP_POST, [](AsyncWebServerRequest *request) {
     if (request->hasParam("rgbOrder", true)) {
       if (rgbModeLoaded != 0) {
-        request->send(200, "text/plain", "ZeDMD needs to reboot first before the RGB order can be adjusted. Try again in a few seconds.");
+        request->send(200, "text/plain",
+                      "ZeDMD needs to reboot first before the RGB order can be "
+                      "adjusted. Try again in a few seconds.");
 
         rgbMode = 0;
         SaveRgbOrder();
-        ESP.restart();
+        Restart();
       }
 
       String rgbOrderValue = request->getParam("rgbOrder", true)->value();
@@ -156,6 +158,22 @@ void runWebServer() {
     request->send(200, "text/plain", version);
   });
 
+  server.on("/get_height", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", String(TOTAL_HEIGHT));
+  });
+
+  server.on("/get_width", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", String(TOTAL_WIDTH));
+  });
+
+  server.on("/get_s3", HTTP_GET, [](AsyncWebServerRequest *request) {
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
+    request->send(200, "text/plain", String(1));
+#elif
+    request->send(200, "text/plain", String(0));
+#endif
+  });
+
   server.on("/ppuc.png", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(LittleFS, "/ppuc.png", "image/png");
   });
@@ -167,8 +185,7 @@ void runWebServer() {
   server.on("/reset_wifi", HTTP_POST, [](AsyncWebServerRequest *request) {
     LittleFS.remove("/wifi_config.txt");  // Remove Wi-Fi config
     request->send(200, "text/plain", "Wi-Fi reset successful.");
-    delay(1000);
-    ESP.restart();  // Restart the device
+    Restart();  // Restart the device
   });
 
   // Handle image upload
