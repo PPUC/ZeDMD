@@ -16,11 +16,15 @@ A full tutorial of its installation is available in [English](https://www.pincab
 Meanwhile, there're different "flavours" of the ZeDMD firmware. Because it pushes the cheap ESP32 to its limits, we can't provide a unified firmware, so you have to pick the appropriate one:
 * ZeDMD: using two 64x32 panels driven by an ESP32 connected over USB
 * ZeDMD HD: using four 64x64 or two 128x64 panels driven by an ESP32 connected over USB
+* ZeDMD HALF: using one 128x64 panel driven by an ESP32 connected over USB
 * ZeDMD WiFi: using two 64x32 panels driven by an ESP32 connected over WiFi
+* ZeDMD HALF WiFi: using one 128x64 panel driven by an ESP32 connected over WiFi
 * ZeDMD S3: using two 64x32 panels driven by an ESP32 S3 N16R8 connected over USB
 * ZeDMD S3 HD: using four 64x64 or two 128x64 panels  driven by an ESP32 S3 N16R8 connected over USB
+* ZeDMD S3 HALF: using one 128x64 panel driven by an ESP32 S3 N16R8 connected over USB
 * ZeDMD S3 WiFi: using two 64x32 panels  driven by an ESP32 S3 N16R8 connected over WiFi
 * ZeDMD S3 HD WiFi: using four 64x64 or two 128x64 panels driven by an ESP32 S3 N16R8 connected over WiFi
+* ZeDMD S3 HALF WiFi: using one 128x64 panel driven by an ESP32 S3 N16R8 connected over WiFi
 * ZeDMD S3 AMOLED: using a small OLED driven by a LilyGo AMOLED T-Display-S3 ESP32-S3 connected via USB
 * ZeDMD S3 AMOLED WiFi: using a small OLED driven by a LilyGo AMOLED T-Display-S3 ESP32-S3 connected via WiFi
 
