@@ -52,7 +52,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install --upgrade platformio
 
-      - if: (matrix.panels == '128x32' || matrix.panels == '256x64'|| matrix.panels == '128x6' || matrix.panels == '128x32_wifi'|| matrix.panels == '128x64_wifi')
+      - if: (matrix.panels == '128x32' || matrix.panels == '256x64'|| matrix.panels == '128x64' || matrix.panels == '128x32_wifi'|| matrix.panels == '128x64_wifi')
         name: Build ZeDMD
         run: |
           pio run -e ${{ matrix.panels }}
