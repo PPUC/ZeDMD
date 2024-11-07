@@ -1080,13 +1080,6 @@ void setup() {
     while (true);
   }
 
-  Serial.setRxBufferSize(SERIAL_BUFFER);
-#if !defined(ARDUINO_ESP32_S3_N16R8) || !defined(DISPLAY_RM67162_AMOLED)
-  Serial.setTimeout(SERIAL_TIMEOUT);
-#endif
-  Serial.begin(SERIAL_BAUD);
-  while (!Serial);
-
   DisplayLogo();
 
 #ifdef ZEDMD_WIFI
@@ -1129,10 +1122,17 @@ void setup() {
   LoadScreensaverConfig();  // Load Screensaver config, this should be moved to
                             // all build configs but we will leave it in WiFi
                             // only for now.
-
+#else
+  Serial.setRxBufferSize(SERIAL_BUFFER);
+#if !defined(ARDUINO_ESP32_S3_N16R8) || !defined(DISPLAY_RM67162_AMOLED)
+  Serial.setTimeout(SERIAL_TIMEOUT);
+#endif
+  Serial.begin(SERIAL_BAUD);
+  while (!Serial);
 #endif
 }
 
+#if !defined(ZEDMD_WIFI)
 bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
                       bool fixedSize = true) {
   memset(pBuffer, 0, BufferSize);
@@ -1227,7 +1227,6 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
 }
 
 void UpdateColorRotations(void) {
-#if !defined(ZEDMD_WIFI)
   bool rotPaletteAffected[64] = {0};
   unsigned long actime = millis();
   bool rotfound = false;
@@ -1254,7 +1253,6 @@ void UpdateColorRotations(void) {
   if (rotfound == true)
     display->FillPanelUsingChangedPalette(renderBuffer, palette,
                                           rotPaletteAffected);
-#endif
 }
 
 bool WaitForCtrlChars(void) {
@@ -1295,6 +1293,7 @@ bool WaitForCtrlChars(void) {
 
   return true;
 }
+#endif
 
 void loop() {
   while (MireActive) {
@@ -1334,13 +1333,16 @@ void loop() {
       DisplayLum();
     }
 
+#if !defined(ZEDMD_WIFI)
     if (Serial.available() > 0) {
       if (rgbMode != rgbModeLoaded) {
         Restart();
       }
       ClearScreen();
       MireActive = false;
-    } else if ((millis() - displayTimeout) > LOGO_TIMEOUT) {
+    } else
+#endif
+        if ((millis() - displayTimeout) > LOGO_TIMEOUT) {
       if (displayStatus == DISPLAY_STATUS_NORMAL_OPERATION) {
 #if !defined(ZEDMD_WIFI)
         if (rgbMode != rgbModeLoaded) {
@@ -1365,6 +1367,7 @@ void loop() {
     }
   }
 
+#if !defined(ZEDMD_WIFI)
   // After handshake, send a (R)eady signal to indicate that a new command could
   // be sent. The client has to wait for it to avoid buffer issues. The
   // handshake itself works without it.
@@ -1455,7 +1458,6 @@ void loop() {
         break;
       }
 
-#if !defined(ZEDMD_WIFI)
       case 20:  // turn off upscaling
       {
         upscaling = false;
@@ -1467,7 +1469,6 @@ void loop() {
         upscaling = true;
         Serial.write('A');
         break;
-#endif
 
       case 22:  // set brightness
       {
@@ -1517,65 +1518,11 @@ void loop() {
         break;
       }
 
-#ifdef ZEDMD_WIFI
-      // These are one time programmig options over USB until ZeDMD could
-      // establish the WiFi Connection at startup. When WiFi is finally active,
-      // USB is turned off.
-      case 27:  // set WiFi SSID
-      {
-        uint8_t tbuf[33];
-        if (SerialReadBuffer(tbuf, 33, false)) {
-          // tbuf[0] now contains the length of the string
-          ssid_length = tbuf[0];
-          char *tmp = (char *)malloc(ssid_length);
-          memcpy(tmp, &tbuf[1], ssid_length);
-          ssid = String(tmp);
-          free(tmp);
-          Serial.write('A');
-        } else {
-          Serial.write('E');
-        }
-        break;
-      }
-
-      case 28:  // set WiFi password
-      {
-        uint8_t tbuf[33];
-        if (SerialReadBuffer(tbuf, 33, false)) {
-          // tbuf[0] now contains the length of the string
-          pwd_length = tbuf[0];
-          char *tmp = (char *)malloc(pwd_length);
-          memcpy(tmp, &tbuf[1], pwd_length);
-          pwd = String(tmp);
-          free(tmp);
-          Serial.write('A');
-        } else {
-          Serial.write('E');
-        }
-        break;
-      }
-
-      case 29:  // set WiFi port
-      {
-        uint8_t tbuf[2];
-        if (SerialReadBuffer(tbuf, 2)) {
-          port = ((((unsigned int)tbuf[0]) << 8) + ((unsigned int)tbuf[1]));
-          Serial.write('A');
-        } else {
-          Serial.write('E');
-        }
-        break;
-      }
-#endif
-
       case 30:  // save settings
       {
         Serial.write('A');
         SaveLum();
         SaveRgbOrder();
-#ifdef ZEDMD_WIFI
-        SaveWiFiConfig();
-#endif
         break;
       }
 
@@ -1633,7 +1580,6 @@ void loop() {
         break;
       }
 
-#if !defined(ZEDMD_WIFI)
       case 4:  // mode RGB24 zones streaming
       {
         renderBuffer =
@@ -2080,7 +2026,6 @@ void loop() {
         }
         break;
       }
-#endif
       default: {
         display->DisplayText("Unsupported render mode:", 0, 0, 255, 0, 0);
         DisplayNumber(c4, 3, 24 * 4, 0, 255, 0, 0);
@@ -2095,4 +2040,5 @@ void loop() {
 
     DisplayDebugInfo();
   }
+#endif
 }
