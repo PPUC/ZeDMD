@@ -52,12 +52,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install --upgrade platformio
 
-      - if: (!(matrix.panels == 'S3-N16R8_128x32') && !(matrix.panels == 'S3-N16R8_256x64') && !(matrix.panels == 'S3-N16R8_128x64') && !(matrix.panels == 'S3-N16R8_128x32_wifi') && !(matrix.panels == 'S3-N16R8_256x64_wifi') && !(matrix.panels == 'S3-N16R8_128x64_wifi') && !(matrix.panels == 'LilygoS3Amoled_128x32') && !(matrix.panels == 'LilygoS3Amoled_128x32_wifi'))
+      - if: (matrix.panels == '128x32' || matrix.panels == '256x64'|| matrix.panels == '128x6' || matrix.panels == '128x32_wifi'|| matrix.panels == '128x64_wifi')
         name: Build ZeDMD
         run: |
           pio run -e ${{ matrix.panels }}
           pio run -e ${{ matrix.panels }} -t buildfs
-          python ~/.platformio/packages/tool-esptoolpy/esptool.py --chip esp32 merge_bin -o ZeDMD.bin --flash_mode dio --flash_size 4MB \
+          python ~/.platformio/packages/tool-esptoolpy/esptool.py --chip esp32 merge_bin -o ZeDMD.bin --flash_mode qio --flash_size 4MB \
             0x1000 .pio/build/${{ matrix.panels }}/bootloader.bin \
             0x8000 .pio/build/${{ matrix.panels }}/partitions.bin \
             0xe000 ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin \
@@ -69,7 +69,7 @@ jobs:
         run: |
           pio run -e ${{ matrix.panels }}
           pio run -e ${{ matrix.panels }} -t buildfs
-          python ~/.platformio/packages/tool-esptoolpy/esptool.py --chip esp32s3 merge_bin -o ZeDMD.bin --flash_mode dio --flash_size 16MB \
+          python ~/.platformio/packages/tool-esptoolpy/esptool.py --chip esp32s3 merge_bin -o ZeDMD.bin --flash_mode qio --flash_size 16MB \
             0x1000 .pio/build/${{ matrix.panels }}/bootloader.bin \
             0x8000 .pio/build/${{ matrix.panels }}/partitions.bin \
             0xe000 ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin \

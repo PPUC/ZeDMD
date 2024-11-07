@@ -13,17 +13,18 @@ It is or will be supported by:
 
 A full tutorial of its installation is available in [English](https://www.pincabpassion.net/t14796-tuto-zedmd-installation-english) and in [French](https://www.pincabpassion.net/t14798-tuto-installation-du-zedmd)
 
-There're four different "flavours" of the ZeDMD firmware. Because it pushes the cheap ESP32 to its limits, we can't provide a unified firmware, so you have to pick the appropriate one:
-* ZeDMD: using two 64x32 panels connected over USB
-* ZeDMD HD: using four 64x64 or two 128x64 panels connected over USB
-* ZeDMD WiFi: using two 64x32 panels connected over WiFi (webinterface or after configured over USB)
-* ZeDMD HD WiFi: using four 64x64 or two 128x64 panels WiFi (webinterface or after configured over USB)
+Meanwhile, there're different "flavours" of the ZeDMD firmware. Because it pushes the cheap ESP32 to its limits, we can't provide a unified firmware, so you have to pick the appropriate one:
+* ZeDMD: using two 64x32 panels driven by an ESP32 connected over USB
+* ZeDMD HD: using four 64x64 or two 128x64 panels driven by an ESP32 connected over USB
+* ZeDMD WiFi: using two 64x32 panels driven by an ESP32 connected over WiFi
+* ZeDMD S3: using two 64x32 panels driven by an ESP32 S3 N16R8 connected over USB
+* ZeDMD S3 HD: using four 64x64 or two 128x64 panels  driven by an ESP32 S3 N16R8 connected over USB
+* ZeDMD S3 WiFi: using two 64x32 panels  driven by an ESP32 S3 N16R8 connected over WiFi
+* ZeDMD S3 HD WiFi: using four 64x64 or two 128x64 panels driven by an ESP32 S3 N16R8 connected over WiFi
+* ZeDMD S3 AMOLED: using a small OLED driven by a LilyGo AMOLED T-Display-S3 ESP32-S3 connected via USB
+* ZeDMD S3 AMOLED WiFi: using a small OLED driven by a LilyGo AMOLED T-Display-S3 ESP32-S3 connected via WiFi
 
-We also offer experimental builds for the newer ESP32 S3 boards. We advise to use the WiFi versions of these builds for now as the serial support of the S3 is not functional at the moment.
-
-There is also a version specific for the [Lilygo S3 Amoled development board](https://www.lilygo.cc/products/t-display-s3-amoled?variant=43506902368437). The build has been tested on the V2.0 non touch without pins. There is no specific pinout, flash the WiFi version and connect. 
-
-Here's a short demo of ZeDMD and ZeDMD HD in parallel:
+Here's are short demo of ZeDMD and ZeDMD HD in parallel:
 
 [![Watch the video](https://img.youtube.com/vi/B6D00oB4Co8/default.jpg)](https://youtu.be/B6D00oB4Co8)
 
