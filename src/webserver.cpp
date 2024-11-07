@@ -169,7 +169,7 @@ void runWebServer() {
   server.on("/get_s3", HTTP_GET, [](AsyncWebServerRequest *request) {
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
     request->send(200, "text/plain", String(1));
-#elif
+#else
     request->send(200, "text/plain", String(0));
 #endif
   });
