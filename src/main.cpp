@@ -204,7 +204,7 @@ void DoRestart(int sec) {
   MDNS.end();
   WiFi.disconnect(true);
 #endif
-  sleep(1);
+  sleep(sec);
   ESP.restart();
 }
 
