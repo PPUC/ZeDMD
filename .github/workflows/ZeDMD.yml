@@ -123,10 +123,10 @@ jobs:
             cd ../ZeDMD-S3-N16R8_128x64_wifi
             echo "${{ needs.version.outputs.tag }}" > version.txt
             zip ../ZeDMD-S3-N16R8_128x64_wifi.zip ZeDMD.bin version.txt
-            cd ../ZeDMD-LilygoS3Amoled_128x32.zip
+            cd ../ZeDMD-LilygoS3Amoled_128x32
             echo "${{ needs.version.outputs.tag }}" > version.txt
             zip ../ZeDMD-LilygoS3Amoled_128x32.zip ZeDMD.bin version.txt
-            cd ../ZeDMD-LilygoS3Amoled_128x32_wifi.zip
+            cd ../ZeDMD-LilygoS3Amoled_128x32_wifi
             echo "${{ needs.version.outputs.tag }}" > version.txt
             zip ../ZeDMD-LilygoS3Amoled_128x32_wifi.zip ZeDMD.bin version.txt
             cd ..
