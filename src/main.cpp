@@ -1080,6 +1080,15 @@ void setup() {
     while (true);
   }
 
+#if !defined(ZEDMD_WIFI)
+  Serial.setRxBufferSize(SERIAL_BUFFER);
+#if !defined(ARDUINO_ESP32_S3_N16R8) || !defined(DISPLAY_RM67162_AMOLED)
+  Serial.setTimeout(SERIAL_TIMEOUT);
+#endif
+  Serial.begin(SERIAL_BAUD);
+  while (!Serial);
+#endif
+
   DisplayLogo();
 
 #ifdef ZEDMD_WIFI
@@ -1122,13 +1131,6 @@ void setup() {
   LoadScreensaverConfig();  // Load Screensaver config, this should be moved to
                             // all build configs but we will leave it in WiFi
                             // only for now.
-#else
-  Serial.setRxBufferSize(SERIAL_BUFFER);
-#if !defined(ARDUINO_ESP32_S3_N16R8) || !defined(DISPLAY_RM67162_AMOLED)
-  Serial.setTimeout(SERIAL_TIMEOUT);
-#endif
-  Serial.begin(SERIAL_BAUD);
-  while (!Serial);
 #endif
 }
 
