@@ -315,6 +315,10 @@ void IRAM_ATTR Rm67162Amoled::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
                  ZONE_HEIGHT * DISPLAY_SCALE, (uint16_t *)pixelBuffer);
 }
 
+void IRAM_ATTR Rm67162Amoled::ClearZone(uint8_t idx) {
+  // todo
+}
+
 void IRAM_ATTR Rm67162Amoled::FillPanelRaw(uint8_t *pBuffer) {
   uint16_t pos;
 

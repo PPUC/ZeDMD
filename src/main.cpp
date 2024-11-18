@@ -1,6 +1,6 @@
 
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
-#define SERIAL_BAUD 8000000  // Serial baud rate.
+#define SERIAL_BAUD 2000000  // Serial baud rate.
 #else
 #define SERIAL_BAUD 921600  // Serial baud rate.
 #endif
@@ -344,7 +344,12 @@ void ScaleImage(uint8_t colors) {
     return;
   }
 
+#ifdef BOARD_HAS_PSRAM
+  uint8_t *panel = (uint8_t *)ps_malloc(RomWidth * RomHeight * colors);
+#else
   uint8_t *panel = (uint8_t *)malloc(RomWidth * RomHeight * colors);
+#endif
+
   if (panel == nullptr) {
     display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
     display->DisplayText("ScaleImage", 4, 14, 255, 255, 255);
@@ -684,7 +689,11 @@ void DisplayLogo(void) {
     return;
   }
 
+#ifdef BOARD_HAS_PSRAM
+  renderBuffer = (uint8_t *)ps_malloc(TOTAL_BYTES);
+#else
   renderBuffer = (uint8_t *)malloc(TOTAL_BYTES);
+#endif
   if (renderBuffer == nullptr) {
     display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
     display->DisplayText("DisplayLogo", 4, 14, 255, 255, 255);
@@ -731,7 +740,11 @@ void DisplayUpdate(void) {
     return;
   }
 
+#ifdef BOARD_HAS_PSRAM
+  renderBuffer = (uint8_t *)ps_malloc(TOTAL_BYTES);
+#else
   renderBuffer = (uint8_t *)malloc(TOTAL_BYTES);
+#endif
   if (renderBuffer == nullptr) {
     display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
     display->DisplayText("DisplayUpdate", 4, 14, 255, 255, 255);
@@ -826,7 +839,11 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
         uint8_t numZones = pPacket[1] & 127;
         uint16_t size = (int)(pPacket[3]) + (((int)pPacket[2]) << 8);
 
+#ifdef BOARD_HAS_PSRAM
+        renderBuffer = (uint8_t *)ps_malloc(ZONE_SIZE * numZones + numZones);
+#else
         renderBuffer = (uint8_t *)malloc(ZONE_SIZE * numZones + numZones);
+#endif
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("HandlePacket", 4, 14, 255, 255, 255);
@@ -855,9 +872,15 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
           memcpy(renderBuffer, &pPacket[4], size);
         }
 
+        uint16_t renderBufferPosition = 0;
         for (uint8_t idx = 0; idx < numZones; idx++) {
-          display->FillZoneRaw(renderBuffer[idx * ZONE_SIZE + idx],
-                               &renderBuffer[idx * ZONE_SIZE + idx + 1]);
+          if (renderBuffer[renderBufferPosition] >= 128) {
+            display->ClearZone(renderBuffer[renderBufferPosition++] - 128);
+          } else {
+            display->FillZoneRaw(renderBuffer[renderBufferPosition],
+                                 &renderBuffer[++renderBufferPosition]);
+            renderBufferPosition += ZONE_SIZE;
+          }
         }
 
         free(renderBuffer);
@@ -870,8 +893,14 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
         uint8_t numZones = pPacket[1] & 127;
         uint16_t size = (int)(pPacket[3]) + (((int)pPacket[2]) << 8);
 
+#ifdef BOARD_HAS_PSRAM
+        renderBuffer =
+            (uint8_t *)ps_malloc(RGB565_ZONE_SIZE * numZones + numZones);
+#else
         renderBuffer =
             (uint8_t *)malloc(RGB565_ZONE_SIZE * numZones + numZones);
+#endif
+
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("HandlePacket", 4, 14, 255, 255, 255);
@@ -902,10 +931,15 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
           memcpy(renderBuffer, &pPacket[4], size);
         }
 
+        uint16_t renderBufferPosition = 0;
         for (uint8_t idx = 0; idx < numZones; idx++) {
-          display->FillZoneRaw565(
-              renderBuffer[idx * RGB565_ZONE_SIZE + idx],
-              &renderBuffer[idx * RGB565_ZONE_SIZE + idx + 1]);
+          if (renderBuffer[renderBufferPosition] >= 128) {
+            display->ClearZone(renderBuffer[renderBufferPosition++] - 128);
+          } else {
+            display->FillZoneRaw565(renderBuffer[renderBufferPosition],
+                                    &renderBuffer[++renderBufferPosition]);
+            renderBufferPosition += RGB565_ZONE_SIZE;
+          }
         }
 
         free(renderBuffer);
@@ -1002,7 +1036,11 @@ bool DisplayImage(const char *filename) {
     return false;
   }
 
+#ifdef BOARD_HAS_PSRAM
+  renderBuffer = (uint8_t *)ps_malloc(TOTAL_WIDTH * TOTAL_HEIGHT * 3);
+#else
   renderBuffer = (uint8_t *)malloc(TOTAL_WIDTH * TOTAL_HEIGHT * 3);
+#endif
   if (renderBuffer == nullptr) {
     display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
     display->DisplayText("DisplayImage", 4, 14, 255, 255, 255);
@@ -1148,7 +1186,11 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
     transferBufferSize =
         ((((uint16_t)byteArray[0]) << 8) + ((uint16_t)byteArray[1]));
 
+#ifdef BOARD_HAS_PSRAM
+    transferBuffer = (uint8_t *)ps_malloc(transferBufferSize);
+#else
     transferBuffer = (uint8_t *)malloc(transferBufferSize);
+#endif
     if (transferBuffer == nullptr) {
       display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
       display->DisplayText("SerialReadBuffer", 4, 14, 255, 255, 255);
@@ -1584,8 +1626,13 @@ void loop() {
 
       case 4:  // mode RGB24 zones streaming
       {
+#ifdef BOARD_HAS_PSRAM
+        renderBuffer =
+            (uint8_t *)ps_malloc(TOTAL_ZONES * ZONE_SIZE + ZONES_PER_ROW);
+#else
         renderBuffer =
             (uint8_t *)malloc(TOTAL_ZONES * ZONE_SIZE + ZONES_PER_ROW);
+#endif
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 4", 4, 14, 255, 255, 255);
@@ -1593,16 +1640,19 @@ void loop() {
         }
         if (SerialReadBuffer(renderBuffer,
                              TOTAL_ZONES * ZONE_SIZE + ZONES_PER_ROW, false)) {
-          uint16_t idx = 0;
+          uint16_t renderBufferPosition = 0;
           // SerialReadBuffer prefills buffer with zeros. That will fill Zone 0
           // black if buffer is not used entirely. Ensure that Zone 0 is only
           // allowed at the beginning of the buffer.
-          while (idx <= ((TOTAL_ZONES * ZONE_SIZE + ZONES_PER_ROW) -
-                         (ZONE_SIZE + 1)) &&
-                 (renderBuffer[idx] < TOTAL_ZONES) &&
-                 (idx == 0 || renderBuffer[idx] > 0)) {
-            display->FillZoneRaw(renderBuffer[idx], &renderBuffer[++idx]);
-            idx += ZONE_SIZE;
+          while (0 == renderBufferPosition ||
+                 renderBuffer[renderBufferPosition] > 0) {
+            if (renderBuffer[renderBufferPosition] >= 128) {
+              display->ClearZone(renderBuffer[renderBufferPosition++] - 128);
+            } else {
+              display->FillZoneRaw(renderBuffer[renderBufferPosition],
+                                   &renderBuffer[++renderBufferPosition]);
+              renderBufferPosition += ZONE_SIZE;
+            }
           }
         }
 
@@ -1612,8 +1662,13 @@ void loop() {
 
       case 5:  // mode RGB565 zones streaming
       {
+#ifdef BOARD_HAS_PSRAM
+        renderBuffer = (uint8_t *)ps_malloc(TOTAL_ZONES * RGB565_ZONE_SIZE +
+                                            ZONES_PER_ROW);
+#else
         renderBuffer =
             (uint8_t *)malloc(TOTAL_ZONES * RGB565_ZONE_SIZE + ZONES_PER_ROW);
+#endif
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 5", 4, 14, 255, 255, 255);
@@ -1622,16 +1677,19 @@ void loop() {
         if (SerialReadBuffer(renderBuffer,
                              TOTAL_ZONES * RGB565_ZONE_SIZE + ZONES_PER_ROW,
                              false)) {
-          uint16_t idx = 0;
+          uint16_t renderBufferPosition = 0;
           // SerialReadBuffer prefills buffer with zeros. That will fill Zone 0
           // black if buffer is not used entirely. Ensure that Zone 0 is only
           // allowed at the beginning of the buffer.
-          while (idx <= ((TOTAL_ZONES * RGB565_ZONE_SIZE + ZONES_PER_ROW) -
-                         (ZONE_SIZE + 1)) &&
-                 (renderBuffer[idx] < TOTAL_ZONES) &&
-                 (idx == 0 || renderBuffer[idx] > 0)) {
-            display->FillZoneRaw565(renderBuffer[idx], &renderBuffer[++idx]);
-            idx += RGB565_ZONE_SIZE;
+          while (0 == renderBufferPosition ||
+                 renderBuffer[renderBufferPosition] > 0) {
+            if (renderBuffer[renderBufferPosition] >= 128) {
+              display->ClearZone(renderBuffer[renderBufferPosition++] - 128);
+            } else {
+              display->FillZoneRaw(renderBuffer[renderBufferPosition],
+                                   &renderBuffer[++renderBufferPosition]);
+              renderBufferPosition += RGB565_ZONE_SIZE;
+            }
           }
         }
 
@@ -1646,7 +1704,11 @@ void loop() {
             (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT)
                 ? TOTAL_BYTES
                 : RomWidth * RomHeight * 3;
+#ifdef BOARD_HAS_PSRAM
+        renderBuffer = (uint8_t *)ps_malloc(renderBufferSize);
+#else
         renderBuffer = (uint8_t *)malloc(renderBufferSize);
+#endif
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 3", 4, 14, 255, 255, 255);
@@ -1667,7 +1729,11 @@ void loop() {
                // de 4 pixels par byte
       {
         uint16_t bufferSize = 12 + 2 * RomWidthPlane * RomHeight;
+#ifdef BOARD_HAS_PSRAM
+        uint8_t *buffer = (uint8_t *)ps_malloc(bufferSize);
+#else
         uint8_t *buffer = (uint8_t *)malloc(bufferSize);
+#endif
         if (buffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 8", 4, 14, 255, 255, 255);
@@ -1680,7 +1746,11 @@ void loop() {
               (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT)
                   ? TOTAL_WIDTH * TOTAL_HEIGHT
                   : RomWidth * RomHeight;
+#ifdef BOARD_HAS_PSRAM
+          renderBuffer = (uint8_t *)ps_malloc(renderBufferSize);
+#else
           renderBuffer = (uint8_t *)malloc(renderBufferSize);
+#endif
           if (renderBuffer == nullptr) {
             display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
             display->DisplayText("Command 8", 4, 14, 255, 255, 255);
@@ -1731,7 +1801,11 @@ void loop() {
                // de 2 pixels par byte
       {
         uint16_t bufferSize = 12 + 4 * RomWidthPlane * RomHeight;
+#ifdef BOARD_HAS_PSRAM
+        uint8_t *buffer = (uint8_t *)ps_malloc(bufferSize);
+#else
         uint8_t *buffer = (uint8_t *)malloc(bufferSize);
+#endif
         if (buffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 7", 4, 14, 255, 255, 255);
@@ -1744,7 +1818,11 @@ void loop() {
               (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT)
                   ? TOTAL_WIDTH * TOTAL_HEIGHT
                   : RomWidth * RomHeight;
+#ifdef BOARD_HAS_PSRAM
+          renderBuffer = (uint8_t *)ps_malloc(renderBufferSize);
+#else
           renderBuffer = (uint8_t *)malloc(renderBufferSize);
+#endif
           if (renderBuffer == nullptr) {
             display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
             display->DisplayText("Command 7", 4, 14, 255, 255, 255);
@@ -1865,7 +1943,11 @@ void loop() {
                // bits 4*512 bytes)
       {
         uint16_t bufferSize = 48 + 4 * RomWidthPlane * RomHeight;
+#ifdef BOARD_HAS_PSRAM
+        uint8_t *buffer = (uint8_t *)ps_malloc(bufferSize);
+#else
         uint8_t *buffer = (uint8_t *)malloc(bufferSize);
+#endif
         if (buffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 9", 4, 14, 255, 255, 255);
@@ -1878,7 +1960,11 @@ void loop() {
               (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT)
                   ? TOTAL_WIDTH * TOTAL_HEIGHT
                   : RomWidth * RomHeight;
+#ifdef BOARD_HAS_PSRAM
+          renderBuffer = (uint8_t *)ps_malloc(renderBufferSize);
+#else
           renderBuffer = (uint8_t *)malloc(renderBufferSize);
+#endif
           if (renderBuffer == nullptr) {
             display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
             display->DisplayText("Command 9", 4, 14, 255, 255, 255);
@@ -1940,7 +2026,11 @@ void loop() {
       {
         uint16_t bufferSize =
             192 + 6 * RomWidthPlane * RomHeight + 3 * MAX_COLOR_ROTATIONS;
+#ifdef BOARD_HAS_PSRAM
+        uint8_t *buffer = (uint8_t *)ps_malloc(bufferSize);
+#else
         uint8_t *buffer = (uint8_t *)malloc(bufferSize);
+#endif
         if (buffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 11", 4, 14, 255, 255, 255);
@@ -1953,7 +2043,11 @@ void loop() {
               (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT)
                   ? TOTAL_WIDTH * TOTAL_HEIGHT
                   : RomWidth * RomHeight;
+#ifdef BOARD_HAS_PSRAM
+          renderBuffer = (uint8_t *)ps_malloc(renderBufferSize);
+#else
           renderBuffer = (uint8_t *)malloc(renderBufferSize);
+#endif
           if (renderBuffer == nullptr) {
             display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
             display->DisplayText("Command 11", 4, 14, 255, 255, 255);

@@ -109,6 +109,19 @@ void IRAM_ATTR LedMatrix::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
   }
 }
 
+void IRAM_ATTR LedMatrix::ClearZone(uint8_t idx) {
+  uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
+  uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
+
+  for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
+    for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
+      uint16_t pos = (y * ZONE_WIDTH + x) * 3;
+
+      dma_display->drawPixelRGB888(x + xOffset, y + yOffset, 0, 0, 0);
+    }
+  }
+}
+
 void IRAM_ATTR LedMatrix::FillPanelRaw(uint8_t *pBuffer) {
   uint16_t pos;
 

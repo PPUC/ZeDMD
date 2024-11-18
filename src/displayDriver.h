@@ -77,6 +77,8 @@ class DisplayDriver {
   /// @return
   virtual void FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) = 0;
 
+  virtual void ClearZone(uint8_t idx) = 0;
+
   /// @brief Fill fullscreen with current renderBuffer
   /// @return
   virtual void FillPanelRaw(uint8_t *pBuffer) = 0;

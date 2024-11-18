@@ -56,6 +56,7 @@ class Rm67162Amoled : public DisplayDriver {
                    bool inverted = false);
   void FillZoneRaw(uint8_t idx, uint8_t *pBuffer);
   void FillZoneRaw565(uint8_t idx, uint8_t *pBuffer);
+  void ClearZone(uint8_t idx);
   void FillPanelRaw(uint8_t *pBuffer);
   void FillPanelUsingPalette(uint8_t *pBuffer, uint8_t *palette);
 #if !defined(ZEDMD_WIFI)
