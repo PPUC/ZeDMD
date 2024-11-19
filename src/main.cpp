@@ -1626,25 +1626,26 @@ void loop() {
 
       case 4:  // mode RGB24 zones streaming
       {
+        const uint16_t renderBufferSize =
+            ZONES_PER_ROW * ZONE_SIZE + ZONES_PER_ROW;
 #ifdef BOARD_HAS_PSRAM
-        renderBuffer =
-            (uint8_t *)ps_malloc(TOTAL_ZONES * ZONE_SIZE + TOTAL_ZONES);
+        renderBuffer = (uint8_t *)ps_malloc(renderBufferSize);
 #else
-        renderBuffer = (uint8_t *)malloc(TOTAL_ZONES * ZONE_SIZE + TOTAL_ZONES);
+        renderBuffer = (uint8_t *)malloc(renderBufferSize);
 #endif
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 4", 4, 14, 255, 255, 255);
           RestartAfterError();
         }
-        if (SerialReadBuffer(renderBuffer,
-                             TOTAL_ZONES * ZONE_SIZE + TOTAL_ZONES, false)) {
+        if (SerialReadBuffer(renderBuffer, renderBufferSize, false)) {
           uint16_t renderBufferPosition = 0;
           // SerialReadBuffer prefills buffer with zeros. That will fill Zone 0
           // black if buffer is not used entirely. Ensure that Zone 0 is only
           // allowed at the beginning of the buffer.
           while (0 == renderBufferPosition ||
-                 renderBuffer[renderBufferPosition] > 0) {
+                 (renderBufferPosition < renderBufferSize &&
+                  renderBuffer[renderBufferPosition] > 0)) {
             if (renderBuffer[renderBufferPosition] >= 128) {
               display->ClearZone(renderBuffer[renderBufferPosition++] - 128);
             } else {
@@ -1661,32 +1662,31 @@ void loop() {
 
       case 5:  // mode RGB565 zones streaming
       {
+        const uint16_t renderBufferSize =
+            ZONES_PER_ROW * RGB565_ZONE_SIZE + ZONES_PER_ROW;
 #ifdef BOARD_HAS_PSRAM
-        renderBuffer =
-            (uint8_t *)ps_malloc(TOTAL_ZONES * RGB565_ZONE_SIZE + TOTAL_ZONES);
+        renderBuffer = (uint8_t *)ps_malloc(renderBufferSize);
 #else
-        renderBuffer =
-            (uint8_t *)malloc(TOTAL_ZONES * RGB565_ZONE_SIZE + TOTAL_ZONES);
+        renderBuffer = (uint8_t *)malloc(renderBufferSize);
 #endif
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 5", 4, 14, 255, 255, 255);
           RestartAfterError();
         }
-        if (SerialReadBuffer(renderBuffer,
-                             TOTAL_ZONES * RGB565_ZONE_SIZE + TOTAL_ZONES,
-                             false)) {
+        if (SerialReadBuffer(renderBuffer, renderBufferSize, false)) {
           uint16_t renderBufferPosition = 0;
           // SerialReadBuffer prefills buffer with zeros. That will fill Zone 0
           // black if buffer is not used entirely. Ensure that Zone 0 is only
           // allowed at the beginning of the buffer.
           while (0 == renderBufferPosition ||
-                 renderBuffer[renderBufferPosition] > 0) {
+                 (renderBufferPosition < renderBufferSize &&
+                  renderBuffer[renderBufferPosition] > 0)) {
             if (renderBuffer[renderBufferPosition] >= 128) {
               display->ClearZone(renderBuffer[renderBufferPosition++] - 128);
             } else {
-              display->FillZoneRaw(renderBuffer[renderBufferPosition++],
-                                   &renderBuffer[renderBufferPosition]);
+              display->FillZoneRaw565(renderBuffer[renderBufferPosition++],
+                                      &renderBuffer[renderBufferPosition]);
               renderBufferPosition += RGB565_ZONE_SIZE;
             }
           }
@@ -1698,29 +1698,10 @@ void loop() {
 
       case 3:  // mode RGB24
       {
-        // We need to cover downscaling, too.
-        uint16_t renderBufferSize =
-            (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT)
-                ? TOTAL_BYTES
-                : RomWidth * RomHeight * 3;
-#ifdef BOARD_HAS_PSRAM
-        renderBuffer = (uint8_t *)ps_malloc(renderBufferSize);
-#else
-        renderBuffer = (uint8_t *)malloc(renderBufferSize);
-#endif
-        if (renderBuffer == nullptr) {
-          display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
-          display->DisplayText("Command 3", 4, 14, 255, 255, 255);
-          RestartAfterError();
-        }
+        display->DisplayText("Command 3 not supported.", 4, 6, 255, 255, 255);
+        display->DisplayText("Update your client.", 4, 14, 255, 255, 255);
+        RestartAfterError();
 
-        if (SerialReadBuffer(renderBuffer, RomHeight * RomWidth * 3)) {
-          mode64 = false;
-          ScaleImage(3);
-          display->FillPanelRaw(renderBuffer);
-        }
-
-        free(renderBuffer);
         break;
       }
 
