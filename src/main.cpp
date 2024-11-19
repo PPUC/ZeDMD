@@ -1120,7 +1120,7 @@ void setup() {
 
 #if !defined(ZEDMD_WIFI)
   Serial.setRxBufferSize(SERIAL_BUFFER);
-#if !defined(ARDUINO_ESP32_S3_N16R8) || !defined(DISPLAY_RM67162_AMOLED)
+#if !defined(DISPLAY_RM67162_AMOLED)
   Serial.setTimeout(SERIAL_TIMEOUT);
 #endif
   Serial.begin(SERIAL_BAUD);
@@ -1628,10 +1628,10 @@ void loop() {
       {
 #ifdef BOARD_HAS_PSRAM
         renderBuffer =
-            (uint8_t *)ps_malloc(TOTAL_ZONES * ZONE_SIZE + ZONES_PER_ROW);
+            (uint8_t *)ps_malloc(TOTAL_ZONES * ZONE_SIZE + TOTAL_ZONES);
 #else
         renderBuffer =
-            (uint8_t *)malloc(TOTAL_ZONES * ZONE_SIZE + ZONES_PER_ROW);
+            (uint8_t *)malloc(TOTAL_ZONES * ZONE_SIZE + TOTAL_ZONES);
 #endif
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
@@ -1639,7 +1639,7 @@ void loop() {
           RestartAfterError();
         }
         if (SerialReadBuffer(renderBuffer,
-                             TOTAL_ZONES * ZONE_SIZE + ZONES_PER_ROW, false)) {
+                             TOTAL_ZONES * ZONE_SIZE + TOTAL_ZONES, false)) {
           uint16_t renderBufferPosition = 0;
           // SerialReadBuffer prefills buffer with zeros. That will fill Zone 0
           // black if buffer is not used entirely. Ensure that Zone 0 is only
@@ -1664,10 +1664,10 @@ void loop() {
       {
 #ifdef BOARD_HAS_PSRAM
         renderBuffer = (uint8_t *)ps_malloc(TOTAL_ZONES * RGB565_ZONE_SIZE +
-                                            ZONES_PER_ROW);
+                                            TOTAL_ZONES);
 #else
         renderBuffer =
-            (uint8_t *)malloc(TOTAL_ZONES * RGB565_ZONE_SIZE + ZONES_PER_ROW);
+            (uint8_t *)malloc(TOTAL_ZONES * RGB565_ZONE_SIZE + TOTAL_ZONES);
 #endif
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
@@ -1675,7 +1675,7 @@ void loop() {
           RestartAfterError();
         }
         if (SerialReadBuffer(renderBuffer,
-                             TOTAL_ZONES * RGB565_ZONE_SIZE + ZONES_PER_ROW,
+                             TOTAL_ZONES * RGB565_ZONE_SIZE + TOTAL_ZONES,
                              false)) {
           uint16_t renderBufferPosition = 0;
           // SerialReadBuffer prefills buffer with zeros. That will fill Zone 0
