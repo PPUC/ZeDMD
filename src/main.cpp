@@ -1630,8 +1630,7 @@ void loop() {
         renderBuffer =
             (uint8_t *)ps_malloc(TOTAL_ZONES * ZONE_SIZE + TOTAL_ZONES);
 #else
-        renderBuffer =
-            (uint8_t *)malloc(TOTAL_ZONES * ZONE_SIZE + TOTAL_ZONES);
+        renderBuffer = (uint8_t *)malloc(TOTAL_ZONES * ZONE_SIZE + TOTAL_ZONES);
 #endif
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
@@ -1649,8 +1648,8 @@ void loop() {
             if (renderBuffer[renderBufferPosition] >= 128) {
               display->ClearZone(renderBuffer[renderBufferPosition++] - 128);
             } else {
-              display->FillZoneRaw(renderBuffer[renderBufferPosition],
-                                   &renderBuffer[++renderBufferPosition]);
+              display->FillZoneRaw(renderBuffer[renderBufferPosition++],
+                                   &renderBuffer[renderBufferPosition]);
               renderBufferPosition += ZONE_SIZE;
             }
           }
@@ -1663,8 +1662,8 @@ void loop() {
       case 5:  // mode RGB565 zones streaming
       {
 #ifdef BOARD_HAS_PSRAM
-        renderBuffer = (uint8_t *)ps_malloc(TOTAL_ZONES * RGB565_ZONE_SIZE +
-                                            TOTAL_ZONES);
+        renderBuffer =
+            (uint8_t *)ps_malloc(TOTAL_ZONES * RGB565_ZONE_SIZE + TOTAL_ZONES);
 #else
         renderBuffer =
             (uint8_t *)malloc(TOTAL_ZONES * RGB565_ZONE_SIZE + TOTAL_ZONES);
@@ -1686,8 +1685,8 @@ void loop() {
             if (renderBuffer[renderBufferPosition] >= 128) {
               display->ClearZone(renderBuffer[renderBufferPosition++] - 128);
             } else {
-              display->FillZoneRaw(renderBuffer[renderBufferPosition],
-                                   &renderBuffer[++renderBufferPosition]);
+              display->FillZoneRaw(renderBuffer[renderBufferPosition++],
+                                   &renderBuffer[renderBufferPosition]);
               renderBufferPosition += RGB565_ZONE_SIZE;
             }
           }
