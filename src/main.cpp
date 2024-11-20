@@ -1,13 +1,13 @@
 
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
-#define SERIAL_BAUD 2000000  // Serial baud rate.
+#define SERIAL_BAUD 12000000  // Serial baud rate.
 #else
 #define SERIAL_BAUD 921600  // Serial baud rate.
-#endif
 #define SERIAL_TIMEOUT \
   8  // Time in milliseconds to wait for the next data chunk.
-#define SERIAL_BUFFER 2048  // Serial buffer size in byte.
-#define SERIAL_CHUNK_SIZE_MAX 1888
+#endif
+#define SERIAL_BUFFER 1024  // Serial buffer size in byte.
+#define SERIAL_CHUNK_SIZE_MAX 992
 #define LOGO_TIMEOUT 20000  // Time in milliseconds before the logo vanishes.
 #define FLOW_CONTROL_TIMEOUT \
   4  // Time in milliseconds to wait before sending a new ready signal.
@@ -685,7 +685,7 @@ void DisplayLogo(void) {
   }
 
   if (!f) {
-    // Serial.println("Failed to open file for reading");
+    display->DisplayText("Logo is missing", 4, 6, 255, 255, 255);
     return;
   }
 
@@ -1119,12 +1119,15 @@ void setup() {
   }
 
 #if !defined(ZEDMD_WIFI)
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
   Serial.setRxBufferSize(SERIAL_BUFFER);
-#if !defined(DISPLAY_RM67162_AMOLED)
+  Serial.begin(SERIAL_BAUD);
+#else
+  Serial.setRxBufferSize(SERIAL_BUFFER);
   Serial.setTimeout(SERIAL_TIMEOUT);
-#endif
   Serial.begin(SERIAL_BAUD);
   while (!Serial);
+#endif
 #endif
 
   DisplayLogo();
@@ -1209,7 +1212,7 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
   uint16_t remainingBytes = transferBufferSize;
   while (remainingBytes > 0) {
     receivedBytes = Serial.readBytes(
-        transferBuffer + transferBufferSize - remainingBytes,
+        &transferBuffer[transferBufferSize - remainingBytes],
         (remainingBytes > chunkSize) ? chunkSize : remainingBytes);
 
     DisplayDebugInfo();
