@@ -64,7 +64,7 @@ jobs:
             0x10000 .pio/build/${{ matrix.panels }}/firmware.bin \
             0x210000 .pio/build/${{ matrix.panels }}/littlefs.bin
 
-      - if: (matrix.panels == 'S3-N16R8_128x32' || matrix.panels == 'S3-N16R8_256x64' || matrix.panels == 'S3-N16R8_128x64' || matrix.panels == 'S3-N16R8_128x32_wifi' || matrix.panels == 'S3-N16R8_256x64_wifi' || matrix.panels == 'S3-N16R8_128x64_wifi' || matrix.panels == 'LilygoS3Amoled_128x32' || matrix.panels == 'LilygoS3Amoled_128x32_wifi')
+      - if: (matrix.panels == 'S3-N16R8_128x32' || matrix.panels == 'S3-N16R8_256x64' || matrix.panels == 'S3-N16R8_128x64' || matrix.panels == 'S3-N16R8_128x32_UART' || matrix.panels == 'S3-N16R8_256x64_UART' || matrix.panels == 'S3-N16R8_128x64_UART' || matrix.panels == 'S3-N16R8_128x32_wifi' || matrix.panels == 'S3-N16R8_256x64_wifi' || matrix.panels == 'S3-N16R8_128x64_wifi' || matrix.panels == 'LilygoS3Amoled_128x32' || matrix.panels == 'LilygoS3Amoled_128x32_wifi')
         name: Build ZeDMD S3
         run: |
           pio run -e ${{ matrix.panels }}
