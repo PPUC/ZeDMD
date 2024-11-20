@@ -1,6 +1,6 @@
 
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
-#define SERIAL_BAUD 12000000  // Serial baud rate.
+#define SERIAL_BAUD 2000000  // Serial baud rate.
 #else
 #define SERIAL_BAUD 921600  // Serial baud rate.
 #define SERIAL_TIMEOUT \
@@ -1119,7 +1119,8 @@ void setup() {
   }
 
 #if !defined(ZEDMD_WIFI)
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
+#if defined(ARDUINO_USB_MODE)
+  // S3 USB CDC
   Serial.setRxBufferSize(SERIAL_BUFFER);
   Serial.begin(SERIAL_BAUD);
 #else
