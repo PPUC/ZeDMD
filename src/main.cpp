@@ -1,13 +1,15 @@
 
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
 #define SERIAL_BAUD 2000000  // Serial baud rate.
+#define SERIAL_CHUNK_SIZE_MAX 992
+#define SERIAL_BUFFER 1024  // Serial buffer size in byte.
 #else
 #define SERIAL_BAUD 921600  // Serial baud rate.
+#define SERIAL_CHUNK_SIZE_MAX 1888
+#define SERIAL_BUFFER 2048  // Serial buffer size in byte.
+#endif
 #define SERIAL_TIMEOUT \
   8  // Time in milliseconds to wait for the next data chunk.
-#endif
-#define SERIAL_BUFFER 1024  // Serial buffer size in byte.
-#define SERIAL_CHUNK_SIZE_MAX 992
 #define LOGO_TIMEOUT 20000  // Time in milliseconds before the logo vanishes.
 #define FLOW_CONTROL_TIMEOUT \
   4  // Time in milliseconds to wait before sending a new ready signal.
