@@ -848,7 +848,7 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
 #endif
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
-          display->DisplayText("HandlePacket", 4, 14, 255, 255, 255);
+          display->DisplayText("HandlePacket 4", 4, 14, 255, 255, 255);
           RestartAfterError();
         }
 
@@ -860,8 +860,7 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
               mz_uncompress2(renderBuffer, &uncompressedBufferSize, &pPacket[4],
                              (mz_ulong *)&udpPayloadSize);
 
-          if (minizStatus != MZ_OK ||
-              uncompressedBufferSize != (ZONE_SIZE * numZones + numZones)) {
+          if (minizStatus != MZ_OK) {
             free(renderBuffer);
             DisplayDebugInfo();
             if (debugDelayOnError) {
@@ -879,8 +878,8 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
           if (renderBuffer[renderBufferPosition] >= 128) {
             display->ClearZone(renderBuffer[renderBufferPosition++] - 128);
           } else {
-            display->FillZoneRaw(renderBuffer[renderBufferPosition],
-                                 &renderBuffer[++renderBufferPosition]);
+            display->FillZoneRaw(renderBuffer[renderBufferPosition++],
+                                 &renderBuffer[renderBufferPosition]);
             renderBufferPosition += ZONE_SIZE;
           }
         }
@@ -905,7 +904,7 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
 
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
-          display->DisplayText("HandlePacket", 4, 14, 255, 255, 255);
+          display->DisplayText("HandlePacket 5", 4, 14, 255, 255, 255);
           RestartAfterError();
         }
 
@@ -918,9 +917,7 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
               mz_uncompress2(renderBuffer, &uncompressedBufferSize, &pPacket[4],
                              (mz_ulong *)&udpPayloadSize);
 
-          if (minizStatus != MZ_OK ||
-              uncompressedBufferSize !=
-                  (RGB565_ZONE_SIZE * numZones + numZones)) {
+          if (minizStatus != MZ_OK) {
             free(renderBuffer);
             DisplayDebugInfo();
             if (debugDelayOnError) {
@@ -938,8 +935,8 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
           if (renderBuffer[renderBufferPosition] >= 128) {
             display->ClearZone(renderBuffer[renderBufferPosition++] - 128);
           } else {
-            display->FillZoneRaw565(renderBuffer[renderBufferPosition],
-                                    &renderBuffer[++renderBufferPosition]);
+            display->FillZoneRaw565(renderBuffer[renderBufferPosition++],
+                                    &renderBuffer[renderBufferPosition]);
             renderBufferPosition += RGB565_ZONE_SIZE;
           }
         }
