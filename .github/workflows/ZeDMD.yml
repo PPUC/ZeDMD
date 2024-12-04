@@ -29,7 +29,7 @@ jobs:
     needs: [ version ]
     strategy:
       matrix:
-        panels: ['128x32', '256x64', '128x64', '128x32_wifi', '128x64_wifi', 'S3-N16R8_128x32', 'S3-N16R8_128x32_wifi', 'S3-N16R8_256x64', 'S3-N16R8_256x64_wifi', 'S3-N16R8_128x64', 'S3-N16R8_128x64_wifi', 'LilygoS3Amoled_128x32','LilygoS3Amoled_128x32_wifi']
+        panels: ['128x32', '256x64', '128x64', '128x32_wifi', '128x64_wifi', 'S3-N16R8_128x32', 'S3-N16R8_128x32_UART', 'S3-N16R8_128x32_wifi', 'S3-N16R8_256x64', 'S3-N16R8_256x64_UART', 'S3-N16R8_256x64_wifi', 'S3-N16R8_128x64', 'S3-N16R8_128x64_UART', 'S3-N16R8_128x64_wifi', 'LilygoS3Amoled_128x32','LilygoS3Amoled_128x32_wifi']
 
     name: ZeDMD ${{ matrix.panels }}
 
@@ -64,7 +64,7 @@ jobs:
             0x10000 .pio/build/${{ matrix.panels }}/firmware.bin \
             0x210000 .pio/build/${{ matrix.panels }}/littlefs.bin
 
-      - if: (matrix.panels == 'S3-N16R8_128x32' || matrix.panels == 'S3-N16R8_256x64' || matrix.panels == 'S3-N16R8_128x64' || matrix.panels == 'S3-N16R8_128x32_wifi' || matrix.panels == 'S3-N16R8_256x64_wifi' || matrix.panels == 'S3-N16R8_128x64_wifi' || matrix.panels == 'LilygoS3Amoled_128x32' || matrix.panels == 'LilygoS3Amoled_128x32_wifi')
+      - if: (matrix.panels == 'S3-N16R8_128x32' || matrix.panels == 'S3-N16R8_256x64' || matrix.panels == 'S3-N16R8_128x64' || matrix.panels == 'S3-N16R8_128x32_UART' || matrix.panels == 'S3-N16R8_256x64_UART' || matrix.panels == 'S3-N16R8_128x64_UART' || matrix.panels == 'S3-N16R8_128x32_wifi' || matrix.panels == 'S3-N16R8_256x64_wifi' || matrix.panels == 'S3-N16R8_128x64_wifi' || matrix.panels == 'LilygoS3Amoled_128x32' || matrix.panels == 'LilygoS3Amoled_128x32_wifi')
         name: Build ZeDMD S3
         run: |
           pio run -e ${{ matrix.panels }}
@@ -108,12 +108,21 @@ jobs:
             cd ../ZeDMD-S3-N16R8_128x32
             echo "${{ needs.version.outputs.tag }}" > version.txt
             zip ../ZeDMD-S3-N16R8_128x32.zip ZeDMD.bin version.txt
+            cd ../ZeDMD-S3-N16R8_128x32_UART
+            echo "${{ needs.version.outputs.tag }}" > version.txt
+            zip ../ZeDMD-S3-N16R8_128x32_UART.zip ZeDMD.bin version.txt
             cd ../ZeDMD-S3-N16R8_256x64
             echo "${{ needs.version.outputs.tag }}" > version.txt
             zip ../ZeDMD-S3-N16R8_256x64.zip ZeDMD.bin version.txt
+            cd ../ZeDMD-S3-N16R8_256x64_UART
+            echo "${{ needs.version.outputs.tag }}" > version.txt
+            zip ../ZeDMD-S3-N16R8_256x64_UART.zip ZeDMD.bin version.txt
             cd ../ZeDMD-S3-N16R8_128x64
             echo "${{ needs.version.outputs.tag }}" > version.txt
             zip ../ZeDMD-S3-N16R8_128x64.zip ZeDMD.bin version.txt
+            cd ../ZeDMD-S3-N16R8_128x64_UART
+            echo "${{ needs.version.outputs.tag }}" > version.txt
+            zip ../ZeDMD-S3-N16R8_128x64_UART.zip ZeDMD.bin version.txt
             cd ../ZeDMD-S3-N16R8_128x32_wifi
             echo "${{ needs.version.outputs.tag }}" > version.txt
             zip ../ZeDMD-S3-N16R8_128x32_wifi.zip ZeDMD.bin version.txt
@@ -144,6 +153,9 @@ jobs:
             ZeDMD-S3-N16R8_128x32.zip
             ZeDMD-S3-N16R8_256x64.zip
             ZeDMD-S3-N16R8_128x64.zip
+            ZeDMD-S3-N16R8_128x32_UART.zip
+            ZeDMD-S3-N16R8_256x64_UART.zip
+            ZeDMD-S3-N16R8_128x64_UART.zip
             ZeDMD-S3-N16R8_128x32_wifi.zip
             ZeDMD-S3-N16R8_256x64_wifi.zip
             ZeDMD-S3-N16R8_128x64_wifi.zip

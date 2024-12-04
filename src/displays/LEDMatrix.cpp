@@ -23,7 +23,11 @@ LedMatrix::LedMatrix() {
                                         CLK_PIN};
 
   HUB75_I2S_CFG mxconfig(PANEL_WIDTH, PANEL_HEIGHT, PANELS_NUMBER, pins);
+  // Without setting clkphase to false, HD panels seem to flicker.
   mxconfig.clkphase = false;
+  mxconfig.latch_blanking = 2;
+  mxconfig.min_refresh_rate = 30;
+  mxconfig.driver = HUB75_I2S_CFG::shift_driver::SHIFTREG;
 
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   dma_display->begin();
@@ -105,6 +109,19 @@ void IRAM_ATTR LedMatrix::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
       dma_display->drawPixel(
           x + xOffset, y + yOffset,
           (((uint16_t)pBuffer[pos + 1]) << 8) + pBuffer[pos]);
+    }
+  }
+}
+
+void IRAM_ATTR LedMatrix::ClearZone(uint8_t idx) {
+  uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
+  uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
+
+  for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
+    for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
+      uint16_t pos = (y * ZONE_WIDTH + x) * 3;
+
+      dma_display->drawPixelRGB888(x + xOffset, y + yOffset, 0, 0, 0);
     }
   }
 }
