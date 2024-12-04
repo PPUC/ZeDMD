@@ -177,6 +177,16 @@ Bounce2::Button *brightnessButton;
 
 DisplayDriver *display;
 
+#ifdef BOARD_HAS_PSRAM
+// Use fixed size buffers to avoid PSRAM fragmentation.
+uint8_t *buffer = (uint8_t *)ps_malloc(TOTAL_BYTES);
+uint8_t *renderBuffer = (uint8_t *)ps_malloc(TOTAL_BYTES);
+uint8_t *transferBuffer = (uint8_t *)ps_malloc(TOTAL_BYTES);
+uint8_t *panel = (uint8_t *)ps_malloc(TOTAL_BYTES);
+#else
+uint8_t *renderBuffer;
+#endif
+
 bool debugMode = false;
 bool debugDelayOnError = false;
 uint8_t c4;
@@ -184,7 +194,6 @@ int16_t transferBufferSize = 0;
 int16_t receivedBytes = 0;
 int16_t minizStatus = 0;
 uint8_t *palette;
-uint8_t *renderBuffer;
 bool mode64 = false;
 uint16_t RomWidth = 128, RomHeight = 32;
 uint8_t RomWidthPlane = 128 >> 3;
@@ -346,17 +355,14 @@ void ScaleImage(uint8_t colors) {
     return;
   }
 
-#ifdef BOARD_HAS_PSRAM
-  uint8_t *panel = (uint8_t *)ps_malloc(RomWidth * RomHeight * colors);
-#else
+#if !defined BOARD_HAS_PSRAM
   uint8_t *panel = (uint8_t *)malloc(RomWidth * RomHeight * colors);
-#endif
-
   if (panel == nullptr) {
     display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
     display->DisplayText("ScaleImage", 4, 14, 255, 255, 255);
     RestartAfterError();
   }
+#endif
 
   memcpy(panel, renderBuffer, RomWidth * RomHeight * colors);
   memset(renderBuffer, 0, TOTAL_WIDTH * TOTAL_HEIGHT);
@@ -565,7 +571,9 @@ void ScaleImage(uint8_t colors) {
     }
   }
 
+#if !defined(BOARD_HAS_PSRAM)
   free(panel);
+#endif
 }
 #endif
 
@@ -691,16 +699,14 @@ void DisplayLogo(void) {
     return;
   }
 
-#ifdef BOARD_HAS_PSRAM
-  renderBuffer = (uint8_t *)ps_malloc(TOTAL_BYTES);
-#else
+#if !defined(BOARD_HAS_PSRAM)
   renderBuffer = (uint8_t *)malloc(TOTAL_BYTES);
-#endif
   if (renderBuffer == nullptr) {
     display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
     display->DisplayText("DisplayLogo", 4, 14, 255, 255, 255);
     RestartAfterError();
   }
+#endif
 
   for (uint16_t tj = 0; tj < TOTAL_BYTES; tj += 3) {
     if (rgbMode == rgbModeLoaded) {
@@ -718,7 +724,9 @@ void DisplayLogo(void) {
 
   display->FillPanelRaw(renderBuffer);
 
+#if !defined(BOARD_HAS_PSRAM)
   free(renderBuffer);
+#endif
 
   DisplayVersion(true);
 
@@ -742,16 +750,14 @@ void DisplayUpdate(void) {
     return;
   }
 
-#ifdef BOARD_HAS_PSRAM
-  renderBuffer = (uint8_t *)ps_malloc(TOTAL_BYTES);
-#else
+#if !defined(BOARD_HAS_PSRAM)
   renderBuffer = (uint8_t *)malloc(TOTAL_BYTES);
-#endif
   if (renderBuffer == nullptr) {
     display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
     display->DisplayText("DisplayUpdate", 4, 14, 255, 255, 255);
     RestartAfterError();
   }
+#endif
 
   for (uint16_t tj = 0; tj < TOTAL_BYTES; tj++) {
     renderBuffer[tj] = f.read();
@@ -760,7 +766,9 @@ void DisplayUpdate(void) {
 
   display->FillPanelRaw(renderBuffer);
 
+#if !defined(BOARD_HAS_PSRAM)
   free(renderBuffer);
+#endif
 
   displayStatus = DISPLAY_STATUS_INFO;
   displayTimeout = millis() - (LOGO_TIMEOUT / 2);
@@ -841,16 +849,14 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
         uint8_t numZones = pPacket[1] & 127;
         uint16_t size = (int)(pPacket[3]) + (((int)pPacket[2]) << 8);
 
-#ifdef BOARD_HAS_PSRAM
-        renderBuffer = (uint8_t *)ps_malloc(ZONE_SIZE * numZones + numZones);
-#else
+#if !defined(BOARD_HAS_PSRAM)
         renderBuffer = (uint8_t *)malloc(ZONE_SIZE * numZones + numZones);
-#endif
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("HandlePacket 4", 4, 14, 255, 255, 255);
           RestartAfterError();
         }
+#endif
 
         if (compressed == 128) {
           mz_ulong uncompressedBufferSize = ZONE_SIZE * numZones + numZones;
@@ -861,7 +867,9 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
                              (mz_ulong *)&udpPayloadSize);
 
           if (minizStatus != MZ_OK) {
+#if !defined(BOARD_HAS_PSRAM)
             free(renderBuffer);
+#endif
             DisplayDebugInfo();
             if (debugDelayOnError) {
               delay(DEBUG_DELAY);
@@ -884,7 +892,9 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
           }
         }
 
+#if !defined(BOARD_HAS_PSRAM)
         free(renderBuffer);
+#endif
         break;
       }
 
@@ -894,19 +904,15 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
         uint8_t numZones = pPacket[1] & 127;
         uint16_t size = (int)(pPacket[3]) + (((int)pPacket[2]) << 8);
 
-#ifdef BOARD_HAS_PSRAM
-        renderBuffer =
-            (uint8_t *)ps_malloc(RGB565_ZONE_SIZE * numZones + numZones);
-#else
+#if !defined(BOARD_HAS_PSRAM)
         renderBuffer =
             (uint8_t *)malloc(RGB565_ZONE_SIZE * numZones + numZones);
-#endif
-
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("HandlePacket 5", 4, 14, 255, 255, 255);
           RestartAfterError();
         }
+#endif
 
         if (compressed == 128) {
           mz_ulong uncompressedBufferSize =
@@ -918,7 +924,9 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
                              (mz_ulong *)&udpPayloadSize);
 
           if (minizStatus != MZ_OK) {
+#if !defined(BOARD_HAS_PSRAM)
             free(renderBuffer);
+#endif
             DisplayDebugInfo();
             if (debugDelayOnError) {
               delay(DEBUG_DELAY);
@@ -941,7 +949,9 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
           }
         }
 
+#if !defined(BOARD_HAS_PSRAM)
         free(renderBuffer);
+#endif
         break;
       }
     }
@@ -1035,19 +1045,19 @@ bool DisplayImage(const char *filename) {
     return false;
   }
 
-#ifdef BOARD_HAS_PSRAM
-  renderBuffer = (uint8_t *)ps_malloc(TOTAL_WIDTH * TOTAL_HEIGHT * 3);
-#else
-  renderBuffer = (uint8_t *)malloc(TOTAL_WIDTH * TOTAL_HEIGHT * 3);
-#endif
+#if !defined(BOARD_HAS_PSRAM)
+  renderBuffer = (uint8_t *)malloc(TOTAL_BYTES);
   if (renderBuffer == nullptr) {
     display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
     display->DisplayText("DisplayImage", 4, 14, 255, 255, 255);
     RestartAfterError();
   }
+#endif
 
   if (!jpeg.open(jpegFile, JPEGDraw)) {
+#if !defined(BOARD_HAS_PSRAM)
     free(renderBuffer);
+#endif
     jpegFile.close();
     return false;
   }
@@ -1060,7 +1070,10 @@ bool DisplayImage(const char *filename) {
 
   jpeg.close();
   jpegFile.close();
+
+#if !defined(BOARD_HAS_PSRAM)
   free(renderBuffer);
+#endif
 
   return status;
 }
@@ -1181,7 +1194,7 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
   memset(pBuffer, 0, BufferSize);
 
   transferBufferSize = BufferSize;
-  uint8_t *transferBuffer;
+  uint8_t *pTransferBuffer;
 
   if (compression) {
     uint8_t byteArray[2];
@@ -1189,18 +1202,18 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
     transferBufferSize =
         ((((uint16_t)byteArray[0]) << 8) + ((uint16_t)byteArray[1]));
 
-#ifdef BOARD_HAS_PSRAM
-    transferBuffer = (uint8_t *)ps_malloc(transferBufferSize);
-#else
-    transferBuffer = (uint8_t *)malloc(transferBufferSize);
-#endif
-    if (transferBuffer == nullptr) {
+#if !defined(BOARD_HAS_PSRAM)
+    pTransferBuffer = (uint8_t *)malloc(transferBufferSize);
+    if (pTransferBuffer == nullptr) {
       display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
       display->DisplayText("SerialReadBuffer", 4, 14, 255, 255, 255);
       RestartAfterError();
     }
+#else
+    pTransferBuffer = transferBuffer;
+#endif
   } else {
-    transferBuffer = pBuffer;
+    pTransferBuffer = pBuffer;
   }
 
   // We always receive chunks of "serialTransferChunkSize" bytes (maximum).
@@ -1212,12 +1225,16 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
   uint16_t remainingBytes = transferBufferSize;
   while (remainingBytes > 0) {
     receivedBytes = Serial.readBytes(
-        &transferBuffer[transferBufferSize - remainingBytes],
+        &pTransferBuffer[transferBufferSize - remainingBytes],
         (remainingBytes > chunkSize) ? chunkSize : remainingBytes);
 
     DisplayDebugInfo();
 
     if (receivedBytes != remainingBytes && receivedBytes != chunkSize) {
+#if !defined(BOARD_HAS_PSRAM)
+      if (compression) free(pTransferBuffer);
+#endif
+
       errorCount++;
       DisplayDebugInfo();
       if (debugDelayOnError) {
@@ -1246,9 +1263,11 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
   if (compression) {
     mz_ulong uncompressed_buffer_size = (mz_ulong)BufferSize;
     minizStatus =
-        mz_uncompress2(pBuffer, &uncompressed_buffer_size, transferBuffer,
+        mz_uncompress2(pBuffer, &uncompressed_buffer_size, pTransferBuffer,
                        (mz_ulong *)&transferBufferSize);
-    free(transferBuffer);
+#if !defined(BOARD_HAS_PSRAM)
+    free(pTransferBuffer);
+#endif
 
     if ((MZ_OK == minizStatus) &&
         (!fixedSize || (fixedSize && uncompressed_buffer_size == BufferSize))) {
@@ -1631,16 +1650,15 @@ void loop() {
       {
         const uint16_t renderBufferSize =
             ZONES_PER_ROW * ZONE_SIZE + ZONES_PER_ROW;
-#ifdef BOARD_HAS_PSRAM
-        renderBuffer = (uint8_t *)ps_malloc(renderBufferSize);
-#else
+#if !defined(BOARD_HAS_PSRAM)
         renderBuffer = (uint8_t *)malloc(renderBufferSize);
-#endif
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 4", 4, 14, 255, 255, 255);
           RestartAfterError();
         }
+#endif
+
         if (SerialReadBuffer(renderBuffer, renderBufferSize, false)) {
           uint16_t renderBufferPosition = 0;
           // SerialReadBuffer prefills buffer with zeros. That will fill Zone 0
@@ -1659,7 +1677,10 @@ void loop() {
           }
         }
 
+#if !defined(BOARD_HAS_PSRAM)
         free(renderBuffer);
+#endif
+
         break;
       }
 
@@ -1667,16 +1688,15 @@ void loop() {
       {
         const uint16_t renderBufferSize =
             ZONES_PER_ROW * RGB565_ZONE_SIZE + ZONES_PER_ROW;
-#ifdef BOARD_HAS_PSRAM
-        renderBuffer = (uint8_t *)ps_malloc(renderBufferSize);
-#else
+#if !defined(BOARD_HAS_PSRAM)
         renderBuffer = (uint8_t *)malloc(renderBufferSize);
-#endif
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 5", 4, 14, 255, 255, 255);
           RestartAfterError();
         }
+#endif
+
         if (SerialReadBuffer(renderBuffer, renderBufferSize, false)) {
           uint16_t renderBufferPosition = 0;
           // SerialReadBuffer prefills buffer with zeros. That will fill Zone 0
@@ -1695,7 +1715,10 @@ void loop() {
           }
         }
 
+#if !defined(BOARD_HAS_PSRAM)
         free(renderBuffer);
+#endif
+
         break;
       }
 
@@ -1712,9 +1735,7 @@ void loop() {
                // de 4 pixels par byte
       {
         uint16_t bufferSize = 12 + 2 * RomWidthPlane * RomHeight;
-#ifdef BOARD_HAS_PSRAM
-        uint8_t *buffer = (uint8_t *)ps_malloc(bufferSize);
-#else
+#if !defined(BOARD_HAS_PSRAM)
         uint8_t *buffer = (uint8_t *)malloc(bufferSize);
 #endif
         if (buffer == nullptr) {
@@ -1729,16 +1750,15 @@ void loop() {
               (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT)
                   ? TOTAL_WIDTH * TOTAL_HEIGHT
                   : RomWidth * RomHeight;
-#ifdef BOARD_HAS_PSRAM
-          renderBuffer = (uint8_t *)ps_malloc(renderBufferSize);
-#else
+#if !defined(BOARD_HAS_PSRAM)
           renderBuffer = (uint8_t *)malloc(renderBufferSize);
-#endif
           if (renderBuffer == nullptr) {
             display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
             display->DisplayText("Command 8", 4, 14, 255, 255, 255);
             RestartAfterError();
           }
+#endif
+
           memset(renderBuffer, 0, renderBufferSize);
           palette = (uint8_t *)malloc(12);
           if (palette == nullptr) {
@@ -1765,17 +1785,22 @@ void loop() {
               }
             }
           }
+#if !defined(BOARD_HAS_PSRAM)
           free(buffer);
-
+#endif
           mode64 = false;
 
           ScaleImage(1);
           display->FillPanelUsingPalette(renderBuffer, palette);
 
+#if !defined(BOARD_HAS_PSRAM)
           free(renderBuffer);
+#endif
           free(palette);
         } else {
+#if !defined(BOARD_HAS_PSRAM)
           free(buffer);
+#endif
         }
         break;
       }
@@ -1784,16 +1809,14 @@ void loop() {
                // de 2 pixels par byte
       {
         uint16_t bufferSize = 12 + 4 * RomWidthPlane * RomHeight;
-#ifdef BOARD_HAS_PSRAM
-        uint8_t *buffer = (uint8_t *)ps_malloc(bufferSize);
-#else
+#if !defined(BOARD_HAS_PSRAM)
         uint8_t *buffer = (uint8_t *)malloc(bufferSize);
-#endif
         if (buffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 7", 4, 14, 255, 255, 255);
           RestartAfterError();
         }
+#endif
 
         if (SerialReadBuffer(buffer, bufferSize)) {
           // We need to cover downscaling, too.
@@ -1801,16 +1824,15 @@ void loop() {
               (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT)
                   ? TOTAL_WIDTH * TOTAL_HEIGHT
                   : RomWidth * RomHeight;
-#ifdef BOARD_HAS_PSRAM
-          renderBuffer = (uint8_t *)ps_malloc(renderBufferSize);
-#else
+#if !defined(BOARD_HAS_PSRAM)
           renderBuffer = (uint8_t *)malloc(renderBufferSize);
-#endif
           if (renderBuffer == nullptr) {
             display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
             display->DisplayText("Command 7", 4, 14, 255, 255, 255);
             RestartAfterError();
           }
+#endif
+
           memset(renderBuffer, 0, renderBufferSize);
           palette = (uint8_t *)malloc(48);
           if (palette == nullptr) {
@@ -1906,17 +1928,23 @@ void loop() {
               }
             }
           }
+#if !defined(BOARD_HAS_PSRAM)
           free(buffer);
+#endif
 
           mode64 = false;
 
           ScaleImage(1);
           display->FillPanelUsingPalette(renderBuffer, palette);
 
+#if !defined(BOARD_HAS_PSRAM)
           free(renderBuffer);
+#endif
           free(palette);
         } else {
+#if !defined(BOARD_HAS_PSRAM)
           free(buffer);
+#endif
         }
         break;
       }
@@ -1926,16 +1954,14 @@ void loop() {
                // bits 4*512 bytes)
       {
         uint16_t bufferSize = 48 + 4 * RomWidthPlane * RomHeight;
-#ifdef BOARD_HAS_PSRAM
-        uint8_t *buffer = (uint8_t *)ps_malloc(bufferSize);
-#else
+#if !defined(BOARD_HAS_PSRAM)
         uint8_t *buffer = (uint8_t *)malloc(bufferSize);
-#endif
         if (buffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 9", 4, 14, 255, 255, 255);
           RestartAfterError();
         }
+#endif
 
         if (SerialReadBuffer(buffer, bufferSize)) {
           // We need to cover downscaling, too.
@@ -1943,16 +1969,15 @@ void loop() {
               (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT)
                   ? TOTAL_WIDTH * TOTAL_HEIGHT
                   : RomWidth * RomHeight;
-#ifdef BOARD_HAS_PSRAM
-          renderBuffer = (uint8_t *)ps_malloc(renderBufferSize);
-#else
+#if !defined(BOARD_HAS_PSRAM)
           renderBuffer = (uint8_t *)malloc(renderBufferSize);
-#endif
           if (renderBuffer == nullptr) {
             display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
             display->DisplayText("Command 9", 4, 14, 255, 255, 255);
             RestartAfterError();
           }
+#endif
+
           memset(renderBuffer, 0, renderBufferSize);
           palette = (uint8_t *)malloc(48);
           if (palette == nullptr) {
@@ -1987,17 +2012,23 @@ void loop() {
               }
             }
           }
+#if !defined(BOARD_HAS_PSRAM)
           free(buffer);
+#endif
 
           mode64 = false;
 
           ScaleImage(1);
           display->FillPanelUsingPalette(renderBuffer, palette);
 
+#if !defined(BOARD_HAS_PSRAM)
           free(renderBuffer);
+#endif
           free(palette);
         } else {
+#if !defined(BOARD_HAS_PSRAM)
           free(buffer);
+#endif
         }
         break;
       }
@@ -2009,16 +2040,14 @@ void loop() {
       {
         uint16_t bufferSize =
             192 + 6 * RomWidthPlane * RomHeight + 3 * MAX_COLOR_ROTATIONS;
-#ifdef BOARD_HAS_PSRAM
-        uint8_t *buffer = (uint8_t *)ps_malloc(bufferSize);
-#else
+#if !defined(BOARD_HAS_PSRAM)
         uint8_t *buffer = (uint8_t *)malloc(bufferSize);
-#endif
         if (buffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 11", 4, 14, 255, 255, 255);
           RestartAfterError();
         }
+#endif
 
         if (SerialReadBuffer(buffer, bufferSize)) {
           // We need to cover downscaling, too.
@@ -2026,16 +2055,15 @@ void loop() {
               (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT)
                   ? TOTAL_WIDTH * TOTAL_HEIGHT
                   : RomWidth * RomHeight;
-#ifdef BOARD_HAS_PSRAM
-          renderBuffer = (uint8_t *)ps_malloc(renderBufferSize);
-#else
+#if !defined(BOARD_HAS_PSRAM)
           renderBuffer = (uint8_t *)malloc(renderBufferSize);
-#endif
           if (renderBuffer == nullptr) {
             display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
             display->DisplayText("Command 11", 4, 14, 255, 255, 255);
             RestartAfterError();
           }
+#endif
+
           memset(renderBuffer, 0, renderBufferSize);
           palette = (uint8_t *)malloc(192);
           if (palette == nullptr) {
@@ -2091,17 +2119,23 @@ void loop() {
             rotNextRotationTime[ti] = actime + rotStepDurationTime[ti];
           }
 
+#if !defined(BOARD_HAS_PSRAM)
           free(buffer);
+#endif
 
           mode64 = true;
 
           ScaleImage(1);
           display->FillPanelUsingPalette(renderBuffer, palette);
 
+#if !defined(BOARD_HAS_PSRAM)
           free(renderBuffer);
+#endif
           free(palette);
         } else {
+#if !defined(BOARD_HAS_PSRAM)
           free(buffer);
+#endif
         }
         break;
       }
