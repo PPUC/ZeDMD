@@ -847,8 +847,10 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
         uint8_t numZones = pPacket[1] & 127;
         uint16_t size = (int)(pPacket[3]) + (((int)pPacket[2]) << 8);
 
-        // Maybe a bug in libzedmd, but sometimes we get 0 zones.
-        if (0 == numZones) break;
+        // In case of a mostly black screen, we might reach the maximum of 128
+        // zones. That results in 0 because of the compression flag. But 0 zones
+        // can't happen, so we can convert it back to 128.
+        if (0 == numZones) numZones = 128;
 
 #if !defined(BOARD_HAS_PSRAM)
         renderBuffer = (uint8_t *)malloc(ZONE_SIZE * numZones + numZones);
@@ -905,8 +907,10 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
         uint8_t numZones = pPacket[1] & 127;
         uint16_t size = (int)(pPacket[3]) + (((int)pPacket[2]) << 8);
 
-        // Maybe a bug in libzedmd, but sometimes we get 0 zones.
-        if (0 == numZones) break;
+        // In case of a mostly black screen, we might reach the maximum of 128
+        // zones. That results in 0 because of the compression flag. But 0 zones
+        // can't happen, so we can convert it back to 128.
+        if (0 == numZones) numZones = 128;
 
 #if !defined(BOARD_HAS_PSRAM)
         renderBuffer =
