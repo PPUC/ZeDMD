@@ -177,14 +177,12 @@ Bounce2::Button *brightnessButton;
 
 DisplayDriver *display;
 
+uint8_t *renderBuffer;
 #ifdef BOARD_HAS_PSRAM
 // Use fixed size buffers to avoid PSRAM fragmentation.
-uint8_t *buffer = (uint8_t *)ps_malloc(TOTAL_BYTES);
-uint8_t *renderBuffer = (uint8_t *)ps_malloc(TOTAL_BYTES);
-uint8_t *transferBuffer = (uint8_t *)ps_malloc(TOTAL_BYTES);
-uint8_t *panel = (uint8_t *)ps_malloc(TOTAL_BYTES);
-#else
-uint8_t *renderBuffer;
+uint8_t *buffer;
+uint8_t *transferBuffer;
+uint8_t *panel;
 #endif
 
 bool debugMode = false;
@@ -1106,6 +1104,13 @@ void setup() {
   brightnessButton->attach(BRIGHTNESS_BUTTON_PIN, INPUT_PULLUP);
   brightnessButton->interval(100);
   brightnessButton->setPressedState(LOW);
+
+#ifdef BOARD_HAS_PSRAM
+  buffer = (uint8_t *)ps_malloc(TOTAL_BYTES);
+  renderBuffer = (uint8_t *)ps_malloc(TOTAL_BYTES);
+  transferBuffer = (uint8_t *)ps_malloc(TOTAL_BYTES);
+  panel = (uint8_t *)ps_malloc(TOTAL_BYTES);
+#endif
 
   bool fileSystemOK;
   if (fileSystemOK = LittleFS.begin()) {
