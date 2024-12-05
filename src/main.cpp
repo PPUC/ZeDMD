@@ -847,6 +847,9 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
         uint8_t numZones = pPacket[1] & 127;
         uint16_t size = (int)(pPacket[3]) + (((int)pPacket[2]) << 8);
 
+        // Maybe a bug in libzedmd, but sometimes we get 0 zones.
+        if (0 == numZones) break;
+
 #if !defined(BOARD_HAS_PSRAM)
         renderBuffer = (uint8_t *)malloc(ZONE_SIZE * numZones + numZones);
         if (renderBuffer == nullptr) {
@@ -901,6 +904,9 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
         uint8_t compressed = pPacket[1] & 128;
         uint8_t numZones = pPacket[1] & 127;
         uint16_t size = (int)(pPacket[3]) + (((int)pPacket[2]) << 8);
+
+        // Maybe a bug in libzedmd, but sometimes we get 0 zones.
+        if (0 == numZones) break;
 
 #if !defined(BOARD_HAS_PSRAM)
         renderBuffer =
