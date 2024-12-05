@@ -36,6 +36,7 @@ class Rm67162Amoled : public DisplayDriver {
   static const uint8_t modeCount = 4;  // Number of scaling modes
 
   uint8_t currentScalingMode;
+  const uint8_t blackZone[384] = {0};
 
  public:
   Rm67162Amoled();
