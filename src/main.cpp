@@ -843,6 +843,8 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
 
       case 4:  // RGB24 Zones Stream
       {
+        displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
+
         uint8_t compressed = pPacket[1] & 128;
         uint8_t numZones = pPacket[1] & 127;
         uint16_t size = (int)(pPacket[3]) + (((int)pPacket[2]) << 8);
@@ -903,6 +905,8 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
 
       case 5:  // RGB565 Zones Stream
       {
+        displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
+
         uint8_t compressed = pPacket[1] & 128;
         uint8_t numZones = pPacket[1] & 127;
         uint16_t size = (int)(pPacket[3]) + (((int)pPacket[2]) << 8);
@@ -1663,6 +1667,8 @@ void loop() {
 
       case 4:  // mode RGB24 zones streaming
       {
+        displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
+
         const uint16_t renderBufferSize =
             ZONES_PER_ROW * ZONE_SIZE + ZONES_PER_ROW;
 #if !defined(BOARD_HAS_PSRAM)
@@ -1701,6 +1707,8 @@ void loop() {
 
       case 5:  // mode RGB565 zones streaming
       {
+        displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
+
         const uint16_t renderBufferSize =
             ZONES_PER_ROW * RGB565_ZONE_SIZE + ZONES_PER_ROW;
 #if !defined(BOARD_HAS_PSRAM)
@@ -1739,6 +1747,8 @@ void loop() {
 
       case 3:  // mode RGB24
       {
+        displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
+
         display->DisplayText("Command 3 not supported.", 4, 6, 255, 255, 255);
         display->DisplayText("Update your client.", 4, 14, 255, 255, 255);
         RestartAfterError();
@@ -1749,6 +1759,8 @@ void loop() {
       case 8:  // mode 4 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis
                // de 4 pixels par byte
       {
+        displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
+
         uint16_t bufferSize = 12 + 2 * RomWidthPlane * RomHeight;
 #if !defined(BOARD_HAS_PSRAM)
         uint8_t *buffer = (uint8_t *)malloc(bufferSize);
@@ -1823,6 +1835,8 @@ void loop() {
       case 7:  // mode 16 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis
                // de 2 pixels par byte
       {
+        displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
+
         uint16_t bufferSize = 12 + 4 * RomWidthPlane * RomHeight;
 #if !defined(BOARD_HAS_PSRAM)
         uint8_t *buffer = (uint8_t *)malloc(bufferSize);
@@ -1968,6 +1982,8 @@ void loop() {
                // suivis de 4 bytes par groupe de 8 points (séparés en plans de
                // bits 4*512 bytes)
       {
+        displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
+
         uint16_t bufferSize = 48 + 4 * RomWidthPlane * RomHeight;
 #if !defined(BOARD_HAS_PSRAM)
         uint8_t *buffer = (uint8_t *)malloc(bufferSize);
@@ -2053,6 +2069,8 @@ void loop() {
                 // bits 6*512 bytes) suivis de 3*8 bytes de rotations de
                 // couleurs
       {
+        displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
+
         uint16_t bufferSize =
             192 + 6 * RomWidthPlane * RomHeight + 3 * MAX_COLOR_ROTATIONS;
 #if !defined(BOARD_HAS_PSRAM)
