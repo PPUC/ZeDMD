@@ -798,9 +798,6 @@ void ScreenSaver(void) {
 /// @brief Handles the UDP Packet parsing for ZeDMD WiFi and ZeDMD-HD WiFi
 /// @param packet
 void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
-  if (drawingInProgress) return;
-  drawingInProgress = true;
-
   uint8_t *pPacket = packet.data();
   receivedBytes = packet.length();
   if (receivedBytes >= 1) {
@@ -850,6 +847,8 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
 
       case 4:  // RGB24 Zones Stream
       {
+        if (drawingInProgress) return;
+        drawingInProgress = true;
         displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
 
         uint8_t compressed = pPacket[1] & 128;
@@ -917,6 +916,8 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
 
       case 5:  // RGB565 Zones Stream
       {
+        if (drawingInProgress) return;
+        drawingInProgress = true;
         displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
 
         uint8_t compressed = pPacket[1] & 128;
