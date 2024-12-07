@@ -1,4 +1,10 @@
 
+#ifdef ZEDMD_WIFI
+// Typically, the MTU is 1460 (1500 - 40 byte header).
+// If we assume a compression factor of roughly 2, a bytes limit of 1700 should
+// be safe to fit the compressed zones within the MTU.
+#define ZEDMD_WIFI_ZONES_BYTES_LIMIT 1700
+#else
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
 #define SERIAL_BAUD 2000000  // Serial baud rate.
 #define SERIAL_CHUNK_SIZE_MAX 992
@@ -7,6 +13,7 @@
 #define SERIAL_BAUD 921600  // Serial baud rate.
 #define SERIAL_CHUNK_SIZE_MAX 1888
 #define SERIAL_BUFFER 2048  // Serial buffer size in byte.
+#endif
 #endif
 #define SERIAL_TIMEOUT \
   8  // Time in milliseconds to wait for the next data chunk.
@@ -791,9 +798,6 @@ void ScreenSaver(void) {
 /// @brief Handles the UDP Packet parsing for ZeDMD WiFi and ZeDMD-HD WiFi
 /// @param packet
 void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
-  if (drawingInProgress) return;
-  drawingInProgress = true;
-
   uint8_t *pPacket = packet.data();
   receivedBytes = packet.length();
   if (receivedBytes >= 1) {
@@ -843,6 +847,8 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
 
       case 4:  // RGB24 Zones Stream
       {
+        if (drawingInProgress) return;
+        drawingInProgress = true;
         displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
 
         uint8_t compressed = pPacket[1] & 128;
@@ -854,8 +860,13 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
         // can't happen, so we can convert it back to 128.
         if (0 == numZones) numZones = 128;
 
+        uint16_t zonesSize =
+            ZONE_SIZE * numZones + numZones < ZEDMD_WIFI_ZONES_BYTES_LIMIT
+                ? ZONE_SIZE * numZones + numZones
+                : ZEDMD_WIFI_ZONES_BYTES_LIMIT;
+
 #if !defined(BOARD_HAS_PSRAM)
-        renderBuffer = (uint8_t *)malloc(ZONE_SIZE * numZones + numZones);
+        renderBuffer = (uint8_t *)malloc(zonesSize);
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("HandlePacket 4", 4, 14, 255, 255, 255);
@@ -864,7 +875,7 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
 #endif
 
         if (compressed == 128) {
-          mz_ulong uncompressedBufferSize = ZONE_SIZE * numZones + numZones;
+          mz_ulong uncompressedBufferSize = zonesSize;
           mz_ulong udpPayloadSize = (mz_ulong)size;
 
           minizStatus =
@@ -905,6 +916,8 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
 
       case 5:  // RGB565 Zones Stream
       {
+        if (drawingInProgress) return;
+        drawingInProgress = true;
         displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
 
         uint8_t compressed = pPacket[1] & 128;
@@ -916,9 +929,13 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
         // can't happen, so we can convert it back to 128.
         if (0 == numZones) numZones = 128;
 
+        uint16_t zonesSize = RGB565_ZONE_SIZE * numZones + numZones <
+                                     ZEDMD_WIFI_ZONES_BYTES_LIMIT
+                                 ? RGB565_ZONE_SIZE * numZones + numZones
+                                 : ZEDMD_WIFI_ZONES_BYTES_LIMIT;
+
 #if !defined(BOARD_HAS_PSRAM)
-        renderBuffer =
-            (uint8_t *)malloc(RGB565_ZONE_SIZE * numZones + numZones);
+        renderBuffer = (uint8_t *)malloc(zonesSize);
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("HandlePacket 5", 4, 14, 255, 255, 255);
@@ -927,8 +944,7 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
 #endif
 
         if (compressed == 128) {
-          mz_ulong uncompressedBufferSize =
-              RGB565_ZONE_SIZE * numZones + numZones;
+          mz_ulong uncompressedBufferSize = zonesSize;
           mz_ulong udpPayloadSize = (mz_ulong)size;
 
           minizStatus =
