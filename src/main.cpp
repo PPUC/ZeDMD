@@ -1,9 +1,7 @@
 
 #ifdef ZEDMD_WIFI
 // Typically, the MTU is 1460 (1500 - 40 byte header).
-// If we assume a compression factor of roughly 2, a bytes limit of 1700 should
-// be safe to fit the compressed zones within the MTU.
-#define ZEDMD_WIFI_ZONES_BYTES_LIMIT 1700
+#define ZEDMD_WIFI_ZONES_BYTES_LIMIT 1500
 #else
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
 #define SERIAL_BAUD 2000000  // Serial baud rate.
