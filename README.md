@@ -25,8 +25,8 @@ Meanwhile, there're different "flavours" of the ZeDMD firmware. Because it pushe
 * ZeDMD S3 WiFi: using two 64x32 panels  driven by an ESP32 S3 N16R8 connected over WiFi
 * ZeDMD S3 HD WiFi: using four 64x64 or two 128x64 panels driven by an ESP32 S3 N16R8 connected over WiFi
 * ZeDMD S3 HALF WiFi: using one 128x64 panel driven by an ESP32 S3 N16R8 connected over WiFi
-* ZeDMD S3 AMOLED: using a small OLED driven by a LilyGo AMOLED T-Display-S3 ESP32-S3 connected via USB
-* ZeDMD S3 AMOLED WiFi: using a small OLED driven by a LilyGo AMOLED T-Display-S3 ESP32-S3 connected via WiFi
+* ZeDMD S3 AMOLED: using a small OLED driven by a LilyGo AMOLED T-Display-S3 V2 connected via USB
+* ZeDMD S3 AMOLED WiFi: using a small OLED driven by a LilyGo AMOLED T-Display-S3 V2 connected via WiFi
 
 Here's are short demo of ZeDMD and ZeDMD HD in parallel:
 
