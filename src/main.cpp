@@ -64,8 +64,8 @@
 //     internally
 // 12: handshake
 // 13: set serial transfer chunk size
-// 14: enable serial transfer compression
-// 15: disable serial transfer compression
+// 14: not supported anymore (enable serial transfer compression)
+// 15: not supported anymore (disable serial transfer compression)
 // 16: panel LED check, screen full red, then full green, then full blue
 // 20: turn off upscaling
 // 21: turn on upscaling
@@ -73,7 +73,7 @@
 // 23: set RGB order
 // 24: get brightness, returns (int8) brigtness value between 1 and 15
 // 25: get RGB order, returns (int8) major, (int8) minor, (int8) patch level
-// 26: turn on flow control version 2
+// 26: not supported anymore (turn on flow control version 2)
 // 27: set WiFi SSID
 // 28: set WiFi password
 // 29: set WiFi port
@@ -193,7 +193,7 @@ uint8_t *panel;
 bool debugMode = false;
 bool debugDelayOnError = false;
 uint8_t c4;
-int16_t transferBufferSize = 0;
+uint16_t transferBufferSize = 0;
 int16_t receivedBytes = 0;
 int16_t minizStatus = 0;
 uint8_t *palette;
@@ -1512,6 +1512,8 @@ void loop() {
         int tmpSerialTransferChunkSize = ((int)Serial.read()) * 32;
         if (tmpSerialTransferChunkSize <= SERIAL_CHUNK_SIZE_MAX) {
           serialTransferChunkSize = tmpSerialTransferChunkSize;
+          // turn on flow control version 2
+          flowControlCounter = 1;
           // Send an (A)cknowledge signal to tell the client that we
           // successfully read the chunk.
           Serial.write('A');
@@ -1593,13 +1595,6 @@ void loop() {
       case 25:  // get RGB order
       {
         Serial.write(rgbMode);
-        break;
-      }
-
-      case 26:  // turn on flow control version 2
-      {
-        flowControlCounter = 1;
-        Serial.write('A');
         break;
       }
 
