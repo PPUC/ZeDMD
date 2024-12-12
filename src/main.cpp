@@ -205,7 +205,6 @@ uint8_t lumstep = 5;  // Init display on medium brightness, otherwise it starts
 bool MireActive = false;
 uint8_t displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
 bool handshakeSucceeded = false;
-bool compression = false;
 // 256 is the default buffer size of the CP210x linux kernel driver, we should
 // not exceed it as default.
 uint16_t serialTransferChunkSize = 256;
@@ -1134,9 +1133,9 @@ void setup() {
   brightnessButton->setPressedState(LOW);
 
 #ifdef BOARD_HAS_PSRAM
-  buffer = (uint8_t *)ps_malloc(TOTAL_BYTES);
-  renderBuffer = (uint8_t *)ps_malloc(TOTAL_BYTES);
-  transferBuffer = (uint8_t *)ps_malloc(TOTAL_BYTES);
+  buffer = (uint8_t *)ps_malloc(TOTAL_BYTES + 128);
+  renderBuffer = (uint8_t *)ps_malloc(TOTAL_BYTES + 128);
+  transferBuffer = (uint8_t *)ps_malloc(TOTAL_BYTES + 128);
   panel = (uint8_t *)ps_malloc(TOTAL_BYTES);
 #endif
 
@@ -1157,17 +1156,14 @@ void setup() {
     display->DisplayText("Error reading file system!", 4, 6, 255, 255, 255);
     display->DisplayText("Try to flash the firmware again.", 4, 14, 255, 255,
                          255);
-    // #ifdef ARDUINO_ESP32_S3_N16R8
-    //     display->flipDMABuffer();
-    // #endif
     while (true);
   }
 
 #if !defined(ZEDMD_WIFI)
-#if defined(ARDUINO_USB_MODE)
+#if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
   // S3 USB CDC
   Serial.setRxBufferSize(SERIAL_BUFFER);
-  Serial.begin(SERIAL_BAUD);
+  Serial.begin(115200);
 #else
   Serial.setRxBufferSize(SERIAL_BUFFER);
   Serial.setTimeout(SERIAL_TIMEOUT);
@@ -1225,36 +1221,31 @@ void setup() {
 bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
                       bool fixedSize = true) {
   memset(pBuffer, 0, BufferSize);
+  minizStatus = 0;
 
   transferBufferSize = BufferSize;
   uint8_t *pTransferBuffer;
-
-  if (compression) {
-    uint8_t byteArray[2];
-    Serial.readBytes(byteArray, 2);
-    transferBufferSize =
-        ((((uint16_t)byteArray[0]) << 8) + ((uint16_t)byteArray[1]));
+  uint8_t byteArray[2];
+  Serial.readBytes(byteArray, 2);
+  transferBufferSize =
+      ((((uint16_t)byteArray[0]) << 8) + ((uint16_t)byteArray[1]));
 
 #if !defined(BOARD_HAS_PSRAM)
-    pTransferBuffer = (uint8_t *)malloc(transferBufferSize);
-    if (pTransferBuffer == nullptr) {
-      display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
-      display->DisplayText("SerialReadBuffer", 4, 14, 255, 255, 255);
-      RestartAfterError();
-    }
-#else
-    pTransferBuffer = transferBuffer;
-#endif
-  } else {
-    pTransferBuffer = pBuffer;
+  pTransferBuffer = (uint8_t *)malloc(transferBufferSize);
+  if (pTransferBuffer == nullptr) {
+    display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
+    display->DisplayText("SerialReadBuffer", 4, 14, 255, 255, 255);
+    RestartAfterError();
   }
+#else
+  pTransferBuffer = transferBuffer;
+#endif
 
   // We always receive chunks of "serialTransferChunkSize" bytes (maximum).
   // At this point, the control chars and the one byte command have been read
   // already. So we only need to read the remaining bytes of the first chunk and
   // full chunks afterwards.
-  uint16_t chunkSize =
-      serialTransferChunkSize - N_CTRL_CHARS - 1 - (compression ? 2 : 0);
+  uint16_t chunkSize = serialTransferChunkSize - N_CTRL_CHARS - 3;
   uint16_t remainingBytes = transferBufferSize;
   while (remainingBytes > 0) {
     receivedBytes = Serial.readBytes(
@@ -1265,7 +1256,7 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
 
     if (receivedBytes != remainingBytes && receivedBytes != chunkSize) {
 #if !defined(BOARD_HAS_PSRAM)
-      if (compression) free(pTransferBuffer);
+      free(pTransferBuffer);
 #endif
 
       errorCount++;
@@ -1293,36 +1284,32 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
     chunkSize = serialTransferChunkSize;
   }
 
-  if (compression) {
-    mz_ulong uncompressed_buffer_size = (mz_ulong)BufferSize;
-    minizStatus =
-        mz_uncompress2(pBuffer, &uncompressed_buffer_size, pTransferBuffer,
-                       (mz_ulong *)&transferBufferSize);
+  mz_ulong uncompressed_buffer_size = (mz_ulong)BufferSize;
+  minizStatus =
+      mz_uncompress2(pBuffer, &uncompressed_buffer_size, pTransferBuffer,
+                     (mz_ulong *)&transferBufferSize);
 #if !defined(BOARD_HAS_PSRAM)
-    free(pTransferBuffer);
+  free(pTransferBuffer);
 #endif
 
-    if ((MZ_OK == minizStatus) &&
-        (!fixedSize || (fixedSize && uncompressed_buffer_size == BufferSize))) {
-      return true;
-    }
-
-    if (debugMode && (MZ_OK == minizStatus)) {
-      // uncrompessed data isn't of expected size
-      minizStatus = 99;
-    }
-
-    errorCount++;
-    DisplayDebugInfo();
-    if (debugDelayOnError) {
-      delay(DEBUG_DELAY);
-    }
-
-    Serial.write('E');
-    return false;
+  if ((MZ_OK == minizStatus) &&
+      (!fixedSize || (fixedSize && uncompressed_buffer_size == BufferSize))) {
+    return true;
   }
 
-  return true;
+  if (debugMode && (MZ_OK == minizStatus)) {
+    // uncrompessed data isn't of expected size
+    minizStatus = 99;
+  }
+
+  errorCount++;
+  DisplayDebugInfo();
+  if (debugDelayOnError) {
+    delay(DEBUG_DELAY);
+  }
+
+  Serial.write('E');
+  return false;
 }
 
 void UpdateColorRotations(void) {
@@ -1364,6 +1351,7 @@ bool WaitForCtrlChars(void) {
         nCtrlCharFound = 0;
         // There's garbage on the line.
         minizStatus = 666;
+        c4 = 1;
         DisplayDebugInfo();
       }
     }
@@ -1539,14 +1527,12 @@ void loop() {
 
       case 14:  // enable serial transfer compression
       {
-        compression = true;
         Serial.write('A');
         break;
       }
 
       case 15:  // disable serial transfer compression
       {
-        compression = false;
         Serial.write('A');
         break;
       }
@@ -1683,15 +1669,18 @@ void loop() {
       {
         displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
 
+#if (!defined(BOARD_HAS_PSRAM) || !defined(ARDUINO_USB_MODE) || \
+     ARDUINO_USB_MODE != 1)
         const uint16_t renderBufferSize =
             ZONES_PER_ROW * ZONE_SIZE + ZONES_PER_ROW;
-#if !defined(BOARD_HAS_PSRAM)
         renderBuffer = (uint8_t *)malloc(renderBufferSize);
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 4", 4, 14, 255, 255, 255);
           RestartAfterError();
         }
+#else
+        const uint16_t renderBufferSize = TOTAL_BYTES + 128;
 #endif
 
         if (SerialReadBuffer(renderBuffer, renderBufferSize, false)) {
@@ -1723,15 +1712,18 @@ void loop() {
       {
         displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
 
+#if (!defined(BOARD_HAS_PSRAM) || !defined(ARDUINO_USB_MODE) || \
+     ARDUINO_USB_MODE != 1)
         const uint16_t renderBufferSize =
             ZONES_PER_ROW * RGB565_ZONE_SIZE + ZONES_PER_ROW;
-#if !defined(BOARD_HAS_PSRAM)
         renderBuffer = (uint8_t *)malloc(renderBufferSize);
         if (renderBuffer == nullptr) {
           display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
           display->DisplayText("Command 5", 4, 14, 255, 255, 255);
           RestartAfterError();
         }
+#else
+        const uint16_t renderBufferSize = RGB565_TOTAL_BYTES + 128;
 #endif
 
         if (SerialReadBuffer(renderBuffer, renderBufferSize, false)) {
