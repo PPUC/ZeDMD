@@ -48,20 +48,8 @@
 // -----------------------------------------------------------------------------
 // Commands:
 //  2: set rom frame size as (int16) width, (int16) height
-//  3: render raw data, RGB24
-//  4: render raw data, RGB24 zones streaming
 //  5: render raw data, RGB565 zones streaming
-//  6: init palette (deprectated, backward compatibility)
-//  7: render 16 colors using a 4 color palette (3*4 bytes), 2 pixels per byte
-//  8: render 4 colors using a 4 color palette (3*4 bytes), 4 pixels per byte
-//  9: render 16 colors using a 16 color palette (3*16 bytes), 4 bytes per group
-//     of 8 pixels (encoded as 4*512 bytes planes)
 // 10: clear screen
-// 11: render 64 colors using a 64 color palette (3*64 bytes), 6 bytes per group
-//     of 8 pixels (encoded as 6*512 bytes planes) 12: handshake + report
-//     resolution, returns (int16) width, (int16) height 13: set serial transfer
-//     chunk size as (int8) value, the value will be multiplied with 32
-//     internally
 // 12: handshake
 // 13: set serial transfer chunk size
 // 14: not supported anymore (enable serial transfer compression)
@@ -142,11 +130,6 @@ bool enableDimAfterTimeout = false;   // Should dim after timeout
 bool drawingInProgress = false;
 #else
 // color rotation
-uint8_t rotFirstColor[MAX_COLOR_ROTATIONS];
-uint8_t rotAmountColors[MAX_COLOR_ROTATIONS];
-unsigned int rotStepDurationTime[MAX_COLOR_ROTATIONS];
-unsigned long rotNextRotationTime[MAX_COLOR_ROTATIONS];
-uint8_t tmpColor[3] = {0};
 
 bool upscaling = true;
 #endif
@@ -196,10 +179,7 @@ uint8_t c4;
 uint16_t transferBufferSize = 0;
 int16_t receivedBytes = 0;
 int16_t minizStatus = 0;
-uint8_t *palette;
-bool mode64 = false;
 uint16_t RomWidth = 128, RomHeight = 32;
-uint8_t RomWidthPlane = 128 >> 3;
 uint8_t lumstep = 5;  // Init display on medium brightness, otherwise it starts
                       // up black on some displays
 bool MireActive = false;
@@ -302,282 +282,6 @@ void ClearScreen() {
   display->ClearScreen();
   display->SetBrightness(lumstep);
 }
-
-#if !defined(ZEDMD_WIFI)
-bool CmpColor(uint8_t *px1, uint8_t *px2, uint8_t colors) {
-  if (colors == 3) {
-    return (px1[0] == px2[0]) && (px1[1] == px2[1]) && (px1[2] == px2[2]);
-  }
-
-  return px1[0] == px2[0];
-}
-
-void SetColor(uint8_t *px1, uint8_t *px2, uint8_t colors) {
-  px1[0] = px2[0];
-
-  if (colors == 3) {
-    px1[1] = px2[1];
-    px1[2] = px2[2];
-  }
-}
-
-void ScaleImage(uint8_t colors) {
-  uint16_t xoffset = 0;
-  uint16_t yoffset = 0;
-  uint8_t scale = 0;  // 0 - no scale, 1 - half scale, 2 - double scale
-
-  if (RomWidth == 192 && TOTAL_WIDTH == 256) {
-    xoffset = 32;
-  } else if (RomWidth == 192) {
-    xoffset = 16;
-    scale = 1;
-  } else if (RomHeight == 16 && TOTAL_HEIGHT == 32) {
-    yoffset = 8;
-  } else if (RomHeight == 16 && TOTAL_HEIGHT == 64) {
-    if (upscaling) {
-      yoffset = 16;
-      scale = 2;
-    } else {
-      // Just center the DMD.
-      xoffset = 64;
-      yoffset = 24;
-    }
-  } else if (RomWidth == 256 && TOTAL_WIDTH == 128) {
-    scale = 1;
-  } else if (RomWidth == 128 && TOTAL_WIDTH == 256) {
-    if (upscaling) {
-      // Scaling doesn't look nice for real RGB tables like Diablo.
-      scale = 2;
-    } else {
-      // Just center the DMD.
-      xoffset = 64;
-      yoffset = 16;
-    }
-  } else {
-    return;
-  }
-
-#if !defined BOARD_HAS_PSRAM
-  uint8_t *panel = (uint8_t *)malloc(RomWidth * RomHeight * colors);
-  if (panel == nullptr) {
-    display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
-    display->DisplayText("ScaleImage", 4, 14, 255, 255, 255);
-    RestartAfterError();
-  }
-#endif
-
-  memcpy(panel, renderBuffer, RomWidth * RomHeight * colors);
-  memset(renderBuffer, 0, TOTAL_WIDTH * TOTAL_HEIGHT);
-
-  if (scale == 1) {
-    // for half scaling we take the 4 points and look if there is one colour
-    // repeated
-    for (uint16_t y = 0; y < RomHeight; y += 2) {
-      for (uint16_t x = 0; x < RomWidth; x += 2) {
-        uint16_t upper_left = y * RomWidth * colors + x * colors;
-        uint16_t upper_right = upper_left + colors;
-        uint16_t lower_left = upper_left + RomWidth * colors;
-        uint16_t lower_right = lower_left + colors;
-        uint16_t target = (xoffset + (x / 2) + (y / 2) * TOTAL_WIDTH) * colors;
-
-        // Prefer most outer upper_lefts.
-        if (x < RomWidth / 2) {
-          if (y < RomHeight / 2) {
-            if (CmpColor(&panel[upper_left], &panel[upper_right], colors) ||
-                CmpColor(&panel[upper_left], &panel[lower_left], colors) ||
-                CmpColor(&panel[upper_left], &panel[lower_right], colors)) {
-              SetColor(&renderBuffer[target], &panel[upper_left], colors);
-            } else if (CmpColor(&panel[upper_right], &panel[lower_left],
-                                colors) ||
-                       CmpColor(&panel[upper_right], &panel[lower_right],
-                                colors)) {
-              SetColor(&renderBuffer[target], &panel[upper_right], colors);
-            } else if (CmpColor(&panel[lower_left], &panel[lower_right],
-                                colors)) {
-              SetColor(&renderBuffer[target], &panel[lower_left], colors);
-            } else {
-              SetColor(&renderBuffer[target], &panel[upper_left], colors);
-            }
-          } else {
-            if (CmpColor(&panel[lower_left], &panel[lower_right], colors) ||
-                CmpColor(&panel[lower_left], &panel[upper_left], colors) ||
-                CmpColor(&panel[lower_left], &panel[upper_right], colors)) {
-              SetColor(&renderBuffer[target], &panel[lower_left], colors);
-            } else if (CmpColor(&panel[lower_right], &panel[upper_left],
-                                colors) ||
-                       CmpColor(&panel[lower_right], &panel[upper_right],
-                                colors)) {
-              SetColor(&renderBuffer[target], &panel[lower_right], colors);
-            } else if (CmpColor(&panel[upper_left], &panel[upper_right],
-                                colors)) {
-              SetColor(&renderBuffer[target], &panel[upper_left], colors);
-            } else {
-              SetColor(&renderBuffer[target], &panel[lower_left], colors);
-            }
-          }
-        } else {
-          if (y < RomHeight / 2) {
-            if (CmpColor(&panel[upper_right], &panel[upper_left], colors) ||
-                CmpColor(&panel[upper_right], &panel[lower_right], colors) ||
-                CmpColor(&panel[upper_right], &panel[lower_left], colors)) {
-              SetColor(&renderBuffer[target], &panel[upper_right], colors);
-            } else if (CmpColor(&panel[upper_left], &panel[lower_right],
-                                colors) ||
-                       CmpColor(&panel[upper_left], &panel[lower_left],
-                                colors)) {
-              SetColor(&renderBuffer[target], &panel[upper_left], colors);
-            } else if (CmpColor(&panel[lower_right], &panel[lower_left],
-                                colors)) {
-              SetColor(&renderBuffer[target], &panel[lower_right], colors);
-            } else {
-              SetColor(&renderBuffer[target], &panel[upper_right], colors);
-            }
-          } else {
-            if (CmpColor(&panel[lower_right], &panel[lower_left], colors) ||
-                CmpColor(&panel[lower_right], &panel[upper_right], colors) ||
-                CmpColor(&panel[lower_right], &panel[upper_left], colors)) {
-              SetColor(&renderBuffer[target], &panel[lower_right], colors);
-            } else if (CmpColor(&panel[lower_left], &panel[upper_right],
-                                colors) ||
-                       CmpColor(&panel[lower_left], &panel[upper_left],
-                                colors)) {
-              SetColor(&renderBuffer[target], &panel[lower_left], colors);
-            } else if (CmpColor(&panel[upper_right], &panel[upper_left],
-                                colors)) {
-              SetColor(&renderBuffer[target], &panel[upper_right], colors);
-            } else {
-              SetColor(&renderBuffer[target], &panel[lower_right], colors);
-            }
-          }
-        }
-      }
-    }
-  } else if (scale == 2) {
-    // we implement scale2x http://www.scale2x.it/algorithm
-    uint16_t row = RomWidth * colors;
-    for (uint16_t x = 0; x < RomHeight; x++) {
-      for (uint16_t y = 0; y < RomWidth; y++) {
-        uint8_t a[colors], b[colors], c[colors], d[colors], e[colors],
-            f[colors], g[colors], h[colors], i[colors];
-        for (uint8_t tc = 0; tc < colors; tc++) {
-          if (y == 0 && x == 0) {
-            a[tc] = b[tc] = d[tc] = e[tc] = panel[tc];
-            c[tc] = f[tc] = panel[colors + tc];
-            g[tc] = h[tc] = panel[row + tc];
-            i[tc] = panel[row + colors + tc];
-          } else if ((y == 0) && (x == RomHeight - 1)) {
-            a[tc] = b[tc] = panel[(x - 1) * row + tc];
-            c[tc] = panel[(x - 1) * row + colors + tc];
-            d[tc] = g[tc] = h[tc] = e[tc] = panel[x * row + tc];
-            f[tc] = i[tc] = panel[x * row + colors + tc];
-          } else if ((y == RomWidth - 1) && (x == 0)) {
-            a[tc] = d[tc] = panel[y * colors - colors + tc];
-            b[tc] = c[tc] = f[tc] = e[tc] = panel[y * colors + tc];
-            g[tc] = panel[row + y * colors - colors + tc];
-            h[tc] = i[tc] = panel[row + y * colors + tc];
-          } else if ((y == RomWidth - 1) && (x == RomHeight - 1)) {
-            a[tc] = panel[x * row - 2 * colors + tc];
-            b[tc] = c[tc] = panel[x * row - colors + tc];
-            d[tc] = g[tc] = panel[RomHeight * row - 2 * colors + tc];
-            e[tc] = f[tc] = h[tc] = i[tc] =
-                panel[RomHeight * row - colors + tc];
-          } else if (y == 0) {
-            a[tc] = b[tc] = panel[(x - 1) * row + tc];
-            c[tc] = panel[(x - 1) * row + colors + tc];
-            d[tc] = e[tc] = panel[x * row + tc];
-            f[tc] = panel[x * row + colors + tc];
-            g[tc] = h[tc] = panel[(x + 1) * row + tc];
-            i[tc] = panel[(x + 1) * row + colors + tc];
-          } else if (y == RomWidth - 1) {
-            a[tc] = panel[x * row - 2 * colors + tc];
-            b[tc] = c[tc] = panel[x * row - colors + tc];
-            d[tc] = panel[(x + 1) * row - 2 * colors + tc];
-            e[tc] = f[tc] = panel[(x + 1) * row - colors + tc];
-            g[tc] = panel[(x + 2) * row - 2 * colors + tc];
-            h[tc] = i[tc] = panel[(x + 2) * row - colors + tc];
-          } else if (x == 0) {
-            a[tc] = d[tc] = panel[y * colors - colors + tc];
-            b[tc] = e[tc] = panel[y * colors + tc];
-            c[tc] = f[tc] = panel[y * colors + colors + tc];
-            g[tc] = panel[row + y * colors - colors + tc];
-            h[tc] = panel[row + y * colors + tc];
-            i[tc] = panel[row + y * colors + colors + tc];
-          } else if (x == RomHeight - 1) {
-            a[tc] = panel[(x - 1) * row + y * colors - colors + tc];
-            b[tc] = panel[(x - 1) * row + y * colors + tc];
-            c[tc] = panel[(x - 1) * row + y * colors + colors + tc];
-            d[tc] = g[tc] = panel[x * row + y * colors - colors + tc];
-            e[tc] = h[tc] = panel[x * row + y * colors + tc];
-            f[tc] = i[tc] = panel[x * row + y * colors + colors + tc];
-          } else {
-            a[tc] = panel[(x - 1) * row + y * colors - colors + tc];
-            b[tc] = panel[(x - 1) * row + y * colors + tc];
-            c[tc] = panel[(x - 1) * row + y * colors + colors + tc];
-            d[tc] = panel[x * row + y * colors - colors + tc];
-            e[tc] = panel[x * row + y * colors + tc];
-            f[tc] = panel[x * row + y * colors + colors + tc];
-            g[tc] = panel[(x + 1) * row + y * colors - colors + tc];
-            h[tc] = panel[(x + 1) * row + y * colors + tc];
-            i[tc] = panel[(x + 1) * row + y * colors + colors + tc];
-          }
-        }
-
-        if (!CmpColor(b, h, colors) && !CmpColor(d, f, colors)) {
-          SetColor(&renderBuffer[(yoffset * TOTAL_WIDTH + x * 2 * TOTAL_WIDTH +
-                                  y * 2 + xoffset) *
-                                 colors],
-                   CmpColor(d, b, colors) ? d : e, colors);
-          SetColor(&renderBuffer[(yoffset * TOTAL_WIDTH + x * 2 * TOTAL_WIDTH +
-                                  y * 2 + 1 + xoffset) *
-                                 colors],
-                   CmpColor(b, f, colors) ? f : e, colors);
-          SetColor(&renderBuffer[(yoffset * TOTAL_WIDTH +
-                                  (x * 2 + 1) * TOTAL_WIDTH + y * 2 + xoffset) *
-                                 colors],
-                   CmpColor(d, h, colors) ? d : e, colors);
-          SetColor(
-              &renderBuffer[(yoffset * TOTAL_WIDTH + (x * 2 + 1) * TOTAL_WIDTH +
-                             y * 2 + 1 + xoffset) *
-                            colors],
-              CmpColor(h, f, colors) ? f : e, colors);
-        } else {
-          SetColor(&renderBuffer[(yoffset * TOTAL_WIDTH + x * 2 * TOTAL_WIDTH +
-                                  y * 2 + xoffset) *
-                                 colors],
-                   e, colors);
-          SetColor(&renderBuffer[(yoffset * TOTAL_WIDTH + x * 2 * TOTAL_WIDTH +
-                                  y * 2 + 1 + xoffset) *
-                                 colors],
-                   e, colors);
-          SetColor(&renderBuffer[(yoffset * TOTAL_WIDTH +
-                                  (x * 2 + 1) * TOTAL_WIDTH + y * 2 + xoffset) *
-                                 colors],
-                   e, colors);
-          SetColor(
-              &renderBuffer[(yoffset * TOTAL_WIDTH + (x * 2 + 1) * TOTAL_WIDTH +
-                             y * 2 + 1 + xoffset) *
-                            colors],
-              e, colors);
-        }
-      }
-    }
-  } else  // offset!=0
-  {
-    for (uint16_t y = 0; y < RomHeight; y++) {
-      for (uint16_t x = 0; x < RomWidth; x++) {
-        for (uint8_t c = 0; c < colors; c++) {
-          renderBuffer[((yoffset + y) * TOTAL_WIDTH + xoffset + x) * colors +
-                       c] = panel[(y * RomWidth + x) * colors + c];
-        }
-      }
-    }
-  }
-
-#if !defined(BOARD_HAS_PSRAM)
-  free(panel);
-#endif
-}
-#endif
 
 void LoadRgbOrder() {
   File f = LittleFS.open("/rgb_order.val", "r");
@@ -818,7 +522,6 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
       {
         RomWidth = (int)(pPacket[4]) + (int)(pPacket[5] << 8);
         RomHeight = (int)(pPacket[6]) + (int)(pPacket[7] << 8);
-        RomWidthPlane = RomWidth >> 3;
         break;
       }
 
@@ -1223,12 +926,25 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
   memset(pBuffer, 0, BufferSize);
   minizStatus = 0;
 
-  transferBufferSize = BufferSize;
   uint8_t *pTransferBuffer;
   uint8_t byteArray[2];
   Serial.readBytes(byteArray, 2);
   transferBufferSize =
       ((((uint16_t)byteArray[0]) << 8) + ((uint16_t)byteArray[1]));
+
+  if (0 == transferBufferSize) {
+    errorCount++;
+    DisplayDebugInfo();
+    if (debugDelayOnError) {
+      delay(DEBUG_DELAY);
+    }
+
+    // Send an (E)rror signal to tell the client that no more chunks should be
+    // send or to repeat the entire frame from the beginning.
+    Serial.write('E');
+
+    return false;
+  }
 
 #if !defined(BOARD_HAS_PSRAM)
   pTransferBuffer = (uint8_t *)malloc(transferBufferSize);
@@ -1312,35 +1028,6 @@ bool SerialReadBuffer(uint8_t *pBuffer, uint16_t BufferSize,
   return false;
 }
 
-void UpdateColorRotations(void) {
-  bool rotPaletteAffected[64] = {0};
-  unsigned long actime = millis();
-  bool rotfound = false;
-  for (uint8_t ti = 0; ti < MAX_COLOR_ROTATIONS; ti++) {
-    if (rotFirstColor[ti] == 255) continue;
-
-    if (actime >= rotNextRotationTime[ti]) {
-      memcpy(tmpColor, &palette[rotFirstColor[ti] * 3], 3);
-      memmove(&palette[rotFirstColor[ti] * 3],
-              &palette[(rotFirstColor[ti] + 1) * 3],
-              (rotAmountColors[ti] - 1) * 3);
-      memcpy(&palette[(rotFirstColor[ti] + rotAmountColors[ti] - 1) * 3],
-             tmpColor, 3);
-      for (uint8_t tj = rotFirstColor[ti];
-           tj < (rotFirstColor[ti] + rotAmountColors[ti]); tj++) {
-        rotPaletteAffected[tj] = true;
-      }
-
-      rotfound = true;
-      rotNextRotationTime[ti] += rotStepDurationTime[ti];
-    }
-  }
-
-  if (rotfound == true)
-    display->FillPanelUsingChangedPalette(renderBuffer, palette,
-                                          rotPaletteAffected);
-}
-
 bool WaitForCtrlChars(void) {
   unsigned long ms = millis();
   uint8_t nCtrlCharFound = 0;
@@ -1356,11 +1043,7 @@ bool WaitForCtrlChars(void) {
       }
     }
 
-    if (displayStatus == DISPLAY_STATUS_NORMAL_OPERATION && mode64 &&
-        nCtrlCharFound == 0) {
-      // While waiting for the next frame, perform in-frame color rotations.
-      UpdateColorRotations();
-    } else if (displayStatus == DISPLAY_STATUS_CLEAR &&
+    if (displayStatus == DISPLAY_STATUS_CLEAR &&
                (millis() - displayTimeout) > LOGO_TIMEOUT) {
       ScreenSaver();
     }
@@ -1468,10 +1151,6 @@ void loop() {
   }
 
   if (WaitForCtrlChars()) {
-    // Updates to mode64 color rotations have been handled within
-    // WaitForCtrlChars(), now reset it to false.
-    mode64 = false;
-
     while (Serial.available() == 0);
     c4 = Serial.read();
 
@@ -1501,7 +1180,6 @@ void loop() {
         if (SerialReadBuffer(tbuf, 4)) {
           RomWidth = (int)(tbuf[0]) + (int)(tbuf[1] << 8);
           RomHeight = (int)(tbuf[2]) + (int)(tbuf[3] << 8);
-          RomWidthPlane = RomWidth >> 3;
         }
         break;
       }
@@ -1660,49 +1338,6 @@ void loop() {
         break;
       }
 
-      case 4:  // mode RGB24 zones streaming
-      {
-        displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
-
-#if (!defined(BOARD_HAS_PSRAM) || !defined(ARDUINO_USB_MODE) || \
-     ARDUINO_USB_MODE != 1)
-        const uint16_t renderBufferSize =
-            ZONES_PER_ROW * ZONE_SIZE + ZONES_PER_ROW;
-        renderBuffer = (uint8_t *)malloc(renderBufferSize);
-        if (renderBuffer == nullptr) {
-          display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
-          display->DisplayText("Command 4", 4, 14, 255, 255, 255);
-          RestartAfterError();
-        }
-#else
-        const uint16_t renderBufferSize = TOTAL_BYTES + 128;
-#endif
-
-        if (SerialReadBuffer(renderBuffer, renderBufferSize, false)) {
-          uint16_t renderBufferPosition = 0;
-          // SerialReadBuffer prefills buffer with zeros. That will fill Zone 0
-          // black if buffer is not used entirely. Ensure that Zone 0 is only
-          // allowed at the beginning of the buffer.
-          while (0 == renderBufferPosition ||
-                 (renderBufferPosition < renderBufferSize &&
-                  renderBuffer[renderBufferPosition] > 0)) {
-            if (renderBuffer[renderBufferPosition] >= 128) {
-              display->ClearZone(renderBuffer[renderBufferPosition++] - 128);
-            } else {
-              display->FillZoneRaw(renderBuffer[renderBufferPosition++],
-                                   &renderBuffer[renderBufferPosition]);
-              renderBufferPosition += ZONE_SIZE;
-            }
-          }
-        }
-
-#if !defined(BOARD_HAS_PSRAM)
-        free(renderBuffer);
-#endif
-
-        break;
-      }
-
       case 5:  // mode RGB565 zones streaming
       {
         displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
@@ -1746,433 +1381,6 @@ void loop() {
         break;
       }
 
-      case 3:  // mode RGB24
-      {
-        displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
-
-        display->DisplayText("Command 3 not supported.", 4, 6, 255, 255, 255);
-        display->DisplayText("Update your client.", 4, 14, 255, 255, 255);
-        RestartAfterError();
-
-        break;
-      }
-
-      case 8:  // mode 4 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis
-               // de 4 pixels par byte
-      {
-        displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
-
-        uint16_t bufferSize = 12 + 2 * RomWidthPlane * RomHeight;
-#if !defined(BOARD_HAS_PSRAM)
-        uint8_t *buffer = (uint8_t *)malloc(bufferSize);
-#endif
-        if (buffer == nullptr) {
-          display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
-          display->DisplayText("Command 8", 4, 14, 255, 255, 255);
-          RestartAfterError();
-        }
-
-        if (SerialReadBuffer(buffer, bufferSize)) {
-          // We need to cover downscaling, too.
-          uint16_t renderBufferSize =
-              (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT)
-                  ? TOTAL_WIDTH * TOTAL_HEIGHT
-                  : RomWidth * RomHeight;
-#if !defined(BOARD_HAS_PSRAM)
-          renderBuffer = (uint8_t *)malloc(renderBufferSize);
-          if (renderBuffer == nullptr) {
-            display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
-            display->DisplayText("Command 8", 4, 14, 255, 255, 255);
-            RestartAfterError();
-          }
-#endif
-
-          memset(renderBuffer, 0, renderBufferSize);
-          palette = (uint8_t *)malloc(12);
-          if (palette == nullptr) {
-            display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
-            display->DisplayText("Command 8", 4, 14, 255, 255, 255);
-            RestartAfterError();
-          }
-          memcpy(palette, buffer, 12);
-
-          uint8_t *frame = &buffer[12];
-          for (uint16_t tj = 0; tj < RomHeight; tj++) {
-            for (uint16_t ti = 0; ti < RomWidthPlane; ti++) {
-              uint8_t mask = 1;
-              uint8_t planes[2];
-              planes[0] = frame[ti + tj * RomWidthPlane];
-              planes[1] =
-                  frame[RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              for (int tk = 0; tk < 8; tk++) {
-                uint8_t idx = 0;
-                if ((planes[0] & mask) > 0) idx |= 1;
-                if ((planes[1] & mask) > 0) idx |= 2;
-                renderBuffer[(ti * 8 + tk) + tj * RomWidth] = idx;
-                mask <<= 1;
-              }
-            }
-          }
-#if !defined(BOARD_HAS_PSRAM)
-          free(buffer);
-#endif
-          mode64 = false;
-
-          ScaleImage(1);
-          display->FillPanelUsingPalette(renderBuffer, palette);
-
-#if !defined(BOARD_HAS_PSRAM)
-          free(renderBuffer);
-#endif
-          free(palette);
-        } else {
-#if !defined(BOARD_HAS_PSRAM)
-          free(buffer);
-#endif
-        }
-        break;
-      }
-
-      case 7:  // mode 16 couleurs avec 1 palette 4 couleurs (4*3 bytes) suivis
-               // de 2 pixels par byte
-      {
-        displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
-
-        uint16_t bufferSize = 12 + 4 * RomWidthPlane * RomHeight;
-#if !defined(BOARD_HAS_PSRAM)
-        uint8_t *buffer = (uint8_t *)malloc(bufferSize);
-        if (buffer == nullptr) {
-          display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
-          display->DisplayText("Command 7", 4, 14, 255, 255, 255);
-          RestartAfterError();
-        }
-#endif
-
-        if (SerialReadBuffer(buffer, bufferSize)) {
-          // We need to cover downscaling, too.
-          uint16_t renderBufferSize =
-              (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT)
-                  ? TOTAL_WIDTH * TOTAL_HEIGHT
-                  : RomWidth * RomHeight;
-#if !defined(BOARD_HAS_PSRAM)
-          renderBuffer = (uint8_t *)malloc(renderBufferSize);
-          if (renderBuffer == nullptr) {
-            display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
-            display->DisplayText("Command 7", 4, 14, 255, 255, 255);
-            RestartAfterError();
-          }
-#endif
-
-          memset(renderBuffer, 0, renderBufferSize);
-          palette = (uint8_t *)malloc(48);
-          if (palette == nullptr) {
-            display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
-            display->DisplayText("Command 7", 4, 14, 255, 255, 255);
-            RestartAfterError();
-          }
-          memcpy(palette, buffer, 48);
-
-          palette[0] = palette[1] = palette[2] = 0;
-          palette[3] = palette[3 * 3] / 3;
-          palette[4] = palette[3 * 3 + 1] / 3;
-          palette[5] = palette[3 * 3 + 2] / 3;
-          palette[6] = 2 * (palette[3 * 3] / 3);
-          palette[7] = 2 * (palette[3 * 3 + 1] / 3);
-          palette[8] = 2 * (palette[3 * 3 + 2] / 3);
-
-          palette[12] = palette[3 * 3] + (palette[7 * 3] - palette[3 * 3]) / 4;
-          palette[13] = palette[3 * 3 + 1] +
-                        (palette[7 * 3 + 1] - palette[3 * 3 + 1]) / 4;
-          palette[14] = palette[3 * 3 + 2] +
-                        (palette[7 * 3 + 2] - palette[3 * 3 + 2]) / 4;
-          palette[15] =
-              palette[3 * 3] + 2 * ((palette[7 * 3] - palette[3 * 3]) / 4);
-          palette[16] = palette[3 * 3 + 1] +
-                        2 * ((palette[7 * 3 + 1] - palette[3 * 3 + 1]) / 4);
-          palette[17] = palette[3 * 3 + 2] +
-                        2 * ((palette[7 * 3 + 2] - palette[3 * 3 + 2]) / 4);
-          palette[18] =
-              palette[3 * 3] + 3 * ((palette[7 * 3] - palette[3 * 3]) / 4);
-          palette[19] = palette[3 * 3 + 1] +
-                        3 * ((palette[7 * 3 + 1] - palette[3 * 3 + 1]) / 4);
-          palette[20] = palette[3 * 3 + 2] +
-                        3 * ((palette[7 * 3 + 2] - palette[3 * 3 + 2]) / 4);
-
-          palette[24] = palette[7 * 3] + (palette[11 * 3] - palette[7 * 3]) / 4;
-          palette[25] = palette[7 * 3 + 1] +
-                        (palette[11 * 3 + 1] - palette[7 * 3 + 1]) / 4;
-          palette[26] = palette[7 * 3 + 2] +
-                        (palette[11 * 3 + 2] - palette[7 * 3 + 2]) / 4;
-          palette[27] =
-              palette[7 * 3] + 2 * ((palette[11 * 3] - palette[7 * 3]) / 4);
-          palette[28] = palette[7 * 3 + 1] +
-                        2 * ((palette[11 * 3 + 1] - palette[7 * 3 + 1]) / 4);
-          palette[29] = palette[7 * 3 + 2] +
-                        2 * ((palette[11 * 3 + 2] - palette[7 * 3 + 2]) / 4);
-          palette[30] =
-              palette[7 * 3] + 3 * ((palette[11 * 3] - palette[7 * 3]) / 4);
-          palette[31] = palette[7 * 3 + 1] +
-                        3 * ((palette[11 * 3 + 1] - palette[7 * 3 + 1]) / 4);
-          palette[32] = palette[7 * 3 + 2] +
-                        3 * ((palette[11 * 3 + 2] - palette[7 * 3 + 2]) / 4);
-
-          palette[36] =
-              palette[11 * 3] + (palette[15 * 3] - palette[11 * 3]) / 4;
-          palette[37] = palette[11 * 3 + 1] +
-                        (palette[15 * 3 + 1] - palette[11 * 3 + 1]) / 4;
-          palette[38] = palette[11 * 3 + 2] +
-                        (palette[15 * 3 + 2] - palette[11 * 3 + 2]) / 4;
-          palette[39] =
-              palette[11 * 3] + 2 * ((palette[15 * 3] - palette[11 * 3]) / 4);
-          palette[40] = palette[11 * 3 + 1] +
-                        2 * ((palette[15 * 3 + 1] - palette[11 * 3 + 1]) / 4);
-          palette[41] = palette[11 * 3 + 2] +
-                        2 * ((palette[15 * 3 + 2] - palette[11 * 3 + 2]) / 4);
-          palette[42] =
-              palette[11 * 3] + 3 * ((palette[15 * 3] - palette[11 * 3]) / 4);
-          palette[43] = palette[11 * 3 + 1] +
-                        3 * ((palette[15 * 3 + 1] - palette[11 * 3 + 1]) / 4);
-          palette[44] = palette[11 * 3 + 2] +
-                        3 * ((palette[15 * 3 + 2] - palette[11 * 3 + 2]) / 4);
-
-          uint8_t *pBuffer = &buffer[12];
-          for (uint16_t tj = 0; tj < RomHeight; tj++) {
-            for (uint16_t ti = 0; ti < RomWidthPlane; ti++) {
-              uint8_t mask = 1;
-              uint8_t planes[4];
-              planes[0] = pBuffer[ti + tj * RomWidthPlane];
-              planes[1] =
-                  pBuffer[RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              planes[2] = pBuffer[2 * RomWidthPlane * RomHeight + ti +
-                                  tj * RomWidthPlane];
-              planes[3] = pBuffer[3 * RomWidthPlane * RomHeight + ti +
-                                  tj * RomWidthPlane];
-              for (uint8_t tk = 0; tk < 8; tk++) {
-                uint8_t idx = 0;
-                if ((planes[0] & mask) > 0) idx |= 1;
-                if ((planes[1] & mask) > 0) idx |= 2;
-                if ((planes[2] & mask) > 0) idx |= 4;
-                if ((planes[3] & mask) > 0) idx |= 8;
-                renderBuffer[(ti * 8 + tk) + tj * RomWidth] = idx;
-                mask <<= 1;
-              }
-            }
-          }
-#if !defined(BOARD_HAS_PSRAM)
-          free(buffer);
-#endif
-
-          mode64 = false;
-
-          ScaleImage(1);
-          display->FillPanelUsingPalette(renderBuffer, palette);
-
-#if !defined(BOARD_HAS_PSRAM)
-          free(renderBuffer);
-#endif
-          free(palette);
-        } else {
-#if !defined(BOARD_HAS_PSRAM)
-          free(buffer);
-#endif
-        }
-        break;
-      }
-
-      case 9:  // mode 16 couleurs avec 1 palette 16 couleurs (16*3 bytes)
-               // suivis de 4 bytes par groupe de 8 points (séparés en plans de
-               // bits 4*512 bytes)
-      {
-        displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
-
-        uint16_t bufferSize = 48 + 4 * RomWidthPlane * RomHeight;
-#if !defined(BOARD_HAS_PSRAM)
-        uint8_t *buffer = (uint8_t *)malloc(bufferSize);
-        if (buffer == nullptr) {
-          display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
-          display->DisplayText("Command 9", 4, 14, 255, 255, 255);
-          RestartAfterError();
-        }
-#endif
-
-        if (SerialReadBuffer(buffer, bufferSize)) {
-          // We need to cover downscaling, too.
-          uint16_t renderBufferSize =
-              (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT)
-                  ? TOTAL_WIDTH * TOTAL_HEIGHT
-                  : RomWidth * RomHeight;
-#if !defined(BOARD_HAS_PSRAM)
-          renderBuffer = (uint8_t *)malloc(renderBufferSize);
-          if (renderBuffer == nullptr) {
-            display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
-            display->DisplayText("Command 9", 4, 14, 255, 255, 255);
-            RestartAfterError();
-          }
-#endif
-
-          memset(renderBuffer, 0, renderBufferSize);
-          palette = (uint8_t *)malloc(48);
-          if (palette == nullptr) {
-            display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
-            display->DisplayText("Command 9", 4, 14, 255, 255, 255);
-            RestartAfterError();
-          }
-          memcpy(palette, buffer, 48);
-
-          uint8_t *pBuffer = &buffer[48];
-          for (uint16_t tj = 0; tj < RomHeight; tj++) {
-            for (uint16_t ti = 0; ti < RomWidthPlane; ti++) {
-              // on reconstitue un indice à partir des plans puis une couleur à
-              // partir de la palette
-              uint8_t mask = 1;
-              uint8_t planes[4];
-              planes[0] = pBuffer[ti + tj * RomWidthPlane];
-              planes[1] =
-                  pBuffer[RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              planes[2] = pBuffer[2 * RomWidthPlane * RomHeight + ti +
-                                  tj * RomWidthPlane];
-              planes[3] = pBuffer[3 * RomWidthPlane * RomHeight + ti +
-                                  tj * RomWidthPlane];
-              for (uint8_t tk = 0; tk < 8; tk++) {
-                uint8_t idx = 0;
-                if ((planes[0] & mask) > 0) idx |= 1;
-                if ((planes[1] & mask) > 0) idx |= 2;
-                if ((planes[2] & mask) > 0) idx |= 4;
-                if ((planes[3] & mask) > 0) idx |= 8;
-                renderBuffer[(ti * 8 + tk) + tj * RomWidth] = idx;
-                mask <<= 1;
-              }
-            }
-          }
-#if !defined(BOARD_HAS_PSRAM)
-          free(buffer);
-#endif
-
-          mode64 = false;
-
-          ScaleImage(1);
-          display->FillPanelUsingPalette(renderBuffer, palette);
-
-#if !defined(BOARD_HAS_PSRAM)
-          free(renderBuffer);
-#endif
-          free(palette);
-        } else {
-#if !defined(BOARD_HAS_PSRAM)
-          free(buffer);
-#endif
-        }
-        break;
-      }
-
-      case 11:  // mode 64 couleurs avec 1 palette 64 couleurs (64*3 bytes)
-                // suivis de 6 bytes par groupe de 8 points (séparés en plans de
-                // bits 6*512 bytes) suivis de 3*8 bytes de rotations de
-                // couleurs
-      {
-        displayStatus = DISPLAY_STATUS_NORMAL_OPERATION;
-
-        uint16_t bufferSize =
-            192 + 6 * RomWidthPlane * RomHeight + 3 * MAX_COLOR_ROTATIONS;
-#if !defined(BOARD_HAS_PSRAM)
-        uint8_t *buffer = (uint8_t *)malloc(bufferSize);
-        if (buffer == nullptr) {
-          display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
-          display->DisplayText("Command 11", 4, 14, 255, 255, 255);
-          RestartAfterError();
-        }
-#endif
-
-        if (SerialReadBuffer(buffer, bufferSize)) {
-          // We need to cover downscaling, too.
-          uint16_t renderBufferSize =
-              (RomWidth < TOTAL_WIDTH || RomHeight < TOTAL_HEIGHT)
-                  ? TOTAL_WIDTH * TOTAL_HEIGHT
-                  : RomWidth * RomHeight;
-#if !defined(BOARD_HAS_PSRAM)
-          renderBuffer = (uint8_t *)malloc(renderBufferSize);
-          if (renderBuffer == nullptr) {
-            display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
-            display->DisplayText("Command 11", 4, 14, 255, 255, 255);
-            RestartAfterError();
-          }
-#endif
-
-          memset(renderBuffer, 0, renderBufferSize);
-          palette = (uint8_t *)malloc(192);
-          if (palette == nullptr) {
-            display->DisplayText("Error, out of memory:", 4, 6, 255, 255, 255);
-            display->DisplayText("Command 11", 4, 14, 255, 255, 255);
-            RestartAfterError();
-          }
-          memcpy(palette, buffer, 192);
-
-          uint8_t *pBuffer = &buffer[192];
-          for (uint16_t tj = 0; tj < RomHeight; tj++) {
-            for (uint16_t ti = 0; ti < RomWidthPlane; ti++) {
-              // on reconstitue un indice à partir des plans puis une couleur à
-              // partir de la palette
-              uint8_t mask = 1;
-              uint8_t planes[6];
-              planes[0] = pBuffer[ti + tj * RomWidthPlane];
-              planes[1] =
-                  pBuffer[RomWidthPlane * RomHeight + ti + tj * RomWidthPlane];
-              planes[2] = pBuffer[2 * RomWidthPlane * RomHeight + ti +
-                                  tj * RomWidthPlane];
-              planes[3] = pBuffer[3 * RomWidthPlane * RomHeight + ti +
-                                  tj * RomWidthPlane];
-              planes[4] = pBuffer[4 * RomWidthPlane * RomHeight + ti +
-                                  tj * RomWidthPlane];
-              planes[5] = pBuffer[5 * RomWidthPlane * RomHeight + ti +
-                                  tj * RomWidthPlane];
-              for (uint8_t tk = 0; tk < 8; tk++) {
-                uint8_t idx = 0;
-                if ((planes[0] & mask) > 0) idx |= 1;
-                if ((planes[1] & mask) > 0) idx |= 2;
-                if ((planes[2] & mask) > 0) idx |= 4;
-                if ((planes[3] & mask) > 0) idx |= 8;
-                if ((planes[4] & mask) > 0) idx |= 0x10;
-                if ((planes[5] & mask) > 0) idx |= 0x20;
-                renderBuffer[(ti * 8 + tk) + tj * RomWidth] = idx;
-                mask <<= 1;
-              }
-            }
-          }
-
-          // Handle up to 8 different rotations for each frame.
-          // first byte: first color in the rotation
-          // second byte: number of contiguous colors in the rotation
-          // third byte: delay between 2 rotations (5 -> 50ms, 12 -> 120ms)
-          pBuffer = &buffer[192 + 6 * RomWidthPlane * RomHeight];
-          unsigned long actime = millis();
-
-          for (int ti = 0; ti < MAX_COLOR_ROTATIONS; ti++) {
-            rotFirstColor[ti] = pBuffer[ti * 3];
-            rotAmountColors[ti] = pBuffer[ti * 3 + 1];
-            rotStepDurationTime[ti] = 10 * pBuffer[ti * 3 + 2];
-            rotNextRotationTime[ti] = actime + rotStepDurationTime[ti];
-          }
-
-#if !defined(BOARD_HAS_PSRAM)
-          free(buffer);
-#endif
-
-          mode64 = true;
-
-          ScaleImage(1);
-          display->FillPanelUsingPalette(renderBuffer, palette);
-
-#if !defined(BOARD_HAS_PSRAM)
-          free(renderBuffer);
-#endif
-          free(palette);
-        } else {
-#if !defined(BOARD_HAS_PSRAM)
-          free(buffer);
-#endif
-        }
-        break;
-      }
       default: {
         display->DisplayText("Unsupported render mode:", 0, 0, 255, 0, 0);
         DisplayNumber(c4, 3, 24 * 4, 0, 255, 0, 0);
