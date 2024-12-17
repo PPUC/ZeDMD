@@ -1,17 +1,13 @@
 #include <Arduino.h>
 #include <LittleFS.h>
-#include <string.h>
 
 #include "displayConfig.h"  // Variables shared by main and displayDrivers
 #include "displayDriver.h"  // Base class for all display drivers
-#include "driver/uart.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "miniz/miniz.h"
 #include "panel.h"
-#include "soc/uart_struct.h"
 #include "version.h"
 
 // To save RAM only include the driver we want to use.
@@ -24,9 +20,6 @@
 #define N_CTRL_CHARS 6
 #define N_INTERMEDIATE_CTR_CHARS 4
 #define NUM_BUFFERS 8  // Number of buffers
-#define UART_BUFFER_SIZE 1024        // DMA buffer size
-#define DMA_BUFFER_SIZE 1024         // DMA buffer for one transaction
-#define NUM_DMA_BUFFERS 2            // Number of DMA buffers
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
 #define SERIAL_BAUD 2000000  // Serial baud rate.
 #define SERIAL_CHUNK_SIZE_MAX 992
@@ -44,7 +37,6 @@
 #include "S3Specific.h"
 #endif
 
-QueueHandle_t uartQueue;
 DisplayDriver *display;
 
 // Buffers for storing data
@@ -211,24 +203,21 @@ void Task1_ReadSerial(void *pvParameters) {
   uint16_t serialTransferChunkSize = 256;
   uint16_t chunkSize = 0;
   uint8_t currentBuffer = NUM_BUFFERS - 1;
-    uint8_t bytes[2];
-    const char* ack = "A";
-    const char* err = "E";
 
   while (1) {
-    int result = uart_read_bytes(UART_NUM_0, bytes, 1, pdMS_TO_TICKS(10));
-    if (result > 0) {
-      DisplayNumber(bytes[0], 2, TOTAL_WIDTH - 2 * 4, TOTAL_HEIGHT - 6, 255, 255, 255);
+    if (Serial.available()) {
+      uint8_t byte = Serial.read();
+      //DisplayNumber(byte, 2, TOTAL_WIDTH - 2 * 4, TOTAL_HEIGHT - 6, 255, 255, 255);
 
       if (numCtrlCharsFound < N_CTRL_CHARS) {
         // Detect 6 consecutive start bits
-        if (bytes[0] == CtrlChars[numCtrlCharsFound]) {
+        if (byte == CtrlChars[numCtrlCharsFound]) {
           numCtrlCharsFound++;
         } else {
           numCtrlCharsFound = 0;
         }
       } else if (numCtrlCharsFound == N_CTRL_CHARS) {
-        command = bytes[0];
+        command = byte;
 
         switch (command) {
           case 12:  // ask for resolution (and shake hands)
@@ -236,27 +225,26 @@ void Task1_ReadSerial(void *pvParameters) {
             for (u_int8_t i = 0; i < N_INTERMEDIATE_CTR_CHARS; i++) {
               Serial.write(CtrlChars[i]);
             }
-            uart_tx_chars(UART_NUM_0, (const char*)(TOTAL_WIDTH & 0xff), 1);
-            uart_tx_chars(UART_NUM_0, (const char*)((TOTAL_WIDTH >> 8) & 0xff), 1);
-            uart_tx_chars(UART_NUM_0, (const char*)(TOTAL_HEIGHT & 0xff), 1);
-            uart_tx_chars(UART_NUM_0, (const char*)((TOTAL_HEIGHT >> 8) & 0xff), 1);
+            Serial.write(TOTAL_WIDTH & 0xff);
+            Serial.write((TOTAL_WIDTH >> 8) & 0xff);
+            Serial.write(TOTAL_HEIGHT & 0xff);
+            Serial.write((TOTAL_HEIGHT >> 8) & 0xff);
             numCtrlCharsFound = 0;
-            uart_tx_chars(UART_NUM_0, "R", 1);
+            Serial.write('R');
             break;
           }
 
           case 13:  // set serial transfer chunk size
           {
-            uart_read_bytes(UART_NUM_0, bytes, 1, pdMS_TO_TICKS(10));
             uint16_t tmpSerialTransferChunkSize =
-                ((uint16_t)bytes[0]) * 32;
+                ((uint16_t)Serial.read()) * 32;
             if (tmpSerialTransferChunkSize <= SERIAL_CHUNK_SIZE_MAX) {
               serialTransferChunkSize = tmpSerialTransferChunkSize;
               // Send an (A)cknowledge signal to tell the client that we
               // successfully read the chunk.
-              uart_tx_chars(UART_NUM_0, ack, 1);
+              Serial.write('A');
             } else {
-              uart_tx_chars(UART_NUM_0, err, 1);
+              Serial.write('E');
             }
             numCtrlCharsFound = 0;
             break;
@@ -264,26 +252,26 @@ void Task1_ReadSerial(void *pvParameters) {
 
           case 32:  // get version
           {
-            uart_tx_chars(UART_NUM_0, (const char*)ZEDMD_VERSION_MAJOR, 1);
-            uart_tx_chars(UART_NUM_0, (const char*)ZEDMD_VERSION_MINOR, 1);
-            uart_tx_chars(UART_NUM_0, (const char*)ZEDMD_VERSION_PATCH, 1);
+            Serial.write(ZEDMD_VERSION_MAJOR);
+            Serial.write(ZEDMD_VERSION_MINOR);
+            Serial.write(ZEDMD_VERSION_PATCH);
             numCtrlCharsFound = 0;
             break;
           }
 
           case 33:  // get panel resolution
           {
-            uart_tx_chars(UART_NUM_0, (const char*)(TOTAL_WIDTH & 0xff), 1);
-            uart_tx_chars(UART_NUM_0, (const char*)((TOTAL_WIDTH >> 8) & 0xff), 1);
-            uart_tx_chars(UART_NUM_0, (const char*)(TOTAL_HEIGHT & 0xff), 1);
-            uart_tx_chars(UART_NUM_0, (const char*)((TOTAL_HEIGHT >> 8) & 0xff), 1);
+            Serial.write(TOTAL_WIDTH & 0xff);
+            Serial.write((TOTAL_WIDTH >> 8) & 0xff);
+            Serial.write(TOTAL_HEIGHT & 0xff);
+            Serial.write((TOTAL_HEIGHT >> 8) & 0xff);
             numCtrlCharsFound = 0;
             break;
           }
 
           case 10:  // clear screen
           {
-            uart_tx_chars(UART_NUM_0, ack, 1);
+            Serial.write('A');
             // ClearScreen();
             numCtrlCharsFound = 0;
             break;
@@ -293,12 +281,11 @@ void Task1_ReadSerial(void *pvParameters) {
           case 5:  // mode RGB565 zones streaming
           {
             // Read payload size (next 2 bytes)
-            uart_read_bytes(UART_NUM_0, bytes, 2, pdMS_TO_TICKS(10));
-            payloadSize = (bytes[0] << 8) | bytes[1];
+            payloadSize = (Serial.read() << 8) | Serial.read();
 
             if (payloadSize > RGB565_ZONE_SIZE * ZONES_PER_ROW ||
                 payloadSize == 0) {
-              uart_tx_chars(UART_NUM_0, err, 1);
+              Serial.write('E');
               numCtrlCharsFound = 0;
               continue;
             }
@@ -320,7 +307,7 @@ void Task1_ReadSerial(void *pvParameters) {
           }
 
           default: {
-              uart_tx_chars(UART_NUM_0, err, 1);
+            Serial.write('E');
             numCtrlCharsFound = 0;
           }
         }
@@ -330,11 +317,13 @@ void Task1_ReadSerial(void *pvParameters) {
         uint16_t bytesRead = 0;
         while (bytesRead < payloadSize) {
           // Fill the buffer with payload
-          bytesRead += uart_read_bytes(UART_NUM_0, &buffers[currentBuffer][bytesRead], min(chunkSize, (uint16_t)(payloadSize - bytesRead)), pdMS_TO_TICKS(10));
+          bytesRead += Serial.readBytes(
+              &buffers[currentBuffer][bytesRead],
+              min(chunkSize, (uint16_t)(payloadSize - bytesRead)));
 
           // Send an (A)cknowledge signal to tell the client that we
           // successfully read the chunk.
-          uart_tx_chars(UART_NUM_0, ack, 1);
+          Serial.write('A');
 
           // From now on read full amount of byte chunks.
           chunkSize = serialTransferChunkSize;
@@ -372,7 +361,7 @@ void Task2_ProcessData(void *pvParameters) {
       xSemaphoreGive(xBufferProcessed[processingBuffer]);
 
       if (MZ_OK == minizStatus) {
-        // display->DisplayText("MINIZ SUCCESS", 0, 18, 255, 255, 255);
+        //display->DisplayText("MINIZ SUCCESS", 0, 18, 255, 255, 255);
 
         uint16_t uncompressedBufferPosition = 0;
         // SerialReadBuffer prefills buffer with zeros. That will fill Zone 0
@@ -397,8 +386,8 @@ void Task2_ProcessData(void *pvParameters) {
         DisplayNumber(minizStatus, 3, 20, 24, 255, 255, 255);
       }
 
-      // DisplayNumber(bufferSizes[processingBuffer], 3, 12, 0, 255, 255, 255);
-      // DisplayNumber(compressedBufferSize, 3, 12, 6, 255, 255, 255);
+      //DisplayNumber(bufferSizes[processingBuffer], 3, 12, 0, 255, 255, 255);
+      //DisplayNumber(compressedBufferSize, 3, 12, 6, 255, 255, 255);
       //(uncompressedBufferSize, 3, 12, 12, 255, 255, 255);
 
       // Move to the next buffer
@@ -429,26 +418,10 @@ void setup() {
 
   DisplayLogo();
 
-  uart_config_t uartConfig = {
-      .baud_rate = SERIAL_BAUD,
-      .data_bits = UART_DATA_8_BITS,
-      .parity = UART_PARITY_DISABLE,
-      .stop_bits = UART_STOP_BITS_1,
-      .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-      .source_clk = UART_SCLK_APB,
-  };
-
-  // Configure UART parameters
-  uart_param_config(UART_NUM_0, &uartConfig);
-
-  // Install UART driver with DMA functionality
-  uart_driver_install(UART_NUM_0, UART_BUFFER_SIZE * NUM_DMA_BUFFERS,
-                      0,  // No TX buffer
-                      10, &uartQueue, ESP_INTR_FLAG_LOWMED);
-
-  // Link UART with DMA buffers
-  uart_set_rx_full_threshold(UART_NUM_0, DMA_BUFFER_SIZE);  // Trigger on buffer full
-  uart_set_rx_timeout(UART_NUM_0, 1);
+  Serial.setRxBufferSize(SERIAL_BUFFER);
+  Serial.setTimeout(SERIAL_TIMEOUT);
+  Serial.begin(SERIAL_BAUD);
+  while (!Serial);
 
   // Create synchronization primitives
   for (uint8_t i = 0; i < NUM_BUFFERS; i++) {
@@ -457,10 +430,8 @@ void setup() {
   }
 
   // Create FreeRTOS tasks
-  xTaskCreatePinnedToCore(Task1_ReadSerial, "Task1_ReadSerial", 1024, NULL, 2,
-                          NULL, 0);
-  xTaskCreatePinnedToCore(Task2_ProcessData, "Task2_ProcessData", 1024, NULL, 1,
-                          NULL, 1);
+  xTaskCreatePinnedToCore(Task1_ReadSerial, "Task1_ReadSerial", 1024, NULL, 2, NULL, 0);
+  xTaskCreatePinnedToCore(Task2_ProcessData, "Task2_ProcessData", 1024, NULL, 1, NULL, 1);
 }
 
 void loop() {
