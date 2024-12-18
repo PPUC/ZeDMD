@@ -22,12 +22,10 @@
 #define NUM_BUFFERS 8  // Number of buffers
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
 #define SERIAL_BAUD 2000000  // Serial baud rate.
-#define SERIAL_CHUNK_SIZE_MAX 992
-#define SERIAL_BUFFER 1024  // Serial buffer size in byte.
+#define SERIAL_BUFFER 1024   // Serial buffer size in byte.
 #else
 #define SERIAL_BAUD 921600  // Serial baud rate.
-#define SERIAL_CHUNK_SIZE_MAX 1888
-#define SERIAL_BUFFER 2048  // Serial buffer size in byte.
+#define SERIAL_BUFFER 4096  // Serial buffer size in byte.
 #endif
 #define SERIAL_TIMEOUT \
   8  // Time in milliseconds to wait for the next data chunk.
@@ -52,6 +50,7 @@ SemaphoreHandle_t xBufferProcessed[NUM_BUFFERS];
 // @todo zu gross
 uint8_t uncompressBuffer[TOTAL_BYTES] __attribute__((aligned(4)));
 uint8_t renderBuffer[TOTAL_BYTES] __attribute__((aligned(4)));
+uint8_t processingBuffer = 0;
 
 uint8_t lumstep = 5;  // Init display on medium brightness, otherwise it starts
                       // up black on some displays
@@ -149,7 +148,7 @@ void DisplayLogo(void) {
   }
 
   if (!f) {
-    display->DisplayText("Logo is missing", 4, 6, 255, 255, 255);
+    display->DisplayText("Logo is missing", 0, 0, 255, 0, 0);
     return;
   }
 
@@ -195,19 +194,25 @@ void DisplayUpdate(void) {
   display->FillPanelRaw(renderBuffer);
 }
 
-void Task1_ReadSerial(void *pvParameters) {
+void Task_ReadSerial(void *pvParameters) {
   const uint8_t CtrlChars[6] = {0x5a, 0x65, 0x64, 0x72, 0x75, 0x6d};
   uint8_t numCtrlCharsFound = 0;
   uint16_t payloadSize = 0;
   uint8_t command = 0;
-  uint16_t serialTransferChunkSize = 256;
-  uint16_t chunkSize = 0;
   uint8_t currentBuffer = NUM_BUFFERS - 1;
 
+  Serial.setRxBufferSize(SERIAL_BUFFER);
+  Serial.setTimeout(SERIAL_TIMEOUT);
+  Serial.begin(SERIAL_BAUD);
+  while (!Serial);
+
   while (1) {
+    // Wait for data to be ready
+
     if (Serial.available()) {
       uint8_t byte = Serial.read();
-      //DisplayNumber(byte, 2, TOTAL_WIDTH - 2 * 4, TOTAL_HEIGHT - 6, 255, 255, 255);
+      // DisplayNumber(byte, 2, TOTAL_WIDTH - 2 * 4, TOTAL_HEIGHT - 6, 255, 255,
+      // 255);
 
       if (numCtrlCharsFound < N_CTRL_CHARS) {
         // Detect 6 consecutive start bits
@@ -231,22 +236,6 @@ void Task1_ReadSerial(void *pvParameters) {
             Serial.write((TOTAL_HEIGHT >> 8) & 0xff);
             numCtrlCharsFound = 0;
             Serial.write('R');
-            break;
-          }
-
-          case 13:  // set serial transfer chunk size
-          {
-            uint16_t tmpSerialTransferChunkSize =
-                ((uint16_t)Serial.read()) * 32;
-            if (tmpSerialTransferChunkSize <= SERIAL_CHUNK_SIZE_MAX) {
-              serialTransferChunkSize = tmpSerialTransferChunkSize;
-              // Send an (A)cknowledge signal to tell the client that we
-              // successfully read the chunk.
-              Serial.write('A');
-            } else {
-              Serial.write('E');
-            }
-            numCtrlCharsFound = 0;
             break;
           }
 
@@ -287,14 +276,9 @@ void Task1_ReadSerial(void *pvParameters) {
                 payloadSize == 0) {
               Serial.write('E');
               numCtrlCharsFound = 0;
-              continue;
+              break;
             }
 
-            // We always receive chunks of "serialTransferChunkSize" bytes
-            // (maximum). At this point, the control chars and the one byte
-            // command have been read already. So we only need to read the
-            // remaining bytes of the first chunk and full chunks afterwards.
-            chunkSize = serialTransferChunkSize - N_CTRL_CHARS - 3;
             numCtrlCharsFound++;
 
             // Move to the next buffer
@@ -319,79 +303,21 @@ void Task1_ReadSerial(void *pvParameters) {
           // Fill the buffer with payload
           bytesRead += Serial.readBytes(
               &buffers[currentBuffer][bytesRead],
-              min(chunkSize, (uint16_t)(payloadSize - bytesRead)));
-
-          // Send an (A)cknowledge signal to tell the client that we
-          // successfully read the chunk.
-          Serial.write('A');
-
-          // From now on read full amount of byte chunks.
-          chunkSize = serialTransferChunkSize;
+              min(Serial.available(), payloadSize - bytesRead));
         }
 
-        // Signal Task2 to process the filled buffer
+        // Signal to process the filled buffer
         xSemaphoreGive(xBufferFilled[currentBuffer]);
+
+        // Send an (A)cknowledge signal to tell the client that we
+        // successfully read the data.
+        Serial.write('A');
+
         numCtrlCharsFound = 0;
       }
-    }
-
-    // Avoid busy-waiting
-    vTaskDelay(pdMS_TO_TICKS(1));
-  }
-}
-
-void Task2_ProcessData(void *pvParameters) {
-  uint8_t processingBuffer = 0;
-
-  for (uint8_t i = 0; i < NUM_BUFFERS; i++) {
-    xSemaphoreGive(xBufferProcessed[i]);
-  }
-
-  while (1) {
-    // Wait for data to be ready
-    if (xSemaphoreTake(xBufferFilled[processingBuffer], portMAX_DELAY)) {
-      mz_ulong compressedBufferSize = (mz_ulong)bufferSizes[processingBuffer];
-      mz_ulong uncompressedBufferSize = (mz_ulong)TOTAL_BYTES;
-
-      int minizStatus =
-          mz_uncompress2(uncompressBuffer, &uncompressedBufferSize,
-                         &buffers[processingBuffer][0], &compressedBufferSize);
-
-      // Mark buffer as free
-      xSemaphoreGive(xBufferProcessed[processingBuffer]);
-
-      if (MZ_OK == minizStatus) {
-        //display->DisplayText("MINIZ SUCCESS", 0, 18, 255, 255, 255);
-
-        uint16_t uncompressedBufferPosition = 0;
-        // SerialReadBuffer prefills buffer with zeros. That will fill Zone 0
-        // black if buffer is not used entirely. Ensure that Zone 0 is only
-        // allowed at the beginning of the buffer.
-        while (0 == uncompressedBufferPosition ||
-               (uncompressedBufferPosition < uncompressedBufferSize &&
-                uncompressBuffer[uncompressedBufferPosition] > 0)) {
-          if (uncompressBuffer[uncompressedBufferPosition] >= 128) {
-            display->ClearZone(uncompressBuffer[uncompressedBufferPosition++] -
-                               128);
-          } else {
-            display->FillZoneRaw565(
-                uncompressBuffer[uncompressedBufferPosition++],
-                &uncompressBuffer[uncompressedBufferPosition]);
-            uncompressedBufferPosition += RGB565_ZONE_SIZE;
-          }
-        }
-
-      } else {
-        display->DisplayText("MINIZ ERROR  ", 0, 18, 255, 255, 255);
-        DisplayNumber(minizStatus, 3, 20, 24, 255, 255, 255);
-      }
-
-      //DisplayNumber(bufferSizes[processingBuffer], 3, 12, 0, 255, 255, 255);
-      //DisplayNumber(compressedBufferSize, 3, 12, 6, 255, 255, 255);
-      //(uncompressedBufferSize, 3, 12, 12, 255, 255, 255);
-
-      // Move to the next buffer
-      processingBuffer = (processingBuffer + 1) % NUM_BUFFERS;
+    } else {
+      // Avoid busy-waiting
+      vTaskDelay(pdMS_TO_TICKS(1));
     }
   }
 }
@@ -410,18 +336,13 @@ void setup() {
 #endif
 
   if (!fileSystemOK) {
-    display->DisplayText("Error reading file system!", 4, 6, 255, 255, 255);
-    display->DisplayText("Try to flash the firmware again.", 4, 14, 255, 255,
+    display->DisplayText("Error reading file system!", 0, 0, 255, 0, 0);
+    display->DisplayText("Try to flash the firmware again.", 0, 6, 255, 255,
                          255);
     while (true);
   }
 
   DisplayLogo();
-
-  Serial.setRxBufferSize(SERIAL_BUFFER);
-  Serial.setTimeout(SERIAL_TIMEOUT);
-  Serial.begin(SERIAL_BAUD);
-  while (!Serial);
 
   // Create synchronization primitives
   for (uint8_t i = 0; i < NUM_BUFFERS; i++) {
@@ -430,10 +351,46 @@ void setup() {
   }
 
   // Create FreeRTOS tasks
-  xTaskCreatePinnedToCore(Task1_ReadSerial, "Task1_ReadSerial", 1024, NULL, 2, NULL, 0);
-  xTaskCreatePinnedToCore(Task2_ProcessData, "Task2_ProcessData", 1024, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(Task_ReadSerial, "Task_ReadSerial", 1024, NULL, 1,
+                          NULL, 0);
+
+  for (uint8_t i = 0; i < NUM_BUFFERS; i++) {
+    xSemaphoreGive(xBufferProcessed[i]);
+  }
 }
 
 void loop() {
-  // Nothing to do here, FreeRTOS tasks handle everything
+  if (xSemaphoreTake(xBufferFilled[processingBuffer], portMAX_DELAY)) {
+    mz_ulong compressedBufferSize = (mz_ulong)bufferSizes[processingBuffer];
+    mz_ulong uncompressedBufferSize = (mz_ulong)TOTAL_BYTES;
+
+    int minizStatus =
+        mz_uncompress2(uncompressBuffer, &uncompressedBufferSize,
+                       &buffers[processingBuffer][0], &compressedBufferSize);
+
+    // Mark buffer as free
+    xSemaphoreGive(xBufferProcessed[processingBuffer]);
+
+    if (MZ_OK == minizStatus) {
+      uint16_t uncompressedBufferPosition = 0;
+      while (uncompressedBufferPosition < uncompressedBufferSize) {
+        if (uncompressBuffer[uncompressedBufferPosition] >= 128) {
+          display->ClearZone(uncompressBuffer[uncompressedBufferPosition++] -
+                             128);
+        } else {
+          display->FillZoneRaw565(
+              uncompressBuffer[uncompressedBufferPosition++],
+              &uncompressBuffer[uncompressedBufferPosition]);
+          uncompressedBufferPosition += RGB565_ZONE_SIZE;
+        }
+      }
+
+    } else {
+      display->DisplayText("miniz error ", 0, 0, 255, 0, 0);
+      DisplayNumber(minizStatus, 3, 0, 6, 255, 0, 0);
+    }
+
+    // Move to the next buffer
+    processingBuffer = (processingBuffer + 1) % NUM_BUFFERS;
+  }
 }
