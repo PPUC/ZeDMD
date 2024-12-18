@@ -62,10 +62,6 @@ enum { ZEDMD_UART = 0, ZEDMD_WIFI = 1 };
 
 DisplayDriver *display;
 AsyncUDP udp;
-Bounce2::Button *rgbOrderButton;
-Bounce2::Button *brightnessButton;
-
-uint32_t lastButtonPressed = 0;
 
 // Buffers for storing data
 u_int8_t buffers[NUM_BUFFERS][ZEDMD_WIFI_MTU] __attribute__((aligned(4)));
@@ -87,7 +83,7 @@ uint8_t currentBuffer = NUM_BUFFERS - 1;
 
 uint8_t lumstep = 5;  // Init display on medium brightness, otherwise it starts
                       // up black on some displays
-bool settingsMenu = false;
+uint8_t settingsMenu = 0;
 
 String ssid;
 String pwd;
@@ -135,16 +131,16 @@ void DisplayVersion(bool logo = false) {
                        logo);
 }
 
-void DisplayLum(void) {
-  display->DisplayText(" ", (TOTAL_WIDTH / 2) - 26 - 1, TOTAL_HEIGHT - 6, 128,
-                       128, 128);
+void DisplayLum(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
+  display->DisplayText(" ", (TOTAL_WIDTH / 2) - 26 - 1, TOTAL_HEIGHT - 6, r, g,
+                       b);
   display->DisplayText("Brightness:", (TOTAL_WIDTH / 2) - 26, TOTAL_HEIGHT - 6,
-                       128, 128, 128);
+                       r, g, b);
   DisplayNumber(lumstep, 2, (TOTAL_WIDTH / 2) + 18, TOTAL_HEIGHT - 6, 255, 191,
                 0);
 }
 
-void DisplayRGB(void) {
+void DisplayRGB(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
   display->DisplayText("red", 0, 0, 0, 0, 0, true, true);
   for (uint8_t i = 0; i < 6; i++) {
     display->DrawPixel(TOTAL_WIDTH - (4 * 4) - 1, i, 0, 0, 0);
@@ -152,8 +148,7 @@ void DisplayRGB(void) {
   }
   display->DisplayText("blue", TOTAL_WIDTH - (4 * 4), 0, 0, 0, 0, true, true);
   display->DisplayText("green", 0, TOTAL_HEIGHT - 6, 0, 0, 0, true, true);
-  display->DisplayText("RGB Order:", (TOTAL_WIDTH / 2) - (6 * 4), 0, 128, 128,
-                       128);
+  display->DisplayText("RGB Order:", (TOTAL_WIDTH / 2) - (6 * 4), 0, r, g, b);
   DisplayNumber(rgbMode, 2, (TOTAL_WIDTH / 2) + (4 * 4), 0, 255, 191, 0);
 }
 
@@ -163,6 +158,19 @@ DisplayDriver *GetDisplayObject() { return display; }
 void ClearScreen() {
   display->ClearScreen();
   display->SetBrightness(lumstep);
+}
+
+void LoadSettingsMenu() {
+  File f = LittleFS.open("/settings_menu.val", "r");
+  if (!f) return;
+  settingsMenu = f.read();
+  f.close();
+}
+
+void SaveSettingsMenu() {
+  File f = LittleFS.open("/settings_menu.val", "w");
+  f.write(settingsMenu);
+  f.close();
 }
 
 void LoadTransport() {
@@ -518,9 +526,24 @@ void StartWiFi() {
   wifiActive = true;
 }
 
+void Task_SettingsMenu(void *pvParameters) {
+  while (1) {
+    if (!digitalRead(BRIGHTNESS_BUTTON_PIN)) {
+      File f = LittleFS.open("/settings_menu.val", "w");
+      f.write(1);
+      f.close();
+      delay(100);
+      Restart();
+    }
+    // Avoid busy-waiting
+    vTaskDelay(pdMS_TO_TICKS(1000));
+  }
+}
+
 void setup() {
   bool fileSystemOK;
   if (fileSystemOK = LittleFS.begin()) {
+    LoadSettingsMenu();
     LoadTransport();
     LoadRgbOrder();
     LoadLum();
@@ -539,31 +562,108 @@ void setup() {
     while (true);
   }
 
-  rgbOrderButton = new Bounce2::Button();
-  rgbOrderButton->attach(RGB_ORDER_BUTTON_PIN, INPUT_PULLUP);
-  rgbOrderButton->interval(100);
-  rgbOrderButton->setPressedState(LOW);
+  if (settingsMenu) {
+    RefreshSetupScreen();
+    display->DisplayText(transport == ZEDMD_UART ? "USB " : "WiFi", 7, 13, 128,
+                         128, 128);
+    display->DisplayText("Exit", 105, 13, 255, 191, 0);
 
-  brightnessButton = new Bounce2::Button();
-  brightnessButton->attach(BRIGHTNESS_BUTTON_PIN, INPUT_PULLUP);
-  brightnessButton->interval(100);
-  brightnessButton->setPressedState(LOW);
+    Bounce2::Button *brightnessButton = new Bounce2::Button();
+    brightnessButton->attach(BRIGHTNESS_BUTTON_PIN, INPUT_PULLUP);
+    brightnessButton->interval(100);
+    brightnessButton->setPressedState(LOW);
 
-  delay(200);
+    Bounce2::Button *rgbOrderButton = new Bounce2::Button();
+    rgbOrderButton->attach(RGB_ORDER_BUTTON_PIN, INPUT_PULLUP);
+    rgbOrderButton->interval(100);
+    rgbOrderButton->setPressedState(LOW);
 
-  rgbOrderButton->update();
-  brightnessButton->update();
-  if (rgbOrderButton->pressed()) {
-    display->DisplayText("Activating USB mode", 0, 13, 0, 255, 0);
-    transport = ZEDMD_UART;
-    SaveTransport();
-    delay(2000);
-  } else if (brightnessButton->pressed()) {
-    display->DisplayText("Activating WiFi mode", 0, 13, 0, 255, 0);
-    transport = ZEDMD_WIFI;
-    SaveTransport();
-    delay(2000);
+    uint8_t position = 1;
+    while (1) {
+      brightnessButton->update();
+      if (brightnessButton->pressed()) {
+        if (++position > 4) position = 1;
+
+        switch (position) {
+          case 1: {
+            DisplayLum();
+            DisplayRGB();
+            display->DisplayText(transport == ZEDMD_UART ? "USB " : "WiFi", 7,
+                                 13, 128, 128, 128);
+            display->DisplayText("Exit", 105, 13, 255, 191, 0);
+            break;
+          }
+          case 2: {
+            DisplayLum(255, 191, 0);
+            DisplayRGB();
+            display->DisplayText(transport == ZEDMD_UART ? "USB " : "WiFi", 7,
+                                 13, 128, 128, 128);
+            display->DisplayText("Exit", 105, 13, 128, 128, 128);
+            break;
+          }
+          case 3: {
+            DisplayLum();
+            DisplayRGB();
+            display->DisplayText(transport == ZEDMD_UART ? "USB " : "WiFi", 7,
+                                 13, 255, 191, 0);
+            display->DisplayText("Exit", 105, 13, 128, 128, 128);
+            break;
+          }
+          case 4: {
+            DisplayLum();
+            DisplayRGB(255, 191, 0);
+            display->DisplayText(transport == ZEDMD_UART ? "USB " : "WiFi", 7,
+                                 13, 128, 128, 128);
+            display->DisplayText("Exit", 105, 13, 128, 128, 128);
+            break;
+          }
+        }
+      }
+
+      rgbOrderButton->update();
+      if (rgbOrderButton->pressed()) {
+        switch (position) {
+          case 1: {
+            settingsMenu = false;
+            SaveSettingsMenu();
+            delay(10);
+            Restart();
+            break;
+          }
+          case 2: {
+            lumstep++;
+            if (lumstep >= 16) lumstep = 1;
+            display->SetBrightness(lumstep);
+            DisplayLum(255, 191, 0);
+            SaveLum();
+            break;
+          }
+          case 3: {
+            transport = !transport;
+            display->DisplayText(transport == ZEDMD_UART ? "USB " : "WiFi", 7,
+                                 13, 255, 191, 0);
+            SaveTransport();
+            break;
+          }
+          case 4: {
+            if (rgbModeLoaded != 0) {
+              rgbMode = 0;
+              SaveRgbOrder();
+              delay(10);
+              Restart();
+            }
+            if (++rgbMode > 5) rgbMode = 0;
+            RefreshSetupScreen();
+            DisplayRGB(255, 191, 0);
+            SaveRgbOrder();
+            break;
+          }
+        }
+      }
+    }
   }
+
+  pinMode(BRIGHTNESS_BUTTON_PIN, INPUT_PULLUP);
 
   DisplayLogo();
 
@@ -573,10 +673,12 @@ void setup() {
     xBufferProcessed[i] = xSemaphoreCreateBinary();
   }
 
-  // Create FreeRTOS tasks
+  xTaskCreatePinnedToCore(Task_SettingsMenu, "Task_SettingsMenu", 4096, NULL, 1,
+                          NULL, 1);
+
   switch (transport) {
     case ZEDMD_UART: {
-      xTaskCreatePinnedToCore(Task_ReadSerial, "Task_ReadSerial", 1024, NULL, 1,
+      xTaskCreatePinnedToCore(Task_ReadSerial, "Task_ReadSerial", 4096, NULL, 1,
                               NULL, 0);
       break;
     }
@@ -594,74 +696,37 @@ void setup() {
 }
 
 void loop() {
-  rgbOrderButton->update();
-  if (rgbOrderButton->pressed()) {
-    if (rgbModeLoaded != 0) {
-      rgbMode = 0;
-      SaveRgbOrder();
-      Restart();
-    }
+  if (xSemaphoreTake(xBufferFilled[processingBuffer], portMAX_DELAY)) {
+    mz_ulong compressedBufferSize = (mz_ulong)bufferSizes[processingBuffer];
+    mz_ulong uncompressedBufferSize = (mz_ulong)TOTAL_BYTES;
 
-    lastButtonPressed = millis();
-    rgbMode++;
-    if (rgbMode > 5) rgbMode = 0;
-    SaveRgbOrder();
-    RefreshSetupScreen();
-    settingsMenu = true;
-  }
+    int minizStatus =
+        mz_uncompress2(uncompressBuffer, &uncompressedBufferSize,
+                       &buffers[processingBuffer][0], &compressedBufferSize);
 
-  brightnessButton->update();
-  if (brightnessButton->pressed()) {
-    lastButtonPressed = millis();
-    lumstep++;
-    if (lumstep >= 16) lumstep = 1;
-    display->SetBrightness(lumstep);
-    SaveLum();
-    RefreshSetupScreen();
-    settingsMenu = true;
-  }
+    // Mark buffer as free
+    xSemaphoreGive(xBufferProcessed[processingBuffer]);
 
-  if (settingsMenu) {
-    if ((millis() - lastButtonPressed) > SETTINGS_MENU_TIMEOUT) {
-      if (rgbMode != rgbModeLoaded) {
-        Restart();
-      }
-      settingsMenu = false;
-    }
-  } else {
-    if (xSemaphoreTake(xBufferFilled[processingBuffer], portMAX_DELAY)) {
-      mz_ulong compressedBufferSize = (mz_ulong)bufferSizes[processingBuffer];
-      mz_ulong uncompressedBufferSize = (mz_ulong)TOTAL_BYTES;
-
-      int minizStatus =
-          mz_uncompress2(uncompressBuffer, &uncompressedBufferSize,
-                         &buffers[processingBuffer][0], &compressedBufferSize);
-
-      // Mark buffer as free
-      xSemaphoreGive(xBufferProcessed[processingBuffer]);
-
-      if (MZ_OK == minizStatus) {
-        uint16_t uncompressedBufferPosition = 0;
-        while (uncompressedBufferPosition < uncompressedBufferSize) {
-          if (uncompressBuffer[uncompressedBufferPosition] >= 128) {
-            display->ClearZone(uncompressBuffer[uncompressedBufferPosition++] -
-                               128);
-          } else {
-            display->FillZoneRaw565(
-                uncompressBuffer[uncompressedBufferPosition++],
-                &uncompressBuffer[uncompressedBufferPosition]);
-            uncompressedBufferPosition += RGB565_ZONE_SIZE;
-          }
+    if (MZ_OK == minizStatus) {
+      uint16_t uncompressedBufferPosition = 0;
+      while (uncompressedBufferPosition < uncompressedBufferSize) {
+        if (uncompressBuffer[uncompressedBufferPosition] >= 128) {
+          display->ClearZone(uncompressBuffer[uncompressedBufferPosition++] -
+                             128);
+        } else {
+          display->FillZoneRaw565(
+              uncompressBuffer[uncompressedBufferPosition++],
+              &uncompressBuffer[uncompressedBufferPosition]);
+          uncompressedBufferPosition += RGB565_ZONE_SIZE;
         }
-        /*
-            } else {
-              display->DisplayText("miniz error ", 0, 0, 255, 0, 0);
-              DisplayNumber(minizStatus, 3, 0, 6, 255, 0, 0);
-        */
       }
-
-      // Move to the next buffer
-      processingBuffer = (processingBuffer + 1) % NUM_BUFFERS;
+    } else {
+      display->DisplayText("miniz error ", 0, 0, 255, 0, 0);
+      DisplayNumber(minizStatus, 3, 0, 6, 255, 0, 0);
     }
   }
+
+  // Move to the next buffer
+  processingBuffer = (processingBuffer + 1) % NUM_BUFFERS;
+}
 }
