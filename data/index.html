@@ -262,51 +262,6 @@
                     <div id="display-status" class="status-message"></div>
                 </div>
 
-                <!-- Screensaver Settings Section -->
-                <div class="section">
-                    <h2 class="section-header">Screensaver Settings</h2>
-                    <p>Only 128x32 or 256x64 .jpg images.</p>
-                    <input type="file" name="data" id="imageUpload" accept="image/*" onchange="previewImage()" /><br>
-                    <button onclick="uploadImage()">Upload</button>
-                    <button onclick="previewScreensaver()">Preview</button>
-                    <img id="preview" src="/screensaver.jpg" alt="Image preview"
-                        style="width: 100%; height: auto; display: block; margin: 0 auto;">
-                    <p id="uploadStatus"></p>
-
-                    <!-- Screensaver mode radio buttons -->
-                    <h3>Screensaver Mode</h3>
-                    <div class="form-row">
-                        <label for="clearDisplay">Turn off display</label>
-                        <input type="radio" id="dimScreen" name="screensaverMode" value="clearDisplay"
-                            onchange="toggleDimOptions()">
-                    </div>
-                    <div class="form-row">
-
-                        <label for="showImage">Show Image</label>
-                        <input type="radio" id="showImage" name="screensaverMode" value="showImage"
-                            onchange="toggleDimOptions()">
-                    </div>
-
-                    <!-- Dim screen options (visible only when "Show Image" is selected) -->
-                    <div id="dimOptions" style="display:none;">
-                        <div class="form-row">
-                            <label for="dimAfterTime">Dim display after time</label>
-                            <input type="checkbox" id="dimAfterTime">
-                        </div>
-                        <div class="form-row">
-                            <label for="dimTime">Time before dimming:</label>
-                            <select id="dimTime" name="dimTime">
-                                <option value="1">1 min</option>
-                                <option value="5">5 min</option>
-                                <option value="15">15 min</option>
-                                <option value="30">30 min</option>
-                                <option value="60">60 min</option>
-                            </select>
-                        </div>
-                    </div>
-                    <button onclick="saveScreensaverSettings()">Save Screensaver Settings</button>
-                </div>
-
                 <!-- Information Section -->
                 <div class="section">
                     <h2 class="section-header">Information</h2>

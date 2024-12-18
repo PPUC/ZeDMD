@@ -1,5 +1,10 @@
 #include <Arduino.h>
+#include <AsyncUDP.h>
+#include <Bounce2.h>
+#include <ESPAsyncWebServer.h>
+#include <ESPmDNS.h>
 #include <LittleFS.h>
+#include <WiFi.h>
 
 #include "displayConfig.h"  // Variables shared by main and displayDrivers
 #include "displayDriver.h"  // Base class for all display drivers
@@ -9,6 +14,11 @@
 #include "miniz/miniz.h"
 #include "panel.h"
 #include "version.h"
+#include "webserver.h"
+
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
+#include "S3Specific.h"
+#endif
 
 // To save RAM only include the driver we want to use.
 #ifdef DISPLAY_RM67162_AMOLED
@@ -17,9 +27,11 @@
 #include "displays/LEDMatrix.h"
 #endif
 
-#define N_CTRL_CHARS 6
+#define N_CTRL_CHARS 5
 #define N_INTERMEDIATE_CTR_CHARS 4
 #define NUM_BUFFERS 8  // Number of buffers
+#define ZEDMD_WIFI_MTU 1460
+#define SETTINGS_MENU_TIMEOUT 5000
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
 #define SERIAL_BAUD 2000000  // Serial baud rate.
 #define SERIAL_BUFFER 1024   // Serial buffer size in byte.
@@ -35,11 +47,28 @@
 #include "S3Specific.h"
 #endif
 
+#ifdef ARDUINO_ESP32_S3_N16R8
+#define RGB_ORDER_BUTTON_PIN 45
+#define BRIGHTNESS_BUTTON_PIN 48
+#elif defined(DISPLAY_RM67162_AMOLED)
+#define RGB_ORDER_BUTTON_PIN 0
+#define BRIGHTNESS_BUTTON_PIN 21
+#else
+#define RGB_ORDER_BUTTON_PIN 21
+#define BRIGHTNESS_BUTTON_PIN 33
+#endif
+
+enum { ZEDMD_UART = 0, ZEDMD_WIFI = 1 };
+
 DisplayDriver *display;
+AsyncUDP udp;
+Bounce2::Button *rgbOrderButton;
+Bounce2::Button *brightnessButton;
+
+uint32_t lastButtonPressed = 0;
 
 // Buffers for storing data
-u_int8_t buffers[NUM_BUFFERS][RGB565_ZONE_SIZE * ZONES_PER_ROW]
-    __attribute__((aligned(4)));
+u_int8_t buffers[NUM_BUFFERS][ZEDMD_WIFI_MTU] __attribute__((aligned(4)));
 uint16_t bufferSizes[NUM_BUFFERS] = {0};
 uint16_t bufferCommands[NUM_BUFFERS] = {0};
 
@@ -52,8 +81,34 @@ uint8_t uncompressBuffer[TOTAL_BYTES] __attribute__((aligned(4)));
 uint8_t renderBuffer[TOTAL_BYTES] __attribute__((aligned(4)));
 uint8_t processingBuffer = 0;
 
+uint16_t payloadSize = 0;
+uint8_t command = 0;
+uint8_t currentBuffer = NUM_BUFFERS - 1;
+
 uint8_t lumstep = 5;  // Init display on medium brightness, otherwise it starts
                       // up black on some displays
+bool settingsMenu = false;
+
+String ssid;
+String pwd;
+uint16_t port = 3333;
+uint8_t ssid_length;
+uint8_t pwd_length;
+bool wifiActive = false;
+uint8_t transport = ZEDMD_UART;
+
+void DoRestart(int sec) {
+  if (wifiActive) {
+    MDNS.end();
+    WiFi.disconnect(true);
+  }
+  sleep(sec);
+  ESP.restart();
+}
+
+void Restart() { DoRestart(1); }
+
+void RestartAfterError() { DoRestart(30); }
 
 void DisplayNumber(uint32_t chf, uint8_t nc, uint16_t x, uint16_t y, uint8_t r,
                    uint8_t g, uint8_t b, bool transparent = false) {
@@ -110,6 +165,19 @@ void ClearScreen() {
   display->SetBrightness(lumstep);
 }
 
+void LoadTransport() {
+  File f = LittleFS.open("/transport.val", "r");
+  if (!f) return;
+  transport = f.read();
+  f.close();
+}
+
+void SaveTransport() {
+  File f = LittleFS.open("/transport.val", "w");
+  f.write(transport);
+  f.close();
+}
+
 void LoadRgbOrder() {
   File f = LittleFS.open("/rgb_order.val", "r");
   if (!f) return;
@@ -134,6 +202,47 @@ void SaveLum() {
   File f = LittleFS.open("/lum.val", "w");
   f.write(lumstep);
   f.close();
+}
+
+void LoadScale() {
+  File f = LittleFS.open("/scale.val", "r");
+  if (!f) return;
+  display->SetCurrentScalingMode(f.read());
+  f.close();
+}
+
+void SaveScale() {
+  File f = LittleFS.open("/scale.val", "w");
+  f.write(display->GetCurrentScalingMode());
+  f.close();
+}
+
+bool LoadWiFiConfig() {
+  File wifiConfig = LittleFS.open("/wifi_config.txt", "r");
+  if (!wifiConfig) return false;
+
+  while (wifiConfig.available()) {
+    ssid = wifiConfig.readStringUntil('\n');
+    ssid_length = wifiConfig.readStringUntil('\n').toInt();
+    pwd = wifiConfig.readStringUntil('\n');
+    pwd_length = wifiConfig.readStringUntil('\n').toInt();
+    port = wifiConfig.readStringUntil('\n').toInt();
+  }
+  wifiConfig.close();
+  return true;
+}
+
+bool SaveWiFiConfig() {
+  File wifiConfig = LittleFS.open("/wifi_config.txt", "w");
+  if (!wifiConfig) return false;
+
+  wifiConfig.println(ssid);
+  wifiConfig.println(String(ssid_length));
+  wifiConfig.println(pwd);
+  wifiConfig.println(String(pwd_length));
+  wifiConfig.println(String(port));
+  wifiConfig.close();
+  return true;
 }
 
 void DisplayLogo(void) {
@@ -194,12 +303,24 @@ void DisplayUpdate(void) {
   display->FillPanelRaw(renderBuffer);
 }
 
+/// @brief Refreshes screen after color change, needed for webserver
+void RefreshSetupScreen() {
+  DisplayLogo();
+  DisplayRGB();
+  DisplayLum();
+}
+
+void AcquireNextBuffer() {
+  // Move to the next buffer
+  currentBuffer = (currentBuffer + 1) % NUM_BUFFERS;
+  xSemaphoreTake(xBufferProcessed[currentBuffer], portMAX_DELAY);
+  bufferSizes[currentBuffer] = payloadSize;
+  bufferCommands[currentBuffer] = command;
+}
+
 void Task_ReadSerial(void *pvParameters) {
-  const uint8_t CtrlChars[6] = {0x5a, 0x65, 0x64, 0x72, 0x75, 0x6d};
+  const uint8_t CtrlChars[5] = {'Z', 'e', 'D', 'M', 'D'};
   uint8_t numCtrlCharsFound = 0;
-  uint16_t payloadSize = 0;
-  uint8_t command = 0;
-  uint8_t currentBuffer = NUM_BUFFERS - 1;
 
   Serial.setRxBufferSize(SERIAL_BUFFER);
   Serial.setTimeout(SERIAL_TIMEOUT);
@@ -208,14 +329,13 @@ void Task_ReadSerial(void *pvParameters) {
 
   while (1) {
     // Wait for data to be ready
-
     if (Serial.available()) {
       uint8_t byte = Serial.read();
       // DisplayNumber(byte, 2, TOTAL_WIDTH - 2 * 4, TOTAL_HEIGHT - 6, 255, 255,
       // 255);
 
       if (numCtrlCharsFound < N_CTRL_CHARS) {
-        // Detect 6 consecutive start bits
+        // Detect 5 consecutive start bits
         if (byte == CtrlChars[numCtrlCharsFound]) {
           numCtrlCharsFound++;
         } else {
@@ -280,12 +400,7 @@ void Task_ReadSerial(void *pvParameters) {
             }
 
             numCtrlCharsFound++;
-
-            // Move to the next buffer
-            currentBuffer = (currentBuffer + 1) % NUM_BUFFERS;
-            xSemaphoreTake(xBufferProcessed[currentBuffer], portMAX_DELAY);
-            bufferSizes[currentBuffer] = payloadSize;
-            bufferCommands[currentBuffer] = command;
+            AcquireNextBuffer();
 
             break;
           }
@@ -322,9 +437,91 @@ void Task_ReadSerial(void *pvParameters) {
   }
 }
 
+/// @brief Handles the UDP Packet parsing for ZeDMD WiFi and ZeDMD-HD WiFi
+/// @param packet
+void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
+  uint8_t *pPacket = packet.data();
+  uint16_t receivedBytes = packet.length();
+  if (receivedBytes >= 1) {
+    command = pPacket[0];
+
+    switch (command) {
+      case 2:  // set rom frame size
+      {
+        // RomWidth = (int)(pPacket[4]) + (int)(pPacket[5] << 8);
+        // RomHeight = (int)(pPacket[6]) + (int)(pPacket[7] << 8);
+        // RomWidthPlane = RomWidth >> 3;
+        break;
+      }
+
+      case 10:  // clear screen
+      {
+        ClearScreen();
+        break;
+      }
+
+      case 5:  // RGB565 Zones Stream
+      {
+        payloadSize = receivedBytes - 1;
+        AcquireNextBuffer();
+        memcpy(buffers[currentBuffer], &pPacket[1], payloadSize);
+        xSemaphoreGive(xBufferFilled[currentBuffer]);
+      }
+    }
+  }
+}
+
+/// @brief Handles the mDNS Packets for ZeDMD WiFi, this allows autodiscovery
+void RunMDNS() {
+  if (!MDNS.begin("ZeDMD-WiFi")) {
+    return;
+  }
+  MDNS.addService("zedmd-wifi", "udp", port);
+}
+
+void StartWiFi() {
+  const char *apSSID = "ZeDMD-WiFi";
+  const char *apPassword = "zedmd1234";
+
+  if (LoadWiFiConfig()) {
+    WiFi.disconnect(true);
+    WiFi.begin(ssid.substring(0, ssid_length).c_str(),
+               pwd.substring(0, pwd_length).c_str());
+
+    WiFi.setSleep(false);  // WiFi speed improvement on ESP32 S3 and others.
+
+    if (WiFi.waitForConnectResult() != WL_CONNECTED) {
+      WiFi.softAP(apSSID, apPassword);  // Start AP if WiFi fails to connect
+    }
+  } else {
+    WiFi.softAP(apSSID, apPassword);  // Start AP if config not found
+  }
+
+  runWebServer();  // Start the web server
+  RunMDNS();       // Start the MDNS server for easy detection
+
+  IPAddress ip;
+  if (WiFi.getMode() == WIFI_AP) {
+    ip = WiFi.softAPIP();
+  } else if (WiFi.getMode() == WIFI_STA) {
+    ip = WiFi.localIP();
+  }
+
+  for (uint8_t i = 0; i < 4; i++) {
+    DisplayNumber(ip[i], 3, i * 3 * 4 + i, 0, 255, 191, 0);
+  }
+
+  if (udp.listen(ip, port)) {
+    udp.onPacket(HandlePacket);  // Start listening to ZeDMD UDP traffic
+  }
+
+  wifiActive = true;
+}
+
 void setup() {
   bool fileSystemOK;
   if (fileSystemOK = LittleFS.begin()) {
+    LoadTransport();
     LoadRgbOrder();
     LoadLum();
   }
@@ -342,6 +539,32 @@ void setup() {
     while (true);
   }
 
+  rgbOrderButton = new Bounce2::Button();
+  rgbOrderButton->attach(RGB_ORDER_BUTTON_PIN, INPUT_PULLUP);
+  rgbOrderButton->interval(100);
+  rgbOrderButton->setPressedState(LOW);
+
+  brightnessButton = new Bounce2::Button();
+  brightnessButton->attach(BRIGHTNESS_BUTTON_PIN, INPUT_PULLUP);
+  brightnessButton->interval(100);
+  brightnessButton->setPressedState(LOW);
+
+  delay(200);
+
+  rgbOrderButton->update();
+  brightnessButton->update();
+  if (rgbOrderButton->pressed()) {
+    display->DisplayText("Activating USB mode", 0, 13, 0, 255, 0);
+    transport = ZEDMD_UART;
+    SaveTransport();
+    delay(2000);
+  } else if (brightnessButton->pressed()) {
+    display->DisplayText("Activating WiFi mode", 0, 13, 0, 255, 0);
+    transport = ZEDMD_WIFI;
+    SaveTransport();
+    delay(2000);
+  }
+
   DisplayLogo();
 
   // Create synchronization primitives
@@ -351,46 +574,94 @@ void setup() {
   }
 
   // Create FreeRTOS tasks
-  xTaskCreatePinnedToCore(Task_ReadSerial, "Task_ReadSerial", 1024, NULL, 1,
-                          NULL, 0);
+  switch (transport) {
+    case ZEDMD_UART: {
+      xTaskCreatePinnedToCore(Task_ReadSerial, "Task_ReadSerial", 1024, NULL, 1,
+                              NULL, 0);
+      break;
+    }
 
+    case ZEDMD_WIFI: {
+      StartWiFi();
+      break;
+    }
+  }
+
+  // Enable all buffers
   for (uint8_t i = 0; i < NUM_BUFFERS; i++) {
     xSemaphoreGive(xBufferProcessed[i]);
   }
 }
 
 void loop() {
-  if (xSemaphoreTake(xBufferFilled[processingBuffer], portMAX_DELAY)) {
-    mz_ulong compressedBufferSize = (mz_ulong)bufferSizes[processingBuffer];
-    mz_ulong uncompressedBufferSize = (mz_ulong)TOTAL_BYTES;
-
-    int minizStatus =
-        mz_uncompress2(uncompressBuffer, &uncompressedBufferSize,
-                       &buffers[processingBuffer][0], &compressedBufferSize);
-
-    // Mark buffer as free
-    xSemaphoreGive(xBufferProcessed[processingBuffer]);
-
-    if (MZ_OK == minizStatus) {
-      uint16_t uncompressedBufferPosition = 0;
-      while (uncompressedBufferPosition < uncompressedBufferSize) {
-        if (uncompressBuffer[uncompressedBufferPosition] >= 128) {
-          display->ClearZone(uncompressBuffer[uncompressedBufferPosition++] -
-                             128);
-        } else {
-          display->FillZoneRaw565(
-              uncompressBuffer[uncompressedBufferPosition++],
-              &uncompressBuffer[uncompressedBufferPosition]);
-          uncompressedBufferPosition += RGB565_ZONE_SIZE;
-        }
-      }
-
-    } else {
-      display->DisplayText("miniz error ", 0, 0, 255, 0, 0);
-      DisplayNumber(minizStatus, 3, 0, 6, 255, 0, 0);
+  rgbOrderButton->update();
+  if (rgbOrderButton->pressed()) {
+    if (rgbModeLoaded != 0) {
+      rgbMode = 0;
+      SaveRgbOrder();
+      Restart();
     }
 
-    // Move to the next buffer
-    processingBuffer = (processingBuffer + 1) % NUM_BUFFERS;
+    lastButtonPressed = millis();
+    rgbMode++;
+    if (rgbMode > 5) rgbMode = 0;
+    SaveRgbOrder();
+    RefreshSetupScreen();
+    settingsMenu = true;
+  }
+
+  brightnessButton->update();
+  if (brightnessButton->pressed()) {
+    lastButtonPressed = millis();
+    lumstep++;
+    if (lumstep >= 16) lumstep = 1;
+    display->SetBrightness(lumstep);
+    SaveLum();
+    RefreshSetupScreen();
+    settingsMenu = true;
+  }
+
+  if (settingsMenu) {
+    if ((millis() - lastButtonPressed) > SETTINGS_MENU_TIMEOUT) {
+      if (rgbMode != rgbModeLoaded) {
+        Restart();
+      }
+      settingsMenu = false;
+    }
+  } else {
+    if (xSemaphoreTake(xBufferFilled[processingBuffer], portMAX_DELAY)) {
+      mz_ulong compressedBufferSize = (mz_ulong)bufferSizes[processingBuffer];
+      mz_ulong uncompressedBufferSize = (mz_ulong)TOTAL_BYTES;
+
+      int minizStatus =
+          mz_uncompress2(uncompressBuffer, &uncompressedBufferSize,
+                         &buffers[processingBuffer][0], &compressedBufferSize);
+
+      // Mark buffer as free
+      xSemaphoreGive(xBufferProcessed[processingBuffer]);
+
+      if (MZ_OK == minizStatus) {
+        uint16_t uncompressedBufferPosition = 0;
+        while (uncompressedBufferPosition < uncompressedBufferSize) {
+          if (uncompressBuffer[uncompressedBufferPosition] >= 128) {
+            display->ClearZone(uncompressBuffer[uncompressedBufferPosition++] -
+                               128);
+          } else {
+            display->FillZoneRaw565(
+                uncompressBuffer[uncompressedBufferPosition++],
+                &uncompressBuffer[uncompressedBufferPosition]);
+            uncompressedBufferPosition += RGB565_ZONE_SIZE;
+          }
+        }
+        /*
+            } else {
+              display->DisplayText("miniz error ", 0, 0, 255, 0, 0);
+              DisplayNumber(minizStatus, 3, 0, 6, 255, 0, 0);
+        */
+      }
+
+      // Move to the next buffer
+      processingBuffer = (processingBuffer + 1) % NUM_BUFFERS;
+    }
   }
 }

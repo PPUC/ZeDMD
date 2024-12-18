@@ -1,4 +1,3 @@
-#ifdef ZEDMD_WIFI
 #ifndef WEBSERVER_H
 #define WEBSERVER_H
 
@@ -27,16 +26,10 @@ bool SaveWiFiConfig();
 void SaveRgbOrder();
 void SaveLum();
 void SaveScale();
-bool VerifyImage(const char *filename);
-bool DisplayImage(const char *filename);
 DisplayDriver *GetDisplayObject();
 void RefreshSetupScreen();
-bool SaveScreensaverConfig();
 
 // Functions in webserver.cpp
 void runWebServer();
-void handleUpload(AsyncWebServerRequest *request, String filename, size_t index,
-                  uint8_t *data, size_t len, bool final);
 
 #endif  // WEBSERVER_H
-#endif  // ZEDMD_WIFI
