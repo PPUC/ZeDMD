@@ -260,6 +260,7 @@
                     <br>
                     <!-- Status Message -->
                     <div id="display-status" class="status-message"></div>
+                    <button onclick="apply()">Apply</button>
                 </div>
 
                 <!-- Information Section -->
@@ -410,6 +411,16 @@
             xhr.send(`brightness=${brightness}`);
         }
 
+        function apply() {
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", "/applyt", true);
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
+                    alert("Device will reboot.");
+                }
+            };
+            xhr.send();
+        }
 
         function toggleDebugInfo() {
             var debugInfoDiv = document.getElementById('debug-info');
@@ -488,67 +499,6 @@
             xhr.send(formData);
         }
 
-        function previewScreensaver() {
-            var xhr = new XMLHttpRequest();
-            xhr.open("GET", "/preview_screensaver", true);
-            xhr.onreadystatechange = function () {
-                if (xhr.readyState === XMLHttpRequest.DONE) {
-                    var uploadStatus = document.getElementById('uploadStatus');
-                    if (xhr.status === 200) {
-                        uploadStatus.innerText = "Preview successful!";
-                        document.getElementById('preview').src = "/screensaver.jpg"; // Display the saved image
-                    } else {
-                        uploadStatus.innerText = "Error: " + xhr.responseText;
-                    }
-                }
-            };
-            xhr.send();
-        }
-
-        function toggleDimOptions() {
-            var showImageChecked = document.getElementById('showImage').checked;
-            var dimOptions = document.getElementById('dimOptions');
-            dimOptions.style.display = showImageChecked ? 'block' : 'none';
-        }
-
-        function saveScreensaverSettings() {
-            // Get the selected screensaver mode
-            var screensaverMode;
-            if (document.querySelector('input[name="screensaverMode"]:checked').value == "showImage") {
-                screensaverMode = 1;
-            }
-            else {
-                screensaverMode = 0;
-            }
-
-            var enableDimAfterTimeout = document.getElementById('dimAfterTime').checked ? 1 : 0;
-
-            var dimTime = document.getElementById('dimTime').value;
-
-            var params = `screensaverMode=${screensaverMode}&enableDimAfterTimeout=${enableDimAfterTimeout}&dimTime=${dimTime}`;
-
-            // Send the data to the ESP32 backend using XMLHttpRequest
-            var xhr = new XMLHttpRequest();
-            xhr.open("POST", "/save_screensaver_settings", true);
-            xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
-
-            xhr.onreadystatechange = function () {
-                if (xhr.readyState === XMLHttpRequest.DONE) {
-                    var uploadStatus = document.getElementById('uploadStatus');
-                    if (xhr.status === 200) {
-                        uploadStatus.innerText = "Settings saved successfully!";
-                        uploadStatus.style.color = "green";
-                    } else {
-                        uploadStatus.innerText = "Error saving settings.";
-                        uploadStatus.style.color = "red";
-                    }
-                }
-            };
-
-            // Send the data to the backend
-            xhr.send(params);
-        }
-
         // Load the current config and populate the form fields
         function loadConfig() {
             var xhr = new XMLHttpRequest();
@@ -560,17 +510,6 @@
                     document.getElementById("port").value = config.port;
                     document.getElementById("rgb-order").value = config.rgbOrder;
                     document.getElementById("brightness").value = config.brightness;
-
-                    // Set the correct radio button for screensaverMode
-                    if (config.screensaverMode == 0) {
-                        document.getElementById("dimScreen").checked = true; // For clearscreen
-                    } else if (config.screensaverMode == 1) {
-                        document.getElementById("showImage").checked = true; // For show image
-                    }
-
-                    // Set the checkbox and dim timeout for dim options
-                    document.getElementById("dimAfterTime").checked = config.enableDimAfterTimeout == 1;
-                    document.getElementById("dimTime").value = config.dimTimeout;
 
                     document.getElementById("scaling-mode").value = config.scaleMode;
 

@@ -12,9 +12,6 @@ extern uint16_t port;
 extern uint8_t ssid_length;
 extern uint8_t pwd_length;
 
-extern uint32_t dimTimeout;
-extern bool enableDimAfterTimeout;
-extern uint8_t screensaverMode;
 extern uint8_t lumstep;
 extern uint8_t rgbMode;
 extern uint8_t rgbModeLoaded;

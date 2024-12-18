@@ -119,13 +119,14 @@ void runWebServer() {
     request->send(LittleFS, "/ppuc.png", "image/png");
   });
 
-  server.on("/screensaver.jpg", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(LittleFS, "/screensaver.jpg", "image/jpg");
-  });
-
   server.on("/reset_wifi", HTTP_POST, [](AsyncWebServerRequest *request) {
     LittleFS.remove("/wifi_config.txt");  // Remove Wi-Fi config
     request->send(200, "text/plain", "Wi-Fi reset successful.");
+    Restart();  // Restart the device
+  });
+
+  server.on("/apply", HTTP_POST, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "Apply successful.");
     Restart();  // Restart the device
   });
 
