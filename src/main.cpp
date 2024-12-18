@@ -91,7 +91,11 @@ uint16_t port = 3333;
 uint8_t ssid_length;
 uint8_t pwd_length;
 bool wifiActive = false;
+#if defined(DISPLAY_RM67162_AMOLED)
+uint8_t transport = ZEDMD_WIFI;
+#else
 uint8_t transport = ZEDMD_UART;
+#endif
 
 void DoRestart(int sec) {
   if (wifiActive) {
@@ -728,5 +732,4 @@ void loop() {
 
   // Move to the next buffer
   processingBuffer = (processingBuffer + 1) % NUM_BUFFERS;
-}
 }
