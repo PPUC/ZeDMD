@@ -59,6 +59,8 @@
 #define BRIGHTNESS_BUTTON_PIN 33
 #endif
 
+#define LED_CHECK_DELAY 1000  // ms per color
+
 enum { ZEDMD_UART = 0, ZEDMD_WIFI = 1 };
 
 DisplayDriver *display;
@@ -258,6 +260,18 @@ bool SaveWiFiConfig() {
   wifiConfig.close();
   return true;
 }
+void LedTester(void) {
+  display->FillScreen(255, 0, 0);
+  delay(LED_CHECK_DELAY);
+
+  display->FillScreen(0, 255, 0);
+  delay(LED_CHECK_DELAY);
+
+  display->FillScreen(0, 0, 255);
+  delay(LED_CHECK_DELAY);
+
+  display->ClearScreen();
+}
 
 void DisplayLogo(void) {
   ClearScreen();
@@ -350,7 +364,8 @@ void Task_ReadSerial(void *pvParameters) {
     // Wait for data to be ready
     if (Serial.available()) {
       uint8_t byte = Serial.read();
-      //DisplayNumber(byte, 2, TOTAL_WIDTH - 2 * 4, TOTAL_HEIGHT - 6, 255, 255, 255);
+      // DisplayNumber(byte, 2, TOTAL_WIDTH - 2 * 4, TOTAL_HEIGHT - 6, 255, 255,
+      // 255);
 
       if (numCtrlCharsFound < N_CTRL_CHARS) {
         // Detect 5 consecutive start bits
@@ -392,6 +407,62 @@ void Task_ReadSerial(void *pvParameters) {
             Serial.write((TOTAL_WIDTH >> 8) & 0xff);
             Serial.write(TOTAL_HEIGHT & 0xff);
             Serial.write((TOTAL_HEIGHT >> 8) & 0xff);
+            numCtrlCharsFound = 0;
+            break;
+          }
+
+          case 22:  // set brightness
+          {
+            lumstep = Serial.read();
+            display->SetBrightness(lumstep);
+            Serial.write('A');
+            numCtrlCharsFound = 0;
+            break;
+          }
+
+          case 23:  // set RGB order
+          {
+            rgbMode = Serial.read();
+            Serial.write('A');
+            numCtrlCharsFound = 0;
+            break;
+          }
+
+          case 24:  // get brightness
+          {
+            Serial.write(lumstep);
+            numCtrlCharsFound = 0;
+            break;
+          }
+
+          case 25:  // get RGB order
+          {
+            Serial.write(rgbMode);
+            numCtrlCharsFound = 0;
+            break;
+          }
+
+          case 30:  // save settings
+          {
+            SaveLum();
+            SaveRgbOrder();
+            Serial.write('A');
+            numCtrlCharsFound = 0;
+            break;
+          }
+
+          case 31:  // reset
+          {
+            Serial.write('A');
+            Restart();
+            numCtrlCharsFound = 0;
+            break;
+          }
+
+          case 16: {
+            Serial.write('A');
+            LedTester();
+            Restart();
             numCtrlCharsFound = 0;
             break;
           }
@@ -474,6 +545,12 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
     command = pPacket[0];
 
     switch (command) {
+      case 16: {
+        LedTester();
+        Restart();
+        break;
+      }
+
       case 10:  // clear screen
       {
         // Wait until everything is rendered
@@ -491,6 +568,7 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
         memcpy(buffers[currentBuffer], &pPacket[1], payloadSize);
         xSemaphoreGive(xBufferFilled[currentBuffer]);
         lastBuffer = currentBuffer;
+        break;
       }
     }
   }
@@ -522,9 +600,6 @@ void StartWiFi() {
     WiFi.softAP(apSSID, apPassword);  // Start AP if config not found
   }
 
-  runWebServer();  // Start the web server
-  RunMDNS();       // Start the MDNS server for easy detection
-
   IPAddress ip;
   if (WiFi.getMode() == WIFI_AP) {
     ip = WiFi.softAPIP();
@@ -532,9 +607,20 @@ void StartWiFi() {
     ip = WiFi.localIP();
   }
 
+  if (!ip[0]) {
+    WiFi.disconnect(true, true);
+    delay(100);
+    WiFi.softAP(apSSID, apPassword);
+    delay(1000);
+    ip = WiFi.softAPIP();
+  }
+
   for (uint8_t i = 0; i < 4; i++) {
     DisplayNumber(ip[i], 3, i * 3 * 4 + i, 0, 255, 191, 0);
   }
+
+  runWebServer();  // Start the web server
+  RunMDNS();       // Start the MDNS server for easy detection
 
   if (udp.listen(ip, port)) {
     udp.onPacket(HandlePacket);  // Start listening to ZeDMD UDP traffic
@@ -738,8 +824,8 @@ void loop() {
         }
       }
     } else {
-      //display->DisplayText("miniz error ", 0, 0, 255, 0, 0);
-      //DisplayNumber(minizStatus, 3, 0, 6, 255, 0, 0);
+      // display->DisplayText("miniz error ", 0, 0, 255, 0, 0);
+      // DisplayNumber(minizStatus, 3, 0, 6, 255, 0, 0);
     }
   }
 
