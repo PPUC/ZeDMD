@@ -28,15 +28,18 @@
 
 #define N_CTRL_CHARS 5
 #define N_INTERMEDIATE_CTR_CHARS 4
-#define NUM_BUFFERS 8  // Number of buffers
-#define ZEDMD_WIFI_MTU 1460
+#ifdef BOARD_HAS_PSRAM
+#define NUM_BUFFERS 48  // Number of buffers
+#else
+#define NUM_BUFFERS 16  // Number of buffers
+#endif
+#define BUFFER_SIZE 1152
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
 #define SERIAL_BAUD 2000000  // Serial baud rate.
-#define SERIAL_BUFFER 1024   // Serial buffer size in byte.
 #else
 #define SERIAL_BAUD 921600  // Serial baud rate.
-#define SERIAL_BUFFER 4096  // Serial buffer size in byte.
 #endif
+#define SERIAL_BUFFER 2048  // Serial buffer size in byte.
 #define SERIAL_TIMEOUT \
   8  // Time in milliseconds to wait for the next data chunk.
 
@@ -62,9 +65,8 @@ DisplayDriver *display;
 AsyncUDP udp;
 
 // Buffers for storing data
-u_int8_t buffers[NUM_BUFFERS][ZEDMD_WIFI_MTU] __attribute__((aligned(4)));
+u_int8_t buffers[NUM_BUFFERS][BUFFER_SIZE] __attribute__((aligned(4)));
 uint16_t bufferSizes[NUM_BUFFERS] = {0};
-uint16_t bufferCommands[NUM_BUFFERS] = {0};
 
 // Semaphores
 SemaphoreHandle_t xBufferFilled[NUM_BUFFERS];
@@ -78,6 +80,7 @@ uint8_t processingBuffer = 0;
 uint16_t payloadSize = 0;
 uint8_t command = 0;
 uint8_t currentBuffer = NUM_BUFFERS - 1;
+uint8_t lastBuffer = currentBuffer;
 
 uint8_t lumstep = 5;  // Init display on medium brightness, otherwise it starts
                       // up black on some displays
@@ -322,11 +325,11 @@ void RefreshSetupScreen() {
 }
 
 void AcquireNextBuffer() {
-  // Move to the next buffer
-  currentBuffer = (currentBuffer + 1) % NUM_BUFFERS;
-  xSemaphoreTake(xBufferProcessed[currentBuffer], portMAX_DELAY);
-  bufferSizes[currentBuffer] = payloadSize;
-  bufferCommands[currentBuffer] = command;
+  if (currentBuffer == lastBuffer) {
+    // Move to the next buffer
+    currentBuffer = (currentBuffer + 1) % NUM_BUFFERS;
+    xSemaphoreTake(xBufferProcessed[currentBuffer], portMAX_DELAY);
+  }
 }
 
 void Task_ReadSerial(void *pvParameters) {
@@ -347,8 +350,7 @@ void Task_ReadSerial(void *pvParameters) {
     // Wait for data to be ready
     if (Serial.available()) {
       uint8_t byte = Serial.read();
-      // DisplayNumber(byte, 2, TOTAL_WIDTH - 2 * 4, TOTAL_HEIGHT - 6, 255, 255,
-      // 255);
+      //DisplayNumber(byte, 2, TOTAL_WIDTH - 2 * 4, TOTAL_HEIGHT - 6, 255, 255, 255);
 
       if (numCtrlCharsFound < N_CTRL_CHARS) {
         // Detect 5 consecutive start bits
@@ -405,21 +407,27 @@ void Task_ReadSerial(void *pvParameters) {
             break;
           }
 
-          case 2:  // set rom frame size
+          case 4:  // announce RGB565 zones streaming
+          {
+            AcquireNextBuffer();
+            Serial.write('A');
+            numCtrlCharsFound = 0;
+            break;
+          }
+
           case 5:  // mode RGB565 zones streaming
           {
             // Read payload size (next 2 bytes)
             payloadSize = (Serial.read() << 8) | Serial.read();
 
-            if (payloadSize > RGB565_ZONE_SIZE * ZONES_PER_ROW ||
-                payloadSize == 0) {
+            if (payloadSize > BUFFER_SIZE || payloadSize == 0) {
               Serial.write('E');
               numCtrlCharsFound = 0;
               break;
             }
+            bufferSizes[currentBuffer] = payloadSize;
 
             numCtrlCharsFound++;
-            AcquireNextBuffer();
 
             break;
           }
@@ -442,6 +450,7 @@ void Task_ReadSerial(void *pvParameters) {
 
         // Signal to process the filled buffer
         xSemaphoreGive(xBufferFilled[currentBuffer]);
+        lastBuffer = currentBuffer;
 
         // Send an (A)cknowledge signal to tell the client that we
         // successfully read the data.
@@ -461,18 +470,10 @@ void Task_ReadSerial(void *pvParameters) {
 void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
   uint8_t *pPacket = packet.data();
   uint16_t receivedBytes = packet.length();
-  if (receivedBytes >= 1) {
+  if (receivedBytes >= 1 && receivedBytes <= (BUFFER_SIZE + 1)) {
     command = pPacket[0];
 
     switch (command) {
-      case 2:  // set rom frame size
-      {
-        // RomWidth = (int)(pPacket[4]) + (int)(pPacket[5] << 8);
-        // RomHeight = (int)(pPacket[6]) + (int)(pPacket[7] << 8);
-        // RomWidthPlane = RomWidth >> 3;
-        break;
-      }
-
       case 10:  // clear screen
       {
         // Wait until everything is rendered
@@ -486,8 +487,10 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
       {
         payloadSize = receivedBytes - 1;
         AcquireNextBuffer();
+        bufferSizes[currentBuffer] = payloadSize;
         memcpy(buffers[currentBuffer], &pPacket[1], payloadSize);
         xSemaphoreGive(xBufferFilled[currentBuffer]);
+        lastBuffer = currentBuffer;
       }
     }
   }
@@ -735,8 +738,8 @@ void loop() {
         }
       }
     } else {
-      display->DisplayText("miniz error ", 0, 0, 255, 0, 0);
-      DisplayNumber(minizStatus, 3, 0, 6, 255, 0, 0);
+      //display->DisplayText("miniz error ", 0, 0, 255, 0, 0);
+      //DisplayNumber(minizStatus, 3, 0, 6, 255, 0, 0);
     }
   }
 
