@@ -137,37 +137,5 @@ void IRAM_ATTR LedMatrix::FillPanelRaw(uint8_t *pBuffer) {
   }
 }
 
-void LedMatrix::FillPanelUsingPalette(uint8_t *pBuffer, uint8_t *palette) {
-  uint16_t pos;
-
-  for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
-    for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
-      pos = pBuffer[y * TOTAL_WIDTH + x] * 3;
-
-      dma_display->drawPixelRGB888(x, y, palette[pos], palette[pos + 1],
-                                   palette[pos + 2]);
-    }
-  }
-}
-
-#if !defined(ZEDMD_WIFI)
-
-void LedMatrix::FillPanelUsingChangedPalette(uint8_t *pBuffer, uint8_t *palette,
-                                             bool *paletteAffected) {
-  uint16_t pos;
-
-  for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
-    for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
-      pos = pBuffer[y * TOTAL_WIDTH + x];
-      if (paletteAffected[pos]) {
-        pos *= 3;
-        dma_display->drawPixelRGB888(x, y, palette[pos], palette[pos + 1],
-                                     palette[pos + 2]);
-      }
-    }
-  }
-}
-#endif
-
 LedMatrix::~LedMatrix() { delete dma_display; }
 #endif

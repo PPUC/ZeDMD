@@ -6,6 +6,8 @@
 #include <LittleFS.h>
 #include <WiFi.h>
 
+#include <cstring>
+
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
 #include "S3Specific.h"
 #endif

@@ -83,18 +83,6 @@ class DisplayDriver {
   /// @return
   virtual void FillPanelRaw(uint8_t *pBuffer) = 0;
 
-  /// @brief Fill fullscreen with pallete
-  /// @return
-  virtual void FillPanelUsingPalette(uint8_t *pBuffer, uint8_t *palette) = 0;
-#if !defined(ZEDMD_WIFI)
-  /// @brief Fill fullscreen with changed palette
-  /// @param pBuffer Pixel buffer RGB888
-  /// @param palette Palette
-  /// @param paletteAffected Affected palette
-  virtual void FillPanelUsingChangedPalette(uint8_t *pBuffer, uint8_t *palette,
-                                            bool *paletteAffected) = 0;
-#endif
-
   virtual ~DisplayDriver() {}  // Virtual destructor
 };
 
