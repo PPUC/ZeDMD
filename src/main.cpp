@@ -67,9 +67,11 @@ enum { ZEDMD_UART = 0, ZEDMD_WIFI = 1 };
 
 DisplayDriver *display;
 AsyncUDP udp;
+const char *apSSID = "ZeDMD-WiFi";
+const char *apPassword = "zedmd1234";
 
 // Buffers for storing data
-u_int8_t buffers[NUM_BUFFERS][BUFFER_SIZE] __attribute__((aligned(4)));
+uint8_t *buffers[NUM_BUFFERS];
 uint16_t bufferSizes[NUM_BUFFERS] = {0};
 
 // Semaphores
@@ -77,7 +79,7 @@ SemaphoreHandle_t xBufferFilled[NUM_BUFFERS];
 SemaphoreHandle_t xBufferProcessed[NUM_BUFFERS];
 
 // @todo zu gross
-uint8_t uncompressBuffer[TOTAL_BYTES] __attribute__((aligned(4)));
+uint8_t uncompressBuffer[128 * 4 * 2 + 16] __attribute__((aligned(4)));
 uint8_t renderBuffer[TOTAL_BYTES] __attribute__((aligned(4)));
 uint8_t processingBuffer = 0;
 
@@ -505,6 +507,20 @@ void Task_ReadSerial(void *pvParameters) {
             break;
           }
 
+          case 6:  // Render
+          {
+            AcquireNextBuffer();
+            bufferSizes[currentBuffer] = 2;
+            buffers[currentBuffer][0] = 255;
+            buffers[currentBuffer][1] = 255;
+            xSemaphoreGive(xBufferFilled[currentBuffer]);
+            lastBuffer = currentBuffer;
+            Serial.write('A');
+            numCtrlCharsFound = 0;
+            break;
+            break;
+          }
+
           default: {
             Serial.write('E');
             numCtrlCharsFound = 0;
@@ -572,6 +588,17 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
         lastBuffer = currentBuffer;
         break;
       }
+
+      case 6:  // Render
+      {
+        AcquireNextBuffer();
+        bufferSizes[currentBuffer] = 2;
+        buffers[currentBuffer][0] = 255;
+        buffers[currentBuffer][1] = 255;
+        xSemaphoreGive(xBufferFilled[currentBuffer]);
+        lastBuffer = currentBuffer;
+        break;
+      }
     }
   }
 }
@@ -585,9 +612,6 @@ void RunMDNS() {
 }
 
 void StartWiFi() {
-  const char *apSSID = "ZeDMD-WiFi";
-  const char *apPassword = "zedmd1234";
-
   if (LoadWiFiConfig()) {
     WiFi.disconnect(true);
     WiFi.begin(ssid.substring(0, ssid_length).c_str(),
@@ -609,24 +633,17 @@ void StartWiFi() {
     ip = WiFi.localIP();
   }
 
-  if (!ip[0]) {
-    WiFi.disconnect(true, true);
-    delay(100);
-    WiFi.softAP(apSSID, apPassword);
-    delay(1000);
-    ip = WiFi.softAPIP();
-  }
-
   for (uint8_t i = 0; i < 4; i++) {
     DisplayNumber(ip[i], 3, i * 3 * 4 + i, 0, 255, 191, 0);
   }
 
-  runWebServer();  // Start the web server
-  RunMDNS();       // Start the MDNS server for easy detection
+  RunMDNS();  // Start the MDNS server for easy detection
 
   if (udp.listen(ip, port)) {
     udp.onPacket(HandlePacket);  // Start listening to ZeDMD UDP traffic
   }
+
+  runWebServer();  // Start the web server
 
   wifiActive = true;
 }
@@ -776,6 +793,15 @@ void setup() {
   for (uint8_t i = 0; i < NUM_BUFFERS; i++) {
     xBufferFilled[i] = xSemaphoreCreateBinary();
     xBufferProcessed[i] = xSemaphoreCreateBinary();
+#ifdef BOARD_HAS_PSRAM
+    buffers[i] = (uint8_t *)ps_malloc(BUFFER_SIZE);
+#else
+    buffers[i] = (uint8_t *)malloc(BUFFER_SIZE);
+#endif
+    if (nullptr == buffers[i]) {
+      display->DisplayText("out of memory", 10, 13, 255, 0, 0);
+      while (1);
+    }
   }
 
   xTaskCreatePinnedToCore(Task_SettingsMenu, "Task_SettingsMenu", 4096, NULL, 1,
@@ -801,33 +827,42 @@ void setup() {
 }
 
 void loop() {
+  // display->DisplayText("enter loop", 10, 13, 255, 0, 0);
   if (xSemaphoreTake(xBufferFilled[processingBuffer], portMAX_DELAY)) {
-    mz_ulong compressedBufferSize = (mz_ulong)bufferSizes[processingBuffer];
-    mz_ulong uncompressedBufferSize = (mz_ulong)TOTAL_BYTES;
-
-    int minizStatus =
-        mz_uncompress2(uncompressBuffer, &uncompressedBufferSize,
-                       &buffers[processingBuffer][0], &compressedBufferSize);
-
-    // Mark buffer as free
-    xSemaphoreGive(xBufferProcessed[processingBuffer]);
-
-    if (MZ_OK == minizStatus) {
-      uint16_t uncompressedBufferPosition = 0;
-      while (uncompressedBufferPosition < uncompressedBufferSize) {
-        if (uncompressBuffer[uncompressedBufferPosition] >= 128) {
-          display->ClearZone(uncompressBuffer[uncompressedBufferPosition++] -
-                             128);
-        } else {
-          display->FillZoneRaw565(
-              uncompressBuffer[uncompressedBufferPosition++],
-              &uncompressBuffer[uncompressedBufferPosition]);
-          uncompressedBufferPosition += RGB565_ZONE_SIZE;
-        }
-      }
+    if (2 == bufferSizes[processingBuffer] &&
+        255 == buffers[processingBuffer][0] &&
+        255 == buffers[processingBuffer][1]) {
+      // Mark buffer as free
+      xSemaphoreGive(xBufferProcessed[processingBuffer]);
+      // @todo switch double buffer
     } else {
-      // display->DisplayText("miniz error ", 0, 0, 255, 0, 0);
-      // DisplayNumber(minizStatus, 3, 0, 6, 255, 0, 0);
+      mz_ulong compressedBufferSize = (mz_ulong)bufferSizes[processingBuffer];
+      mz_ulong uncompressedBufferSize = (mz_ulong)TOTAL_BYTES;
+
+      int minizStatus =
+          mz_uncompress2(uncompressBuffer, &uncompressedBufferSize,
+                         buffers[processingBuffer], &compressedBufferSize);
+
+      // Mark buffer as free
+      xSemaphoreGive(xBufferProcessed[processingBuffer]);
+
+      if (MZ_OK == minizStatus) {
+        uint16_t uncompressedBufferPosition = 0;
+        while (uncompressedBufferPosition < uncompressedBufferSize) {
+          if (uncompressBuffer[uncompressedBufferPosition] >= 128) {
+            display->ClearZone(uncompressBuffer[uncompressedBufferPosition++] -
+                               128);
+          } else {
+            display->FillZoneRaw565(
+                uncompressBuffer[uncompressedBufferPosition++],
+                &uncompressBuffer[uncompressedBufferPosition]);
+            uncompressedBufferPosition += RGB565_ZONE_SIZE;
+          }
+        }
+      } else {
+        // display->DisplayText("miniz error ", 0, 0, 255, 0, 0);
+        // DisplayNumber(minizStatus, 3, 0, 6, 255, 0, 0);
+      }
     }
   }
 
