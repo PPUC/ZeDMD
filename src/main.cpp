@@ -6,6 +6,9 @@
 #include <LittleFS.h>
 #include <WiFi.h>
 
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
+#include "S3Specific.h"
+#endif
 #include "displayConfig.h"  // Variables shared by main and displayDrivers
 #include "displayDriver.h"  // Base class for all display drivers
 #include "freertos/FreeRTOS.h"
@@ -15,10 +18,6 @@
 #include "panel.h"
 #include "version.h"
 #include "webserver.h"
-
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
-#include "S3Specific.h"
-#endif
 
 // To save RAM only include the driver we want to use.
 #ifdef DISPLAY_RM67162_AMOLED
@@ -31,7 +30,6 @@
 #define N_INTERMEDIATE_CTR_CHARS 4
 #define NUM_BUFFERS 8  // Number of buffers
 #define ZEDMD_WIFI_MTU 1460
-#define SETTINGS_MENU_TIMEOUT 5000
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
 #define SERIAL_BAUD 2000000  // Serial baud rate.
 #define SERIAL_BUFFER 1024   // Serial buffer size in byte.
@@ -160,6 +158,7 @@ void DisplayRGB(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
 DisplayDriver *GetDisplayObject() { return display; }
 
 void ClearScreen() {
+  memset(renderBuffer, 0, TOTAL_BYTES);
   display->ClearScreen();
   display->SetBrightness(lumstep);
 }
@@ -335,9 +334,14 @@ void Task_ReadSerial(void *pvParameters) {
   uint8_t numCtrlCharsFound = 0;
 
   Serial.setRxBufferSize(SERIAL_BUFFER);
+#if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
+  // S3 USB CDC
+  Serial.begin(115200);
+#else
   Serial.setTimeout(SERIAL_TIMEOUT);
   Serial.begin(SERIAL_BAUD);
   while (!Serial);
+#endif
 
   while (1) {
     // Wait for data to be ready
@@ -392,8 +396,11 @@ void Task_ReadSerial(void *pvParameters) {
 
           case 10:  // clear screen
           {
+            // Wait until everything is rendered
+            xSemaphoreTake(xBufferProcessed[currentBuffer], portMAX_DELAY);
+            xSemaphoreGive(xBufferProcessed[currentBuffer]);
             Serial.write('A');
-            // ClearScreen();
+            ClearScreen();
             numCtrlCharsFound = 0;
             break;
           }
