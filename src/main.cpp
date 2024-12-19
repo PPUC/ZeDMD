@@ -475,6 +475,9 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
 
       case 10:  // clear screen
       {
+        // Wait until everything is rendered
+        xSemaphoreTake(xBufferProcessed[currentBuffer], portMAX_DELAY);
+        xSemaphoreGive(xBufferProcessed[currentBuffer]);
         ClearScreen();
         break;
       }
