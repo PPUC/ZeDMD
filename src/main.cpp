@@ -32,8 +32,10 @@
 #define N_INTERMEDIATE_CTR_CHARS 4
 #ifdef BOARD_HAS_PSRAM
 #define NUM_BUFFERS 48  // Number of buffers
+#define NUM_RENDER_BUFFERS 2
 #else
 #define NUM_BUFFERS 16  // Number of buffers
+#define NUM_RENDER_BUFFERS 1
 #endif
 #define BUFFER_SIZE 1152
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
@@ -63,7 +65,7 @@
 
 #define LED_CHECK_DELAY 1000  // ms per color
 
-enum { ZEDMD_UART = 0, ZEDMD_WIFI = 1 };
+enum { TRANSPORT_UART = 0, TRANSPORT_WIFI = 1, TRANSPORT_SPI = 2 };
 
 DisplayDriver *display;
 AsyncUDP udp;
@@ -78,9 +80,12 @@ uint16_t bufferSizes[NUM_BUFFERS] = {0};
 SemaphoreHandle_t xBufferFilled[NUM_BUFFERS];
 SemaphoreHandle_t xBufferProcessed[NUM_BUFFERS];
 
-// @todo zu gross
-uint8_t uncompressBuffer[128 * 4 * 2 + 16] __attribute__((aligned(4)));
-uint8_t renderBuffer[TOTAL_BYTES] __attribute__((aligned(4)));
+// The uncompress buffer should be bug enough
+uint8_t uncompressBuffer[2048] __attribute__((aligned(4)));
+uint8_t *renderBuffer[NUM_RENDER_BUFFERS];
+uint8_t currentRenderBuffer = 0;
+uint8_t lastRenderBuffer = NUM_RENDER_BUFFERS - 1;
+
 uint8_t processingBuffer = 0;
 
 uint16_t payloadSize = 0;
@@ -98,10 +103,10 @@ uint16_t port = 3333;
 uint8_t ssid_length;
 uint8_t pwd_length;
 bool wifiActive = false;
-#if defined(DISPLAY_RM67162_AMOLED)
-uint8_t transport = ZEDMD_WIFI;
+#ifdef ZEDMD_WIFI
+uint8_t transport = TRANSPORT_WIFI;
 #else
-uint8_t transport = ZEDMD_UART;
+uint8_t transport = TRANSPORT_UART;
 #endif
 
 void DoRestart(int sec) {
@@ -166,15 +171,15 @@ void DisplayRGB(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
 /// @brief Get DisplayDriver object, required for webserver
 DisplayDriver *GetDisplayObject() { return display; }
 
-void ClearScreen() {
-  memset(renderBuffer, 0, TOTAL_BYTES);
-  display->ClearScreen();
-  display->SetBrightness(lumstep);
-}
-
 void LoadSettingsMenu() {
   File f = LittleFS.open("/settings_menu.val", "r");
-  if (!f) return;
+  if (!f) {
+#if !defined(DISPLAY_RM67162_AMOLED)
+    // Show settings menu on freshly installed device
+    settingsMenu = 1;
+#endif
+    return;
+  }
   settingsMenu = f.read();
   f.close();
 }
@@ -277,9 +282,42 @@ void LedTester(void) {
   display->ClearScreen();
 }
 
-void DisplayLogo(void) {
-  ClearScreen();
+void Render() {
+  if (NUM_RENDER_BUFFERS == 1) {
+    display->FillPanelRaw(renderBuffer[currentRenderBuffer]);
+  } else if (currentRenderBuffer != lastRenderBuffer) {
+    uint16_t pos;
 
+    for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
+      for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
+        pos = (y * TOTAL_WIDTH + x) * 3;
+        if (!(0 == memcmp(&renderBuffer[currentRenderBuffer][pos],
+                          &renderBuffer[lastRenderBuffer][pos], 3))) {
+          display->DrawPixel(x, y, renderBuffer[currentRenderBuffer][pos],
+                             renderBuffer[currentRenderBuffer][pos + 1],
+                             renderBuffer[currentRenderBuffer][pos + 2]);
+        }
+      }
+    }
+
+    lastRenderBuffer = currentRenderBuffer;
+    currentRenderBuffer = (currentRenderBuffer + 1) % NUM_RENDER_BUFFERS;
+    memcpy(renderBuffer[currentRenderBuffer], renderBuffer[lastRenderBuffer],
+           TOTAL_BYTES);
+  }
+}
+
+void ClearScreen() {
+  display->ClearScreen();
+  memset(renderBuffer[currentRenderBuffer], 0, TOTAL_BYTES);
+
+  if (NUM_RENDER_BUFFERS > 1) {
+    lastRenderBuffer = currentRenderBuffer;
+    currentRenderBuffer = (currentRenderBuffer + 1) % NUM_RENDER_BUFFERS;
+  }
+}
+
+void DisplayLogo(void) {
   File f;
 
   if (TOTAL_HEIGHT == 64) {
@@ -295,26 +333,25 @@ void DisplayLogo(void) {
 
   for (uint16_t tj = 0; tj < TOTAL_BYTES; tj += 3) {
     if (rgbMode == rgbModeLoaded) {
-      renderBuffer[tj] = f.read();
-      renderBuffer[tj + 1] = f.read();
-      renderBuffer[tj + 2] = f.read();
+      renderBuffer[currentRenderBuffer][tj] = f.read();
+      renderBuffer[currentRenderBuffer][tj + 1] = f.read();
+      renderBuffer[currentRenderBuffer][tj + 2] = f.read();
     } else {
-      renderBuffer[tj + rgbOrder[rgbMode * 3]] = f.read();
-      renderBuffer[tj + rgbOrder[rgbMode * 3 + 1]] = f.read();
-      renderBuffer[tj + rgbOrder[rgbMode * 3 + 2]] = f.read();
+      renderBuffer[currentRenderBuffer][tj + rgbOrder[rgbMode * 3]] = f.read();
+      renderBuffer[currentRenderBuffer][tj + rgbOrder[rgbMode * 3 + 1]] =
+          f.read();
+      renderBuffer[currentRenderBuffer][tj + rgbOrder[rgbMode * 3 + 2]] =
+          f.read();
     }
   }
 
   f.close();
 
-  display->FillPanelRaw(renderBuffer);
-
+  Render();
   DisplayVersion(true);
 }
 
 void DisplayUpdate(void) {
-  ClearScreen();
-
   File f;
 
   if (TOTAL_HEIGHT == 64) {
@@ -328,11 +365,11 @@ void DisplayUpdate(void) {
   }
 
   for (uint16_t tj = 0; tj < TOTAL_BYTES; tj++) {
-    renderBuffer[tj] = f.read();
+    renderBuffer[currentRenderBuffer][tj] = f.read();
   }
   f.close();
 
-  display->FillPanelRaw(renderBuffer);
+  Render();
 }
 
 /// @brief Refreshes screen after color change, needed for webserver
@@ -473,11 +510,13 @@ void Task_ReadSerial(void *pvParameters) {
 
           case 10:  // clear screen
           {
-            // Wait until everything is rendered
-            xSemaphoreTake(xBufferProcessed[currentBuffer], portMAX_DELAY);
-            xSemaphoreGive(xBufferProcessed[currentBuffer]);
+            AcquireNextBuffer();
+            bufferSizes[currentBuffer] = 2;
+            buffers[currentBuffer][0] = 0;
+            buffers[currentBuffer][1] = 0;
+            xSemaphoreGive(xBufferFilled[currentBuffer]);
+            lastBuffer = currentBuffer;
             Serial.write('A');
-            ClearScreen();
             numCtrlCharsFound = 0;
             break;
           }
@@ -496,56 +535,57 @@ void Task_ReadSerial(void *pvParameters) {
             payloadSize = (Serial.read() << 8) | Serial.read();
 
             if (payloadSize > BUFFER_SIZE || payloadSize == 0) {
+              // display->DisplayText("payloadSize > BUFFER_SIZE", 10, 13, 255,
+              // 0, 0); while (1);
               Serial.write('E');
               numCtrlCharsFound = 0;
               break;
             }
             bufferSizes[currentBuffer] = payloadSize;
 
-            numCtrlCharsFound++;
+            uint16_t bytesRead = 0;
+            while (bytesRead < payloadSize) {
+              // Fill the buffer with payload
+              bytesRead += Serial.readBytes(
+                  &buffers[currentBuffer][bytesRead],
+                  min(Serial.available(), payloadSize - bytesRead));
+            }
+
+            // Signal to process the filled buffer
+            xSemaphoreGive(xBufferFilled[currentBuffer]);
+            lastBuffer = currentBuffer;
+
+            // Send an (A)cknowledge signal to tell the client that we
+            // successfully read the data.
+            Serial.write('A');
+
+            numCtrlCharsFound = 0;
 
             break;
           }
 
           case 6:  // Render
           {
+#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
             AcquireNextBuffer();
             bufferSizes[currentBuffer] = 2;
             buffers[currentBuffer][0] = 255;
             buffers[currentBuffer][1] = 255;
             xSemaphoreGive(xBufferFilled[currentBuffer]);
             lastBuffer = currentBuffer;
+#endif
             Serial.write('A');
             numCtrlCharsFound = 0;
-            break;
             break;
           }
 
           default: {
+            display->DisplayText("Unsupported Command", 10, 13, 255, 0, 0);
+            DisplayNumber(command, 3, 0, 0, 255, 255, 255);
             Serial.write('E');
             numCtrlCharsFound = 0;
           }
         }
-      }
-
-      if (numCtrlCharsFound > N_CTRL_CHARS) {
-        uint16_t bytesRead = 0;
-        while (bytesRead < payloadSize) {
-          // Fill the buffer with payload
-          bytesRead += Serial.readBytes(
-              &buffers[currentBuffer][bytesRead],
-              min(Serial.available(), payloadSize - bytesRead));
-        }
-
-        // Signal to process the filled buffer
-        xSemaphoreGive(xBufferFilled[currentBuffer]);
-        lastBuffer = currentBuffer;
-
-        // Send an (A)cknowledge signal to tell the client that we
-        // successfully read the data.
-        Serial.write('A');
-
-        numCtrlCharsFound = 0;
       }
     } else {
       // Avoid busy-waiting
@@ -571,10 +611,12 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
 
       case 10:  // clear screen
       {
-        // Wait until everything is rendered
-        xSemaphoreTake(xBufferProcessed[currentBuffer], portMAX_DELAY);
-        xSemaphoreGive(xBufferProcessed[currentBuffer]);
-        ClearScreen();
+        AcquireNextBuffer();
+        bufferSizes[currentBuffer] = 2;
+        buffers[currentBuffer][0] = 0;
+        buffers[currentBuffer][1] = 0;
+        xSemaphoreGive(xBufferFilled[currentBuffer]);
+        lastBuffer = currentBuffer;
         break;
       }
 
@@ -591,12 +633,14 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
 
       case 6:  // Render
       {
+#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
         AcquireNextBuffer();
         bufferSizes[currentBuffer] = 2;
         buffers[currentBuffer][0] = 255;
         buffers[currentBuffer][1] = 255;
         xSemaphoreGive(xBufferFilled[currentBuffer]);
         lastBuffer = currentBuffer;
+#endif
         break;
       }
     }
@@ -634,21 +678,24 @@ void StartWiFi() {
   }
 
   for (uint8_t i = 0; i < 4; i++) {
-    DisplayNumber(ip[i], 3, i * 3 * 4 + i, 0, 255, 191, 0);
+    if (i > 0) display->DrawPixel(i * 3 * 4 + i * 2 - 2, 4, 0);
+    DisplayNumber(ip[i], 3, i * 3 * 4 + i * 2, 0, 0, 0, 0, 1);
   }
-
-  RunMDNS();  // Start the MDNS server for easy detection
 
   if (udp.listen(ip, port)) {
     udp.onPacket(HandlePacket);  // Start listening to ZeDMD UDP traffic
   }
 
-  runWebServer();  // Start the web server
-
   wifiActive = true;
 }
 
 void Task_SettingsMenu(void *pvParameters) {
+  // Start the webserver here to get updates on core 1.
+  if (wifiActive) {
+    RunMDNS();       // Start the MDNS server for easy detection
+    runWebServer();  // Start the web server
+  }
+
   while (1) {
     if (!digitalRead(BRIGHTNESS_BUTTON_PIN)) {
       File f = LittleFS.open("/settings_menu.val", "w");
@@ -658,7 +705,7 @@ void Task_SettingsMenu(void *pvParameters) {
       Restart();
     }
     // Avoid busy-waiting
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
 }
 
@@ -684,11 +731,28 @@ void setup() {
     while (true);
   }
 
+  for (uint8_t i = 0; i < NUM_RENDER_BUFFERS; i++) {
+#ifdef BOARD_HAS_PSRAM
+    renderBuffer[i] = (uint8_t *)ps_malloc(TOTAL_BYTES);
+#else
+    renderBuffer[i] = (uint8_t *)malloc(TOTAL_BYTES);
+#endif
+    if (nullptr == renderBuffer[i]) {
+      display->DisplayText("out of memory", 10, 13, 255, 0, 0);
+      while (1);
+    }
+    memset(renderBuffer[i], 0, TOTAL_BYTES);
+  }
+
   if (settingsMenu) {
     RefreshSetupScreen();
-    display->DisplayText(transport == ZEDMD_UART ? "USB " : "WiFi", 7, 13, 128,
+    display->DisplayText(transport == TRANSPORT_UART
+                             ? "USB "
+                             : (transport == TRANSPORT_WIFI ? "WiFi" : "SPI "),
+                         7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 128,
                          128, 128);
-    display->DisplayText("Exit", 105, 13, 255, 191, 0);
+    display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
+                         (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
 
     Bounce2::Button *brightnessButton = new Bounce2::Button();
     brightnessButton->attach(BRIGHTNESS_BUTTON_PIN, INPUT_PULLUP);
@@ -710,33 +774,53 @@ void setup() {
           case 1: {
             DisplayLum();
             DisplayRGB();
-            display->DisplayText(transport == ZEDMD_UART ? "USB " : "WiFi", 7,
-                                 13, 128, 128, 128);
-            display->DisplayText("Exit", 105, 13, 255, 191, 0);
+            display->DisplayText(
+                transport == TRANSPORT_UART
+                    ? "USB "
+                    : (transport == TRANSPORT_WIFI ? "WiFi" : "SPI "),
+                7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
+            display->DisplayText("Exit",
+                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
+                                 (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             break;
           }
           case 2: {
             DisplayLum(255, 191, 0);
             DisplayRGB();
-            display->DisplayText(transport == ZEDMD_UART ? "USB " : "WiFi", 7,
-                                 13, 128, 128, 128);
-            display->DisplayText("Exit", 105, 13, 128, 128, 128);
+            display->DisplayText(
+                transport == TRANSPORT_UART
+                    ? "USB "
+                    : (transport == TRANSPORT_WIFI ? "WiFi" : "SPI "),
+                7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
+            display->DisplayText("Exit",
+                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
+                                 (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
             break;
           }
           case 3: {
             DisplayLum();
             DisplayRGB();
-            display->DisplayText(transport == ZEDMD_UART ? "USB " : "WiFi", 7,
-                                 13, 255, 191, 0);
-            display->DisplayText("Exit", 105, 13, 128, 128, 128);
+            display->DisplayText(
+                transport == TRANSPORT_UART
+                    ? "USB "
+                    : (transport == TRANSPORT_WIFI ? "WiFi" : "SPI "),
+                7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+            display->DisplayText("Exit",
+                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
+                                 (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
             break;
           }
           case 4: {
             DisplayLum();
             DisplayRGB(255, 191, 0);
-            display->DisplayText(transport == ZEDMD_UART ? "USB " : "WiFi", 7,
-                                 13, 128, 128, 128);
-            display->DisplayText("Exit", 105, 13, 128, 128, 128);
+            display->DisplayText(
+                transport == TRANSPORT_UART
+                    ? "USB "
+                    : (transport == TRANSPORT_WIFI ? "WiFi" : "SPI "),
+                7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
+            display->DisplayText("Exit",
+                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
+                                 (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
             break;
           }
         }
@@ -761,9 +845,12 @@ void setup() {
             break;
           }
           case 3: {
-            transport = !transport;
-            display->DisplayText(transport == ZEDMD_UART ? "USB " : "WiFi", 7,
-                                 13, 255, 191, 0);
+            if (++transport > TRANSPORT_SPI) transport = TRANSPORT_UART;
+            display->DisplayText(
+                transport == TRANSPORT_UART
+                    ? "USB "
+                    : (transport == TRANSPORT_WIFI ? "WiFi" : "SPI "),
+                7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             SaveTransport();
             break;
           }
@@ -804,21 +891,27 @@ void setup() {
     }
   }
 
-  xTaskCreatePinnedToCore(Task_SettingsMenu, "Task_SettingsMenu", 4096, NULL, 1,
-                          NULL, 1);
-
   switch (transport) {
-    case ZEDMD_UART: {
+    case TRANSPORT_UART: {
       xTaskCreatePinnedToCore(Task_ReadSerial, "Task_ReadSerial", 4096, NULL, 1,
                               NULL, 0);
       break;
     }
 
-    case ZEDMD_WIFI: {
+    case TRANSPORT_WIFI: {
       StartWiFi();
       break;
     }
+
+    case TRANSPORT_SPI: {
+      display->DisplayText("SPI is not implemented yet", 10, 13, 255, 0, 0);
+      while (1);
+      break;
+    }
   }
+
+  xTaskCreatePinnedToCore(Task_SettingsMenu, "Task_SettingsMenu", 4096, NULL, 1,
+                          NULL, 1);
 
   // Enable all buffers
   for (uint8_t i = 0; i < NUM_BUFFERS; i++) {
@@ -834,11 +927,19 @@ void loop() {
         255 == buffers[processingBuffer][1]) {
       // Mark buffer as free
       xSemaphoreGive(xBufferProcessed[processingBuffer]);
-      // @todo switch double buffer
+#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
+      Render();
+#endif
+    } else if (2 == bufferSizes[processingBuffer] &&
+               0 == buffers[processingBuffer][0] &&
+               0 == buffers[processingBuffer][1]) {
+      // Mark buffer as free
+      xSemaphoreGive(xBufferProcessed[processingBuffer]);
+      ClearScreen();
     } else {
       mz_ulong compressedBufferSize = (mz_ulong)bufferSizes[processingBuffer];
       mz_ulong uncompressedBufferSize = (mz_ulong)TOTAL_BYTES;
-
+      memset(uncompressBuffer, 0, 2048);
       int minizStatus =
           mz_uncompress2(uncompressBuffer, &uncompressedBufferSize,
                          buffers[processingBuffer], &compressedBufferSize);
@@ -850,18 +951,59 @@ void loop() {
         uint16_t uncompressedBufferPosition = 0;
         while (uncompressedBufferPosition < uncompressedBufferSize) {
           if (uncompressBuffer[uncompressedBufferPosition] >= 128) {
+#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
+            const uint8_t idx =
+                uncompressBuffer[uncompressedBufferPosition++] - 128;
+            const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
+            const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
+
+            for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
+              memset(&renderBuffer[currentRenderBuffer]
+                                  [((yOffset + y) * TOTAL_WIDTH + xOffset) * 3],
+                     0, ZONE_WIDTH * 3);
+            }
+#else
             display->ClearZone(uncompressBuffer[uncompressedBufferPosition++] -
                                128);
+#endif
           } else {
+#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
+            uint8_t idx = uncompressBuffer[uncompressedBufferPosition++];
+            const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
+            const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
+
+            for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
+              for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
+                const uint16_t rgb565 =
+                    uncompressBuffer[uncompressedBufferPosition++] +
+                    (((uint16_t)uncompressBuffer[uncompressedBufferPosition++])
+                     << 8);
+                uint8_t rgb888[3];
+                rgb888[0] = (rgb565 >> 8) & 0xf8;
+                rgb888[1] = (rgb565 >> 3) & 0xfc;
+                rgb888[2] = (rgb565 << 3);
+                rgb888[0] |= (rgb888[0] >> 5);
+                rgb888[1] |= (rgb888[1] >> 6);
+                rgb888[2] |= (rgb888[2] >> 5);
+                memcpy(
+                    &renderBuffer[currentRenderBuffer]
+                                 [((yOffset + y) * TOTAL_WIDTH + xOffset + x) *
+                                  3],
+                    rgb888, 3);
+              }
+            }
+#else
             display->FillZoneRaw565(
                 uncompressBuffer[uncompressedBufferPosition++],
                 &uncompressBuffer[uncompressedBufferPosition]);
             uncompressedBufferPosition += RGB565_ZONE_SIZE;
+#endif
           }
         }
       } else {
         // display->DisplayText("miniz error ", 0, 0, 255, 0, 0);
         // DisplayNumber(minizStatus, 3, 0, 6, 255, 0, 0);
+        // while (1);
       }
     }
   }

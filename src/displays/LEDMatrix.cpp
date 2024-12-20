@@ -86,8 +86,8 @@ void LedMatrix::DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t r,
 }
 
 void IRAM_ATTR LedMatrix::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
-  uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
-  uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
+  const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
+  const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
 
   for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
     for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
@@ -100,8 +100,8 @@ void IRAM_ATTR LedMatrix::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
 }
 
 void IRAM_ATTR LedMatrix::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
-  uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
-  uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
+  const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
+  const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
 
   for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
     for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
@@ -114,8 +114,8 @@ void IRAM_ATTR LedMatrix::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
 }
 
 void IRAM_ATTR LedMatrix::ClearZone(uint8_t idx) {
-  uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
-  uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
+  const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
+  const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
 
   for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
     for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
