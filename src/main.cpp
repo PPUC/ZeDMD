@@ -77,14 +77,15 @@ uint8_t *buffers[NUM_BUFFERS];
 uint16_t bufferSizes[NUM_BUFFERS] = {0};
 
 // Semaphores
-SemaphoreHandle_t xBufferFilled[NUM_BUFFERS];
-SemaphoreHandle_t xBufferProcessed[NUM_BUFFERS];
+static SemaphoreHandle_t xBufferFilled[NUM_BUFFERS];
+static SemaphoreHandle_t xBufferProcessed[NUM_BUFFERS];
+static SemaphoreHandle_t xRenderMutex;
 
 // The uncompress buffer should be bug enough
 uint8_t uncompressBuffer[2048] __attribute__((aligned(4)));
-uint8_t *renderBuffer[NUM_RENDER_BUFFERS];
-uint8_t currentRenderBuffer = 0;
-uint8_t lastRenderBuffer = NUM_RENDER_BUFFERS - 1;
+static uint8_t *renderBuffer[NUM_RENDER_BUFFERS];
+static uint8_t currentRenderBuffer = 0;
+static uint8_t lastRenderBuffer = NUM_RENDER_BUFFERS - 1;
 
 uint8_t processingBuffer = 0;
 
@@ -108,6 +109,8 @@ uint8_t transport = TRANSPORT_WIFI;
 #else
 uint8_t transport = TRANSPORT_UART;
 #endif
+static bool transportActive = false;
+uint8_t transportWaitCounter = 0;
 
 void DoRestart(int sec) {
   if (wifiActive) {
@@ -283,37 +286,43 @@ void LedTester(void) {
 }
 
 void Render() {
-  if (NUM_RENDER_BUFFERS == 1) {
-    display->FillPanelRaw(renderBuffer[currentRenderBuffer]);
-  } else if (currentRenderBuffer != lastRenderBuffer) {
-    uint16_t pos;
+  if (xSemaphoreTake(xRenderMutex, portMAX_DELAY)) {
+    if (NUM_RENDER_BUFFERS == 1) {
+      display->FillPanelRaw(renderBuffer[currentRenderBuffer]);
+    } else if (currentRenderBuffer != lastRenderBuffer) {
+      uint16_t pos;
 
-    for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
-      for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
-        pos = (y * TOTAL_WIDTH + x) * 3;
-        if (!(0 == memcmp(&renderBuffer[currentRenderBuffer][pos],
-                          &renderBuffer[lastRenderBuffer][pos], 3))) {
-          display->DrawPixel(x, y, renderBuffer[currentRenderBuffer][pos],
-                             renderBuffer[currentRenderBuffer][pos + 1],
-                             renderBuffer[currentRenderBuffer][pos + 2]);
+      for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
+        for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
+          pos = (y * TOTAL_WIDTH + x) * 3;
+          if (!(0 == memcmp(&renderBuffer[currentRenderBuffer][pos],
+                            &renderBuffer[lastRenderBuffer][pos], 3))) {
+            display->DrawPixel(x, y, renderBuffer[currentRenderBuffer][pos],
+                               renderBuffer[currentRenderBuffer][pos + 1],
+                               renderBuffer[currentRenderBuffer][pos + 2]);
+          }
         }
       }
-    }
 
-    lastRenderBuffer = currentRenderBuffer;
-    currentRenderBuffer = (currentRenderBuffer + 1) % NUM_RENDER_BUFFERS;
-    memcpy(renderBuffer[currentRenderBuffer], renderBuffer[lastRenderBuffer],
-           TOTAL_BYTES);
+      lastRenderBuffer = currentRenderBuffer;
+      currentRenderBuffer = (currentRenderBuffer + 1) % NUM_RENDER_BUFFERS;
+      memcpy(renderBuffer[currentRenderBuffer], renderBuffer[lastRenderBuffer],
+             TOTAL_BYTES);
+    }
+    xSemaphoreGive(xRenderMutex);
   }
 }
 
 void ClearScreen() {
   display->ClearScreen();
-  memset(renderBuffer[currentRenderBuffer], 0, TOTAL_BYTES);
+  if (xSemaphoreTake(xRenderMutex, portMAX_DELAY)) {
+    memset(renderBuffer[currentRenderBuffer], 0, TOTAL_BYTES);
 
-  if (NUM_RENDER_BUFFERS > 1) {
-    lastRenderBuffer = currentRenderBuffer;
-    currentRenderBuffer = (currentRenderBuffer + 1) % NUM_RENDER_BUFFERS;
+    if (NUM_RENDER_BUFFERS > 1) {
+      lastRenderBuffer = currentRenderBuffer;
+      currentRenderBuffer = (currentRenderBuffer + 1) % NUM_RENDER_BUFFERS;
+    }
+    xSemaphoreGive(xRenderMutex);
   }
 }
 
@@ -330,19 +339,22 @@ void DisplayLogo(void) {
     display->DisplayText("Logo is missing", 0, 0, 255, 0, 0);
     return;
   }
-
-  for (uint16_t tj = 0; tj < TOTAL_BYTES; tj += 3) {
-    if (rgbMode == rgbModeLoaded) {
-      renderBuffer[currentRenderBuffer][tj] = f.read();
-      renderBuffer[currentRenderBuffer][tj + 1] = f.read();
-      renderBuffer[currentRenderBuffer][tj + 2] = f.read();
-    } else {
-      renderBuffer[currentRenderBuffer][tj + rgbOrder[rgbMode * 3]] = f.read();
-      renderBuffer[currentRenderBuffer][tj + rgbOrder[rgbMode * 3 + 1]] =
-          f.read();
-      renderBuffer[currentRenderBuffer][tj + rgbOrder[rgbMode * 3 + 2]] =
-          f.read();
+  if (xSemaphoreTake(xRenderMutex, portMAX_DELAY)) {
+    for (uint16_t tj = 0; tj < TOTAL_BYTES; tj += 3) {
+      if (rgbMode == rgbModeLoaded) {
+        renderBuffer[currentRenderBuffer][tj] = f.read();
+        renderBuffer[currentRenderBuffer][tj + 1] = f.read();
+        renderBuffer[currentRenderBuffer][tj + 2] = f.read();
+      } else {
+        renderBuffer[currentRenderBuffer][tj + rgbOrder[rgbMode * 3]] =
+            f.read();
+        renderBuffer[currentRenderBuffer][tj + rgbOrder[rgbMode * 3 + 1]] =
+            f.read();
+        renderBuffer[currentRenderBuffer][tj + rgbOrder[rgbMode * 3 + 2]] =
+            f.read();
+      }
     }
+    xSemaphoreGive(xRenderMutex);
   }
 
   f.close();
@@ -364,9 +376,13 @@ void DisplayUpdate(void) {
     return;
   }
 
-  for (uint16_t tj = 0; tj < TOTAL_BYTES; tj++) {
-    renderBuffer[currentRenderBuffer][tj] = f.read();
+  if (xSemaphoreTake(xRenderMutex, portMAX_DELAY)) {
+    for (uint16_t tj = 0; tj < TOTAL_BYTES; tj++) {
+      renderBuffer[currentRenderBuffer][tj] = f.read();
+    }
+    xSemaphoreGive(xRenderMutex);
   }
+
   f.close();
 
   Render();
@@ -429,6 +445,7 @@ void Task_ReadSerial(void *pvParameters) {
             Serial.write(TOTAL_HEIGHT & 0xff);
             Serial.write((TOTAL_HEIGHT >> 8) & 0xff);
             numCtrlCharsFound = 0;
+            transportActive = true;
             Serial.write('R');
             break;
           }
@@ -516,7 +533,13 @@ void Task_ReadSerial(void *pvParameters) {
             buffers[currentBuffer][1] = 0;
             xSemaphoreGive(xBufferFilled[currentBuffer]);
             lastBuffer = currentBuffer;
-            Serial.write('A');
+            // Send an (A)cknowledge signal to tell the client that we
+            // successfully read the data.
+            // 'F' requests a full frame as next frame.
+            Serial.write(transportActive ? 'A' : 'F');
+            if (!transportActive) {
+              transportActive = true;
+            }
             numCtrlCharsFound = 0;
             break;
           }
@@ -524,7 +547,13 @@ void Task_ReadSerial(void *pvParameters) {
           case 4:  // announce RGB565 zones streaming
           {
             AcquireNextBuffer();
-            Serial.write('A');
+            // Send an (A)cknowledge signal to tell the client that we
+            // successfully read the data.
+            // 'F' requests a full frame as next frame.
+            Serial.write(transportActive ? 'A' : 'F');
+            if (!transportActive) {
+              transportActive = true;
+            }
             numCtrlCharsFound = 0;
             break;
           }
@@ -558,7 +587,6 @@ void Task_ReadSerial(void *pvParameters) {
             // Send an (A)cknowledge signal to tell the client that we
             // successfully read the data.
             Serial.write('A');
-
             numCtrlCharsFound = 0;
 
             break;
@@ -574,6 +602,8 @@ void Task_ReadSerial(void *pvParameters) {
             xSemaphoreGive(xBufferFilled[currentBuffer]);
             lastBuffer = currentBuffer;
 #endif
+            // Send an (A)cknowledge signal to tell the client that we
+            // successfully read the data.
             Serial.write('A');
             numCtrlCharsFound = 0;
             break;
@@ -644,6 +674,10 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
         break;
       }
     }
+
+    if (!transportActive) {
+      transportActive = true;
+    }
   }
 }
 
@@ -656,7 +690,7 @@ void RunMDNS() {
 }
 
 void StartWiFi() {
-  if (LoadWiFiConfig()) {
+  if (LoadWiFiConfig() && ssid_length > 0) {
     WiFi.disconnect(true);
     WiFi.begin(ssid.substring(0, ssid_length).c_str(),
                pwd.substring(0, pwd_length).c_str());
@@ -673,6 +707,7 @@ void StartWiFi() {
   IPAddress ip;
   if (WiFi.getMode() == WIFI_AP) {
     ip = WiFi.softAPIP();
+    display->DisplayText("zedmd-wifi.local", 0, TOTAL_HEIGHT - 5, 0, 0, 0, 1);
   } else if (WiFi.getMode() == WIFI_STA) {
     ip = WiFi.localIP();
   }
@@ -680,6 +715,24 @@ void StartWiFi() {
   for (uint8_t i = 0; i < 4; i++) {
     if (i > 0) display->DrawPixel(i * 3 * 4 + i * 2 - 2, 4, 0);
     DisplayNumber(ip[i], 3, i * 3 * 4 + i * 2, 0, 0, 0, 0, 1);
+  }
+
+  if (ip[0] == 0) {
+    display->DisplayText("No WiFi connection, turn off", 10,
+                         TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
+    display->DisplayText("or the credentials will be", 10, TOTAL_HEIGHT / 2 - 3,
+                         255, 0, 0);
+    display->DisplayText("resettet in 60 seconds.", 10, TOTAL_HEIGHT / 2 + 3,
+                         255, 0, 0);
+    for (uint8_t i = 59; i > 0; i--) {
+      sleep(1);
+      DisplayNumber(i, 2, 58, TOTAL_HEIGHT / 2 + 3, 255, 0, 0);
+    }
+    ssid = "\n";
+    pwd = "\n";
+    SaveWiFiConfig();
+    delay(100);
+    Restart();
   }
 
   if (udp.listen(ip, port)) {
@@ -690,12 +743,6 @@ void StartWiFi() {
 }
 
 void Task_SettingsMenu(void *pvParameters) {
-  // Start the webserver here to get updates on core 1.
-  if (wifiActive) {
-    RunMDNS();       // Start the MDNS server for easy detection
-    runWebServer();  // Start the web server
-  }
-
   while (1) {
     if (!digitalRead(BRIGHTNESS_BUTTON_PIN)) {
       File f = LittleFS.open("/settings_menu.val", "w");
@@ -705,7 +752,7 @@ void Task_SettingsMenu(void *pvParameters) {
       Restart();
     }
     // Avoid busy-waiting
-    vTaskDelay(pdMS_TO_TICKS(10));
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
 
@@ -743,6 +790,8 @@ void setup() {
     }
     memset(renderBuffer[i], 0, TOTAL_BYTES);
   }
+
+  xRenderMutex = xSemaphoreCreateMutex();
 
   if (settingsMenu) {
     RefreshSetupScreen();
@@ -900,6 +949,13 @@ void setup() {
 
     case TRANSPORT_WIFI: {
       StartWiFi();
+      if (wifiActive) {
+        RunMDNS();       // Start the MDNS server for easy detection
+        runWebServer();  // Start the web server
+      } else {
+        display->DisplayText("No WiFi connection", 10, 13, 255, 0, 0);
+        while (1);
+      }
       break;
     }
 
@@ -920,6 +976,37 @@ void setup() {
 }
 
 void loop() {
+  while (!transportActive) {
+    switch (transportWaitCounter) {
+      case 0:
+      case 4:
+        display->DisplayText("/", TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 4,
+                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 6, 128,
+                             128, 128);
+        break;
+      case 1:
+      case 5:
+        display->DisplayText("-", TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 4,
+                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 6, 128,
+                             128, 128);
+        break;
+      case 2:
+      case 6:
+        display->DisplayText("\\", TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 4,
+                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 6, 128,
+                             128, 128);
+        break;
+      case 3:
+      case 7:
+        display->DisplayText("|", TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 4,
+                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 6, 128,
+                             128, 128);
+        break;
+    }
+    transportWaitCounter = (transportWaitCounter + 1) % 8;
+    vTaskDelay(pdMS_TO_TICKS(300));
+  }
+
   // display->DisplayText("enter loop", 10, 13, 255, 0, 0);
   if (xSemaphoreTake(xBufferFilled[processingBuffer], portMAX_DELAY)) {
     if (2 == bufferSizes[processingBuffer] &&
@@ -956,11 +1043,14 @@ void loop() {
                 uncompressBuffer[uncompressedBufferPosition++] - 128;
             const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
             const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
-
-            for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
-              memset(&renderBuffer[currentRenderBuffer]
-                                  [((yOffset + y) * TOTAL_WIDTH + xOffset) * 3],
-                     0, ZONE_WIDTH * 3);
+            if (xSemaphoreTake(xRenderMutex, portMAX_DELAY)) {
+              for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
+                memset(
+                    &renderBuffer[currentRenderBuffer]
+                                 [((yOffset + y) * TOTAL_WIDTH + xOffset) * 3],
+                    0, ZONE_WIDTH * 3);
+              }
+              xSemaphoreGive(xRenderMutex);
             }
 #else
             display->ClearZone(uncompressBuffer[uncompressedBufferPosition++] -
@@ -972,25 +1062,28 @@ void loop() {
             const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
             const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
 
-            for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
-              for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
-                const uint16_t rgb565 =
-                    uncompressBuffer[uncompressedBufferPosition++] +
-                    (((uint16_t)uncompressBuffer[uncompressedBufferPosition++])
-                     << 8);
-                uint8_t rgb888[3];
-                rgb888[0] = (rgb565 >> 8) & 0xf8;
-                rgb888[1] = (rgb565 >> 3) & 0xfc;
-                rgb888[2] = (rgb565 << 3);
-                rgb888[0] |= (rgb888[0] >> 5);
-                rgb888[1] |= (rgb888[1] >> 6);
-                rgb888[2] |= (rgb888[2] >> 5);
-                memcpy(
-                    &renderBuffer[currentRenderBuffer]
-                                 [((yOffset + y) * TOTAL_WIDTH + xOffset + x) *
-                                  3],
-                    rgb888, 3);
+            if (xSemaphoreTake(xRenderMutex, portMAX_DELAY)) {
+              for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
+                for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
+                  const uint16_t rgb565 =
+                      uncompressBuffer[uncompressedBufferPosition++] +
+                      (((uint16_t)
+                            uncompressBuffer[uncompressedBufferPosition++])
+                       << 8);
+                  uint8_t rgb888[3];
+                  rgb888[0] = (rgb565 >> 8) & 0xf8;
+                  rgb888[1] = (rgb565 >> 3) & 0xfc;
+                  rgb888[2] = (rgb565 << 3);
+                  rgb888[0] |= (rgb888[0] >> 5);
+                  rgb888[1] |= (rgb888[1] >> 6);
+                  rgb888[2] |= (rgb888[2] >> 5);
+                  memcpy(&renderBuffer
+                             [currentRenderBuffer]
+                             [((yOffset + y) * TOTAL_WIDTH + xOffset + x) * 3],
+                         rgb888, 3);
+                }
               }
+              xSemaphoreGive(xRenderMutex);
             }
 #else
             display->FillZoneRaw565(
