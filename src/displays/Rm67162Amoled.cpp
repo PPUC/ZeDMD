@@ -372,47 +372,6 @@ void IRAM_ATTR Rm67162Amoled::FillPanelRaw(uint8_t *pBuffer) {
   lcd_PushColors(0, 0, 536, 240, (uint16_t *)sprite.getPointer());
 }
 
-void Rm67162Amoled::FillPanelUsingPalette(uint8_t *pBuffer, uint8_t *palette) {
-  uint16_t pos;
-
-  for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
-    for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
-      pos = pBuffer[y * TOTAL_WIDTH + x] * 3;
-
-      uint16_t color =
-          sprite.color565(palette[pos], palette[pos + 1], palette[pos + 2]);
-
-      sprite.fillRect(x * DISPLAY_SCALE, y * DISPLAY_SCALE, DISPLAY_SCALE,
-                      DISPLAY_SCALE, color);
-    }
-  }
-  lcd_PushColors(0, 0, 536, 240, (uint16_t *)sprite.getPointer());
-}
-
-#if !defined(ZEDMD_WIFI)
-void Rm67162Amoled::FillPanelUsingChangedPalette(uint8_t *pBuffer,
-                                                 uint8_t *palette,
-                                                 bool *paletteAffected) {
-  uint16_t pos;
-
-  for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
-    for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
-      pos = pBuffer[y * TOTAL_WIDTH + x];
-      if (paletteAffected[pos]) {
-        pos *= 3;
-
-        uint16_t color =
-            sprite.color565(palette[pos], palette[pos + 1], palette[pos + 2]);
-
-        sprite.fillRect(x * DISPLAY_SCALE, y * DISPLAY_SCALE, DISPLAY_SCALE,
-                        DISPLAY_SCALE, color);
-      }
-    }
-  }
-  lcd_PushColors(0, 0, 536, 240, (uint16_t *)sprite.getPointer());
-}
-#endif
-
 Rm67162Amoled::~Rm67162Amoled() {
   // Clean up resources if necessary
 }

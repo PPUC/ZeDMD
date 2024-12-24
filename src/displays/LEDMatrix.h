@@ -69,11 +69,6 @@ class LedMatrix : public DisplayDriver {
   void FillZoneRaw565(uint8_t idx, uint8_t *pBuffer);
   void ClearZone(uint8_t idx);
   void FillPanelRaw(uint8_t *pBuffer) override;
-  void FillPanelUsingPalette(uint8_t *pBuffer, uint8_t *palette);
-#if !defined(ZEDMD_WIFI)
-  virtual void FillPanelUsingChangedPalette(uint8_t *pBuffer, uint8_t *palette,
-                                            bool *paletteAffected);
-#endif
 
   ~LedMatrix();  // Destructor
 };

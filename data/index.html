@@ -260,51 +260,7 @@
                     <br>
                     <!-- Status Message -->
                     <div id="display-status" class="status-message"></div>
-                </div>
-
-                <!-- Screensaver Settings Section -->
-                <div class="section">
-                    <h2 class="section-header">Screensaver Settings</h2>
-                    <p>Only 128x32 or 256x64 .jpg images.</p>
-                    <input type="file" name="data" id="imageUpload" accept="image/*" onchange="previewImage()" /><br>
-                    <button onclick="uploadImage()">Upload</button>
-                    <button onclick="previewScreensaver()">Preview</button>
-                    <img id="preview" src="/screensaver.jpg" alt="Image preview"
-                        style="width: 100%; height: auto; display: block; margin: 0 auto;">
-                    <p id="uploadStatus"></p>
-
-                    <!-- Screensaver mode radio buttons -->
-                    <h3>Screensaver Mode</h3>
-                    <div class="form-row">
-                        <label for="clearDisplay">Turn off display</label>
-                        <input type="radio" id="dimScreen" name="screensaverMode" value="clearDisplay"
-                            onchange="toggleDimOptions()">
-                    </div>
-                    <div class="form-row">
-
-                        <label for="showImage">Show Image</label>
-                        <input type="radio" id="showImage" name="screensaverMode" value="showImage"
-                            onchange="toggleDimOptions()">
-                    </div>
-
-                    <!-- Dim screen options (visible only when "Show Image" is selected) -->
-                    <div id="dimOptions" style="display:none;">
-                        <div class="form-row">
-                            <label for="dimAfterTime">Dim display after time</label>
-                            <input type="checkbox" id="dimAfterTime">
-                        </div>
-                        <div class="form-row">
-                            <label for="dimTime">Time before dimming:</label>
-                            <select id="dimTime" name="dimTime">
-                                <option value="1">1 min</option>
-                                <option value="5">5 min</option>
-                                <option value="15">15 min</option>
-                                <option value="30">30 min</option>
-                                <option value="60">60 min</option>
-                            </select>
-                        </div>
-                    </div>
-                    <button onclick="saveScreensaverSettings()">Save Screensaver Settings</button>
+                    <button onclick="apply()">Apply</button>
                 </div>
 
                 <!-- Information Section -->
@@ -455,6 +411,16 @@
             xhr.send(`brightness=${brightness}`);
         }
 
+        function apply() {
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", "/applyt", true);
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
+                    alert("Device will reboot.");
+                }
+            };
+            xhr.send();
+        }
 
         function toggleDebugInfo() {
             var debugInfoDiv = document.getElementById('debug-info');
@@ -533,67 +499,6 @@
             xhr.send(formData);
         }
 
-        function previewScreensaver() {
-            var xhr = new XMLHttpRequest();
-            xhr.open("GET", "/preview_screensaver", true);
-            xhr.onreadystatechange = function () {
-                if (xhr.readyState === XMLHttpRequest.DONE) {
-                    var uploadStatus = document.getElementById('uploadStatus');
-                    if (xhr.status === 200) {
-                        uploadStatus.innerText = "Preview successful!";
-                        document.getElementById('preview').src = "/screensaver.jpg"; // Display the saved image
-                    } else {
-                        uploadStatus.innerText = "Error: " + xhr.responseText;
-                    }
-                }
-            };
-            xhr.send();
-        }
-
-        function toggleDimOptions() {
-            var showImageChecked = document.getElementById('showImage').checked;
-            var dimOptions = document.getElementById('dimOptions');
-            dimOptions.style.display = showImageChecked ? 'block' : 'none';
-        }
-
-        function saveScreensaverSettings() {
-            // Get the selected screensaver mode
-            var screensaverMode;
-            if (document.querySelector('input[name="screensaverMode"]:checked').value == "showImage") {
-                screensaverMode = 1;
-            }
-            else {
-                screensaverMode = 0;
-            }
-
-            var enableDimAfterTimeout = document.getElementById('dimAfterTime').checked ? 1 : 0;
-
-            var dimTime = document.getElementById('dimTime').value;
-
-            var params = `screensaverMode=${screensaverMode}&enableDimAfterTimeout=${enableDimAfterTimeout}&dimTime=${dimTime}`;
-
-            // Send the data to the ESP32 backend using XMLHttpRequest
-            var xhr = new XMLHttpRequest();
-            xhr.open("POST", "/save_screensaver_settings", true);
-            xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
-
-            xhr.onreadystatechange = function () {
-                if (xhr.readyState === XMLHttpRequest.DONE) {
-                    var uploadStatus = document.getElementById('uploadStatus');
-                    if (xhr.status === 200) {
-                        uploadStatus.innerText = "Settings saved successfully!";
-                        uploadStatus.style.color = "green";
-                    } else {
-                        uploadStatus.innerText = "Error saving settings.";
-                        uploadStatus.style.color = "red";
-                    }
-                }
-            };
-
-            // Send the data to the backend
-            xhr.send(params);
-        }
-
         // Load the current config and populate the form fields
         function loadConfig() {
             var xhr = new XMLHttpRequest();
@@ -605,17 +510,6 @@
                     document.getElementById("port").value = config.port;
                     document.getElementById("rgb-order").value = config.rgbOrder;
                     document.getElementById("brightness").value = config.brightness;
-
-                    // Set the correct radio button for screensaverMode
-                    if (config.screensaverMode == 0) {
-                        document.getElementById("dimScreen").checked = true; // For clearscreen
-                    } else if (config.screensaverMode == 1) {
-                        document.getElementById("showImage").checked = true; // For show image
-                    }
-
-                    // Set the checkbox and dim timeout for dim options
-                    document.getElementById("dimAfterTime").checked = config.enableDimAfterTimeout == 1;
-                    document.getElementById("dimTime").value = config.dimTimeout;
 
                     document.getElementById("scaling-mode").value = config.scaleMode;
 

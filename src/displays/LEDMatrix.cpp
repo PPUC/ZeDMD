@@ -86,8 +86,8 @@ void LedMatrix::DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t r,
 }
 
 void IRAM_ATTR LedMatrix::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
-  uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
-  uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
+  const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
+  const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
 
   for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
     for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
@@ -100,8 +100,8 @@ void IRAM_ATTR LedMatrix::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
 }
 
 void IRAM_ATTR LedMatrix::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
-  uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
-  uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
+  const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
+  const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
 
   for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
     for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
@@ -114,8 +114,8 @@ void IRAM_ATTR LedMatrix::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
 }
 
 void IRAM_ATTR LedMatrix::ClearZone(uint8_t idx) {
-  uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
-  uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
+  const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
+  const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
 
   for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
     for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
@@ -136,38 +136,6 @@ void IRAM_ATTR LedMatrix::FillPanelRaw(uint8_t *pBuffer) {
     }
   }
 }
-
-void LedMatrix::FillPanelUsingPalette(uint8_t *pBuffer, uint8_t *palette) {
-  uint16_t pos;
-
-  for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
-    for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
-      pos = pBuffer[y * TOTAL_WIDTH + x] * 3;
-
-      dma_display->drawPixelRGB888(x, y, palette[pos], palette[pos + 1],
-                                   palette[pos + 2]);
-    }
-  }
-}
-
-#if !defined(ZEDMD_WIFI)
-
-void LedMatrix::FillPanelUsingChangedPalette(uint8_t *pBuffer, uint8_t *palette,
-                                             bool *paletteAffected) {
-  uint16_t pos;
-
-  for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
-    for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
-      pos = pBuffer[y * TOTAL_WIDTH + x];
-      if (paletteAffected[pos]) {
-        pos *= 3;
-        dma_display->drawPixelRGB888(x, y, palette[pos], palette[pos + 1],
-                                     palette[pos + 2]);
-      }
-    }
-  }
-}
-#endif
 
 LedMatrix::~LedMatrix() { delete dma_display; }
 #endif

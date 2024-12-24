@@ -17,7 +17,6 @@
 #endif
 
 #define TOTAL_WIDTH (PANEL_WIDTH * PANELS_NUMBER)
-#define TOTAL_WIDTH_PLANE (TOTAL_WIDTH >> 3)
 #ifdef ZEDMD_HD_HALF
 #define TOTAL_HEIGHT (PANEL_HEIGHT / 2)
 #endif

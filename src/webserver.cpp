@@ -1,6 +1,3 @@
-
-#ifdef ZEDMD_WIFI
-
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
 
@@ -11,38 +8,6 @@
 #define MINUTES_TO_MS 60000
 
 AsyncWebServer server(80);
-
-void handleUpload(AsyncWebServerRequest *request, String filename, size_t index,
-                  uint8_t *data, size_t len, bool final) {
-  static File uploadFile;
-
-  filename = "screensaver.jpg";  // For now only 1 image is supported, set the
-                                 // filename.
-
-  if (!index) {  // Start of the file upload (index == 0)
-    uploadFile = LittleFS.open("/" + filename, FILE_WRITE);
-    if (!uploadFile) {
-      request->send(500, "text/plain", "Failed to open file for writing");
-      return;
-    }
-  }
-
-  if (uploadFile) {  // Write the received chunk into the file
-    uploadFile.write(data, len);
-  }
-
-  if (final) {
-    uploadFile.close();
-    String imagePath = "/" + filename;
-    if (!VerifyImage(imagePath.c_str())) {
-      request->send(400, "text/plain",
-                    "Invalid image size, must be 128x32 or 256x64");
-      return;
-    }
-    DisplayImage(imagePath.c_str());
-    request->send(200, "text/plain", "Image uploaded succesfully");
-  }
-}
 
 void runWebServer() {
   // Serve index.html
@@ -127,30 +92,6 @@ void runWebServer() {
     }
   });
 
-  // Save screensaver settings
-  server.on("/save_screensaver_settings", HTTP_POST,
-            [](AsyncWebServerRequest *request) {
-              if (request->hasParam("screensaverMode", true) &&
-                  request->hasParam("enableDimAfterTimeout", true) &&
-                  request->hasParam("dimTime", true)) {
-                screensaverMode =
-                    request->getParam("screensaverMode", true)->value().toInt();
-                enableDimAfterTimeout =
-                    request->getParam("enableDimAfterTimeout", true)
-                        ->value()
-                        .toInt() == 1;
-                dimTimeout =
-                    request->getParam("dimTime", true)->value().toInt() *
-                    MINUTES_TO_MS;
-
-                SaveScreensaverConfig();
-
-                request->send(200, "text/plain", "Settings saved successfully");
-              } else {
-                request->send(400, "text/plain", "Invalid settings");
-              }
-            });
-
   server.on("/get_version", HTTP_GET, [](AsyncWebServerRequest *request) {
     String version = String(ZEDMD_VERSION_MAJOR) + "." +
                      String(ZEDMD_VERSION_MINOR) + "." +
@@ -178,31 +119,16 @@ void runWebServer() {
     request->send(LittleFS, "/ppuc.png", "image/png");
   });
 
-  server.on("/screensaver.jpg", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(LittleFS, "/screensaver.jpg", "image/jpg");
-  });
-
   server.on("/reset_wifi", HTTP_POST, [](AsyncWebServerRequest *request) {
     LittleFS.remove("/wifi_config.txt");  // Remove Wi-Fi config
     request->send(200, "text/plain", "Wi-Fi reset successful.");
     Restart();  // Restart the device
   });
 
-  // Handle image upload
-  server.on(
-      "/upload_image", HTTP_POST, [](AsyncWebServerRequest *request) {},
-      handleUpload);
-
-  server.on("/preview_screensaver", HTTP_GET,
-            [](AsyncWebServerRequest *request) {
-              // Render the image on the panel
-              if (!VerifyImage("/screensaver.jpg")) {
-                request->send(200, "text/plain", "Error with verifying image.");
-                return;
-              }
-              DisplayImage("/screensaver.jpg");
-              request->send(200, "text/plain", "Preview active");
-            });
+  server.on("/apply", HTTP_POST, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "Apply successful.");
+    Restart();  // Restart the device
+  });
 
   // Serve debug information
   server.on("/debug_info", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -229,9 +155,6 @@ void runWebServer() {
     json += "\"port\":" + String(port) + ",";
     json += "\"rgbOrder\":" + String(rgbMode) + ",";
     json += "\"brightness\":" + String(lumstep) + ",";
-    json += "\"screensaverMode\":" + String(screensaverMode) + ",";
-    json += "\"enableDimAfterTimeout\":" + String(enableDimAfterTimeout) + ",";
-    json += "\"dimTimeout\":" + String(dimTimeout / MINUTES_TO_MS) + ",";
     json += "\"scaleMode\":" + String(display->GetCurrentScalingMode());
     json += "}";
     request->send(200, "application/json", json);
@@ -296,4 +219,3 @@ void runWebServer() {
 
   server.begin();  // Start the web server
 }
-#endif

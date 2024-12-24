@@ -1,7 +1,6 @@
 #ifndef S3SPECIFIC_H
 #define S3SPECIFIC_H
 
-#ifdef ZEDMD_WIFI
 // These defines maximize WiFi performance per ESP32 technical documentation
 // The S3 has memory enough to run this without issue.
 #define WIFI_STATIC_RX_BUFFER_NUM 24
@@ -17,7 +16,5 @@
 #define DATA_CACHE 64
 #define DATA_CACHE_LINE 32
 #define DATA_CACHE_WAYS 8
-
-#endif
 
 #endif  // S3SPECIFIC_H
