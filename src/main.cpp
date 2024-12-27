@@ -411,10 +411,13 @@ void Task_ReadSerial(void *pvParameters) {
 #if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
   // S3 USB CDC
   Serial.begin(115200);
+  display->DisplayText("USB CDC", 0, 0, 0, 0, 0, 1);
 #else
   Serial.setTimeout(SERIAL_TIMEOUT);
   Serial.begin(SERIAL_BAUD);
   while (!Serial);
+  DisplayNumber(SERIAL_BAUD, (SERIAL_BAUD >= 1000000 ? 7 : 6), 0, 0, 0, 0, 0,
+                1);
 #endif
 
   while (1) {
@@ -973,38 +976,61 @@ void setup() {
   for (uint8_t i = 0; i < NUM_BUFFERS; i++) {
     xSemaphoreGive(xBufferProcessed[i]);
   }
+
+  display->DrawPixel(TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 2,
+                     TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 2, 127, 127, 127);
 }
 
 void loop() {
   while (!transportActive) {
-    switch (transportWaitCounter) {
-      case 0:
-      case 4:
-        display->DisplayText("/", TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 4,
-                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 6, 128,
-                             128, 128);
-        break;
-      case 1:
-      case 5:
-        display->DisplayText("-", TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 4,
-                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 6, 128,
-                             128, 128);
-        break;
-      case 2:
-      case 6:
-        display->DisplayText("\\", TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 4,
-                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 6, 128,
-                             128, 128);
-        break;
-      case 3:
-      case 7:
-        display->DisplayText("|", TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 4,
-                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 6, 128,
-                             128, 128);
-        break;
+    for (uint8_t i = 0; i <= 127; i += 127) {
+      switch (transportWaitCounter) {
+        case 0:
+          display->DrawPixel(TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 2,
+                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 3, i, i,
+                             i);
+          break;
+        case 1:
+          display->DrawPixel(TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 1,
+                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 3, i, i,
+                             i);
+          break;
+        case 2:
+          display->DrawPixel(TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 1,
+                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 2, i, i,
+                             i);
+          break;
+        case 3:
+          display->DrawPixel(TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 1,
+                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 1, i, i,
+                             i);
+          break;
+        case 4:
+          display->DrawPixel(TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 2,
+                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 1, i, i,
+                             i);
+          break;
+        case 5:
+          display->DrawPixel(TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 3,
+                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 1, i, i,
+                             i);
+          break;
+        case 6:
+          display->DrawPixel(TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 3,
+                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 2, i, i,
+                             i);
+          break;
+        case 7:
+          display->DrawPixel(TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 3,
+                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 3, i, i,
+                             i);
+          break;
+      }
+
+      if (!i) transportWaitCounter = (transportWaitCounter + 1) % 8;
     }
-    transportWaitCounter = (transportWaitCounter + 1) % 8;
-    vTaskDelay(pdMS_TO_TICKS(300));
+
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
 
   // display->DisplayText("enter loop", 10, 13, 255, 0, 0);
