@@ -13,6 +13,8 @@
 #endif
 #include "displayConfig.h"  // Variables shared by main and displayDrivers
 #include "displayDriver.h"  // Base class for all display drivers
+#include "esp_log.h"
+#include "esp_task_wdt.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -65,7 +67,7 @@
 
 #define LED_CHECK_DELAY 1000  // ms per color
 
-enum { TRANSPORT_UART = 0, TRANSPORT_WIFI = 1, TRANSPORT_SPI = 2 };
+enum { TRANSPORT_USB = 0, TRANSPORT_WIFI = 1, TRANSPORT_SPI = 2 };
 
 DisplayDriver *display;
 AsyncUDP udp;
@@ -77,8 +79,7 @@ uint8_t *buffers[NUM_BUFFERS];
 uint16_t bufferSizes[NUM_BUFFERS] = {0};
 
 // Semaphores
-static SemaphoreHandle_t xBufferFilled[NUM_BUFFERS];
-static SemaphoreHandle_t xBufferProcessed[NUM_BUFFERS];
+static SemaphoreHandle_t xBufferMutex;
 static SemaphoreHandle_t xRenderMutex;
 
 // The uncompress buffer should be bug enough
@@ -87,12 +88,11 @@ static uint8_t *renderBuffer[NUM_RENDER_BUFFERS];
 static uint8_t currentRenderBuffer = 0;
 static uint8_t lastRenderBuffer = NUM_RENDER_BUFFERS - 1;
 
-uint8_t processingBuffer = 0;
-
 uint16_t payloadSize = 0;
 uint8_t command = 0;
-uint8_t currentBuffer = NUM_BUFFERS - 1;
-uint8_t lastBuffer = currentBuffer;
+static uint8_t currentBuffer = NUM_BUFFERS - 1;
+static uint8_t lastBuffer = currentBuffer;
+static uint8_t processingBuffer = NUM_BUFFERS - 1;
 
 uint8_t lumstep = 5;  // Init display on medium brightness, otherwise it starts
                       // up black on some displays
@@ -107,7 +107,7 @@ bool wifiActive = false;
 #ifdef ZEDMD_WIFI
 uint8_t transport = TRANSPORT_WIFI;
 #else
-uint8_t transport = TRANSPORT_UART;
+uint8_t transport = TRANSPORT_USB;
 #endif
 static bool transportActive = false;
 uint8_t transportWaitCounter = 0;
@@ -117,6 +117,7 @@ void DoRestart(int sec) {
     MDNS.end();
     WiFi.disconnect(true);
   }
+  display->DisplayText("Restart", 10, 13, 255, 0, 0);
   sleep(sec);
   ESP.restart();
 }
@@ -285,6 +286,43 @@ void LedTester(void) {
   display->ClearScreen();
 }
 
+bool AcquireNextBuffer() {
+  if (xSemaphoreTake(xBufferMutex, portMAX_DELAY)) {
+    if (currentBuffer == lastBuffer &&
+        ((currentBuffer + 1) % NUM_BUFFERS) != processingBuffer) {
+      currentBuffer = (currentBuffer + 1) % NUM_BUFFERS;
+      return true;
+    }
+    xSemaphoreGive(xBufferMutex);
+  } else {
+    display->DisplayText("Failed to acquire new buffer", 0, 0, 255, 0, 0);
+    DisplayNumber(currentBuffer, 2, (TOTAL_WIDTH / 2) + 18, TOTAL_HEIGHT - 6,
+                  255, 191, 0);
+  }
+  vTaskDelay(pdMS_TO_TICKS(1));
+  return false;
+}
+
+void MarkCurrentBufferDone() {
+  lastBuffer = currentBuffer;
+  xSemaphoreGive(xBufferMutex);
+}
+
+bool AcquireNextProcessingBuffer() {
+  if (xSemaphoreTake(xBufferMutex, portMAX_DELAY)) {
+    if (processingBuffer != currentBuffer &&
+        ((processingBuffer + 1) % NUM_BUFFERS) != currentBuffer) {
+      processingBuffer = (processingBuffer + 1) % NUM_BUFFERS;
+      return true;
+    }
+    xSemaphoreGive(xBufferMutex);
+  }
+  vTaskDelay(pdMS_TO_TICKS(1));
+  return false;
+}
+
+void MarkBufferProcessed() { xSemaphoreGive(xBufferMutex); }
+
 void Render() {
   if (xSemaphoreTake(xRenderMutex, portMAX_DELAY)) {
     if (NUM_RENDER_BUFFERS == 1) {
@@ -395,21 +433,13 @@ void RefreshSetupScreen() {
   DisplayLum();
 }
 
-void AcquireNextBuffer() {
-  if (currentBuffer == lastBuffer) {
-    // Move to the next buffer
-    currentBuffer = (currentBuffer + 1) % NUM_BUFFERS;
-    xSemaphoreTake(xBufferProcessed[currentBuffer], portMAX_DELAY);
-  }
-}
-
 void Task_ReadSerial(void *pvParameters) {
   const uint8_t CtrlChars[5] = {'Z', 'e', 'D', 'M', 'D'};
   uint8_t numCtrlCharsFound = 0;
 
   Serial.setRxBufferSize(SERIAL_BUFFER);
 #if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
-  // S3 USB CDC
+  // S3 USB CDC. The actual baud rate doesn't matter.
   Serial.begin(115200);
   display->DisplayText("USB CDC", 0, 0, 0, 0, 0, 1);
 #else
@@ -425,7 +455,7 @@ void Task_ReadSerial(void *pvParameters) {
     if (Serial.available()) {
       uint8_t byte = Serial.read();
       // DisplayNumber(byte, 2, TOTAL_WIDTH - 2 * 4, TOTAL_HEIGHT - 6, 255, 255,
-      // 255);
+      //               255);
 
       if (numCtrlCharsFound < N_CTRL_CHARS) {
         // Detect 5 consecutive start bits
@@ -433,6 +463,7 @@ void Task_ReadSerial(void *pvParameters) {
           numCtrlCharsFound++;
         } else {
           numCtrlCharsFound = 0;
+          esp_task_wdt_reset();
         }
       } else if (numCtrlCharsFound == N_CTRL_CHARS) {
         command = byte;
@@ -530,31 +561,20 @@ void Task_ReadSerial(void *pvParameters) {
 
           case 10:  // clear screen
           {
-            AcquireNextBuffer();
-            bufferSizes[currentBuffer] = 2;
-            buffers[currentBuffer][0] = 0;
-            buffers[currentBuffer][1] = 0;
-            xSemaphoreGive(xBufferFilled[currentBuffer]);
-            lastBuffer = currentBuffer;
-            // Send an (A)cknowledge signal to tell the client that we
-            // successfully read the data.
-            // 'F' requests a full frame as next frame.
-            Serial.write(transportActive ? 'A' : 'F');
-            if (!transportActive) {
-              transportActive = true;
-            }
-            numCtrlCharsFound = 0;
-            break;
-          }
-
-          case 4:  // announce RGB565 zones streaming
-          {
-            AcquireNextBuffer();
-            // Send an (A)cknowledge signal to tell the client that we
-            // successfully read the data.
-            // 'F' requests a full frame as next frame.
-            Serial.write(transportActive ? 'A' : 'F');
-            if (!transportActive) {
+            if (AcquireNextBuffer()) {
+              bufferSizes[currentBuffer] = 2;
+              buffers[currentBuffer][0] = 0;
+              buffers[currentBuffer][1] = 0;
+              MarkCurrentBufferDone();
+              // Send an (A)cknowledge signal to tell the client that we
+              // successfully read the data.
+              // 'F' requests a full frame as next frame.
+              Serial.write(transportActive ? 'A' : 'F');
+              if (!transportActive) {
+                transportActive = true;
+              }
+            } else {
+              Serial.write('F');
               transportActive = true;
             }
             numCtrlCharsFound = 0;
@@ -573,23 +593,34 @@ void Task_ReadSerial(void *pvParameters) {
               numCtrlCharsFound = 0;
               break;
             }
-            bufferSizes[currentBuffer] = payloadSize;
 
-            uint16_t bytesRead = 0;
-            while (bytesRead < payloadSize) {
-              // Fill the buffer with payload
-              bytesRead += Serial.readBytes(
-                  &buffers[currentBuffer][bytesRead],
-                  min(Serial.available(), payloadSize - bytesRead));
+            // If buffer was acquired by announcing RGB565 zones streaming, this
+            // call does nothing but returning true.
+            if (AcquireNextBuffer()) {
+              bufferSizes[currentBuffer] = payloadSize;
+
+              uint16_t bytesRead = 0;
+              while (bytesRead < payloadSize) {
+                int avail = Serial.available();
+                while (avail < 1) {
+                  vTaskDelay(pdMS_TO_TICKS(1));
+                  avail = Serial.available();
+                }
+                // Fill the buffer with payload
+                bytesRead +=
+                    Serial.readBytes(&buffers[currentBuffer][bytesRead],
+                                     min(avail, payloadSize - bytesRead));
+              }
+
+              MarkCurrentBufferDone();
+
+              // Send an (A)cknowledge signal to tell the client that we
+              // successfully read the data.
+              Serial.write('A');
+            } else {
+              Serial.write('F');
+              transportActive = true;
             }
-
-            // Signal to process the filled buffer
-            xSemaphoreGive(xBufferFilled[currentBuffer]);
-            lastBuffer = currentBuffer;
-
-            // Send an (A)cknowledge signal to tell the client that we
-            // successfully read the data.
-            Serial.write('A');
             numCtrlCharsFound = 0;
 
             break;
@@ -598,17 +629,28 @@ void Task_ReadSerial(void *pvParameters) {
           case 6:  // Render
           {
 #if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
-            AcquireNextBuffer();
-            bufferSizes[currentBuffer] = 2;
-            buffers[currentBuffer][0] = 255;
-            buffers[currentBuffer][1] = 255;
-            xSemaphoreGive(xBufferFilled[currentBuffer]);
-            lastBuffer = currentBuffer;
+            if (AcquireNextBuffer()) {
+              bufferSizes[currentBuffer] = 2;
+              buffers[currentBuffer][0] = 255;
+              buffers[currentBuffer][1] = 255;
+              MarkCurrentBufferDone();
+            } else {
+              Serial.write('F');
+              transportActive = true;
+              numCtrlCharsFound = 0;
+              break;
+            }
 #endif
             // Send an (A)cknowledge signal to tell the client that we
             // successfully read the data.
             Serial.write('A');
             numCtrlCharsFound = 0;
+
+            // We don't expect the next frame within the next 5ms.
+            // Even if we get data faster, give some time to other tasks on core
+            // 0 and ensure that the watchdog gets restted.
+            vTaskDelay(pdMS_TO_TICKS(5));
+
             break;
           }
 
@@ -622,7 +664,7 @@ void Task_ReadSerial(void *pvParameters) {
       }
     } else {
       // Avoid busy-waiting
-      vTaskDelay(pdMS_TO_TICKS(1));
+      vTaskDelay(pdMS_TO_TICKS(2));
     }
   }
 }
@@ -644,35 +686,35 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
 
       case 10:  // clear screen
       {
-        AcquireNextBuffer();
-        bufferSizes[currentBuffer] = 2;
-        buffers[currentBuffer][0] = 0;
-        buffers[currentBuffer][1] = 0;
-        xSemaphoreGive(xBufferFilled[currentBuffer]);
-        lastBuffer = currentBuffer;
+        if (AcquireNextBuffer()) {
+          bufferSizes[currentBuffer] = 2;
+          buffers[currentBuffer][0] = 0;
+          buffers[currentBuffer][1] = 0;
+          MarkCurrentBufferDone();
+        }
         break;
       }
 
       case 5:  // RGB565 Zones Stream
       {
         payloadSize = receivedBytes - 1;
-        AcquireNextBuffer();
-        bufferSizes[currentBuffer] = payloadSize;
-        memcpy(buffers[currentBuffer], &pPacket[1], payloadSize);
-        xSemaphoreGive(xBufferFilled[currentBuffer]);
-        lastBuffer = currentBuffer;
+        if (AcquireNextBuffer()) {
+          bufferSizes[currentBuffer] = payloadSize;
+          memcpy(buffers[currentBuffer], &pPacket[1], payloadSize);
+          MarkCurrentBufferDone();
+        }
         break;
       }
 
       case 6:  // Render
       {
 #if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
-        AcquireNextBuffer();
-        bufferSizes[currentBuffer] = 2;
-        buffers[currentBuffer][0] = 255;
-        buffers[currentBuffer][1] = 255;
-        xSemaphoreGive(xBufferFilled[currentBuffer]);
-        lastBuffer = currentBuffer;
+        if (AcquireNextBuffer()) {
+          bufferSizes[currentBuffer] = 2;
+          buffers[currentBuffer][0] = 255;
+          buffers[currentBuffer][1] = 255;
+          MarkCurrentBufferDone();
+        }
 #endif
         break;
       }
@@ -760,6 +802,8 @@ void Task_SettingsMenu(void *pvParameters) {
 }
 
 void setup() {
+  esp_log_level_set("*", ESP_LOG_NONE);
+
   bool fileSystemOK;
   if (fileSystemOK = LittleFS.begin()) {
     LoadSettingsMenu();
@@ -781,6 +825,9 @@ void setup() {
     while (true);
   }
 
+  xRenderMutex = xSemaphoreCreateMutex();
+  while (!xSemaphoreTake(xRenderMutex, portMAX_DELAY));
+
   for (uint8_t i = 0; i < NUM_RENDER_BUFFERS; i++) {
 #ifdef BOARD_HAS_PSRAM
     renderBuffer[i] = (uint8_t *)ps_malloc(TOTAL_BYTES);
@@ -794,11 +841,11 @@ void setup() {
     memset(renderBuffer[i], 0, TOTAL_BYTES);
   }
 
-  xRenderMutex = xSemaphoreCreateMutex();
+  xSemaphoreGive(xRenderMutex);
 
   if (settingsMenu) {
     RefreshSetupScreen();
-    display->DisplayText(transport == TRANSPORT_UART
+    display->DisplayText(transport == TRANSPORT_USB
                              ? "USB "
                              : (transport == TRANSPORT_WIFI ? "WiFi" : "SPI "),
                          7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 128,
@@ -827,7 +874,7 @@ void setup() {
             DisplayLum();
             DisplayRGB();
             display->DisplayText(
-                transport == TRANSPORT_UART
+                transport == TRANSPORT_USB
                     ? "USB "
                     : (transport == TRANSPORT_WIFI ? "WiFi" : "SPI "),
                 7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
@@ -840,7 +887,7 @@ void setup() {
             DisplayLum(255, 191, 0);
             DisplayRGB();
             display->DisplayText(
-                transport == TRANSPORT_UART
+                transport == TRANSPORT_USB
                     ? "USB "
                     : (transport == TRANSPORT_WIFI ? "WiFi" : "SPI "),
                 7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
@@ -853,7 +900,7 @@ void setup() {
             DisplayLum();
             DisplayRGB();
             display->DisplayText(
-                transport == TRANSPORT_UART
+                transport == TRANSPORT_USB
                     ? "USB "
                     : (transport == TRANSPORT_WIFI ? "WiFi" : "SPI "),
                 7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
@@ -866,7 +913,7 @@ void setup() {
             DisplayLum();
             DisplayRGB(255, 191, 0);
             display->DisplayText(
-                transport == TRANSPORT_UART
+                transport == TRANSPORT_USB
                     ? "USB "
                     : (transport == TRANSPORT_WIFI ? "WiFi" : "SPI "),
                 7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
@@ -897,9 +944,9 @@ void setup() {
             break;
           }
           case 3: {
-            if (++transport > TRANSPORT_SPI) transport = TRANSPORT_UART;
+            if (++transport > TRANSPORT_SPI) transport = TRANSPORT_USB;
             display->DisplayText(
-                transport == TRANSPORT_UART
+                transport == TRANSPORT_USB
                     ? "USB "
                     : (transport == TRANSPORT_WIFI ? "WiFi" : "SPI "),
                 7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
@@ -930,8 +977,6 @@ void setup() {
 
   // Create synchronization primitives
   for (uint8_t i = 0; i < NUM_BUFFERS; i++) {
-    xBufferFilled[i] = xSemaphoreCreateBinary();
-    xBufferProcessed[i] = xSemaphoreCreateBinary();
 #ifdef BOARD_HAS_PSRAM
     buffers[i] = (uint8_t *)ps_malloc(BUFFER_SIZE);
 #else
@@ -943,10 +988,19 @@ void setup() {
     }
   }
 
+  xBufferMutex = xSemaphoreCreateMutex();
+  while (!xSemaphoreTake(xBufferMutex, portMAX_DELAY));
+  xSemaphoreGive(xBufferMutex);
+
   switch (transport) {
-    case TRANSPORT_UART: {
+    case TRANSPORT_USB: {
+#ifdef BOARD_HAS_PSRAM
+      xTaskCreatePinnedToCore(Task_ReadSerial, "Task_ReadSerial", 8192, NULL, 1,
+                              NULL, 0);
+#else
       xTaskCreatePinnedToCore(Task_ReadSerial, "Task_ReadSerial", 4096, NULL, 1,
                               NULL, 0);
+#endif
       break;
     }
 
@@ -971,11 +1025,6 @@ void setup() {
 
   xTaskCreatePinnedToCore(Task_SettingsMenu, "Task_SettingsMenu", 4096, NULL, 1,
                           NULL, 1);
-
-  // Enable all buffers
-  for (uint8_t i = 0; i < NUM_BUFFERS; i++) {
-    xSemaphoreGive(xBufferProcessed[i]);
-  }
 
   display->DrawPixel(TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 2,
                      TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 2, 127, 127, 127);
@@ -1034,20 +1083,23 @@ void loop() {
   }
 
   // display->DisplayText("enter loop", 10, 13, 255, 0, 0);
-  if (xSemaphoreTake(xBufferFilled[processingBuffer], portMAX_DELAY)) {
+  if (AcquireNextProcessingBuffer()) {
     if (2 == bufferSizes[processingBuffer] &&
         255 == buffers[processingBuffer][0] &&
         255 == buffers[processingBuffer][1]) {
-      // Mark buffer as free
-      xSemaphoreGive(xBufferProcessed[processingBuffer]);
+      MarkBufferProcessed();
 #if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
       Render();
+
+      // We don't expect the next frame within the next 5ms.
+      // Even if we get data faster, give some time to other tasks on core
+      // 0 and ensure that the watchdog gets restted.
+      vTaskDelay(pdMS_TO_TICKS(5));
 #endif
     } else if (2 == bufferSizes[processingBuffer] &&
                0 == buffers[processingBuffer][0] &&
                0 == buffers[processingBuffer][1]) {
-      // Mark buffer as free
-      xSemaphoreGive(xBufferProcessed[processingBuffer]);
+      MarkBufferProcessed();
       ClearScreen();
     } else {
       mz_ulong compressedBufferSize = (mz_ulong)bufferSizes[processingBuffer];
@@ -1057,8 +1109,7 @@ void loop() {
           mz_uncompress2(uncompressBuffer, &uncompressedBufferSize,
                          buffers[processingBuffer], &compressedBufferSize);
 
-      // Mark buffer as free
-      xSemaphoreGive(xBufferProcessed[processingBuffer]);
+      MarkBufferProcessed();
 
       if (MZ_OK == minizStatus) {
         uint16_t uncompressedBufferPosition = 0;
@@ -1120,13 +1171,9 @@ void loop() {
           }
         }
       } else {
-        // display->DisplayText("miniz error ", 0, 0, 255, 0, 0);
-        // DisplayNumber(minizStatus, 3, 0, 6, 255, 0, 0);
-        // while (1);
+        display->DisplayText("miniz error ", 0, 0, 255, 0, 0);
+        DisplayNumber(minizStatus, 3, 0, 6, 255, 0, 0);
       }
     }
   }
-
-  // Move to the next buffer
-  processingBuffer = (processingBuffer + 1) % NUM_BUFFERS;
 }
