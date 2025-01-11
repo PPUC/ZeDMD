@@ -25,7 +25,7 @@
 // To save RAM only include the driver we want to use.
 #ifdef DISPLAY_RM67162_AMOLED
 #include "displays/Rm67162Amoled.h"
-#elif defined(DISPLAY_LED_MATRIX)
+#else
 #include "displays/LEDMatrix.h"
 #endif
 
@@ -33,13 +33,18 @@
 #define N_INTERMEDIATE_CTR_CHARS 4
 #ifdef BOARD_HAS_PSRAM
 #define NUM_BUFFERS 128  // Number of buffers
+#ifdef DISPLAY_RM67162_AMOLED
+// @fixme double buffering doesn't work on Lilygo Amoled
+#define NUM_RENDER_BUFFERS 1
+#else
 #define NUM_RENDER_BUFFERS 2
+#endif
 #else
 #define NUM_BUFFERS 16  // Number of buffers
 #define NUM_RENDER_BUFFERS 1
 #endif
 #define BUFFER_SIZE 1152
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
+#if defined(ARDUINO_ESP32_S3_N16R8)
 #define SERIAL_BAUD 2000000  // Serial baud rate.
 #else
 #define SERIAL_BAUD 921600  // Serial baud rate.
