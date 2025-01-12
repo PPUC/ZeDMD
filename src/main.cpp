@@ -93,8 +93,14 @@ static uint8_t currentBuffer __attribute__((aligned(4))) = NUM_BUFFERS - 1;
 static uint8_t lastBuffer __attribute__((aligned(4))) = currentBuffer;
 static uint8_t processingBuffer __attribute__((aligned(4))) = NUM_BUFFERS - 1;
 
-uint8_t lumstep = 5;  // Init display on medium brightness, otherwise it starts
-                      // up black on some displays
+// Init display on a low brightness to avoid power issues, but bright enough to
+// see something.
+#ifdef DISPLAY_RM67162_AMOLED
+uint8_t lumstep = 5;
+#else
+uint8_t lumstep = 2;
+#endif
+
 uint8_t settingsMenu = 0;
 
 String ssid;
@@ -1050,6 +1056,7 @@ void setup() {
 #elif defined(DISPLAY_LED_MATRIX)
   display = new LedMatrix();  // For LED matrix display
 #endif
+  display->SetBrightness(lumstep);
 
   if (!fileSystemOK) {
     display->DisplayText("Error reading file system!", 0, 0, 255, 0, 0);
@@ -1104,7 +1111,7 @@ void setup() {
         if (++position > 4) position = 1;
 
         switch (position) {
-          case 1: {
+          case 1: {  // Exit
             DisplayLum();
             DisplayRGB();
             display->DisplayText(
@@ -1117,7 +1124,7 @@ void setup() {
                                  (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             break;
           }
-          case 2: {
+          case 2: {  // Brightness
             DisplayLum(255, 191, 0);
             DisplayRGB();
             display->DisplayText(
@@ -1130,7 +1137,7 @@ void setup() {
                                  (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
             break;
           }
-          case 3: {
+          case 3: {  // Transport
             DisplayLum();
             DisplayRGB();
             display->DisplayText(
@@ -1143,7 +1150,7 @@ void setup() {
                                  (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
             break;
           }
-          case 4: {
+          case 4: {  // RGB order
             DisplayLum();
             DisplayRGB(255, 191, 0);
             display->DisplayText(
@@ -1162,14 +1169,14 @@ void setup() {
       rgbOrderButton->update();
       if (rgbOrderButton->pressed()) {
         switch (position) {
-          case 1: {
+          case 1: {  // Exit
             settingsMenu = false;
             SaveSettingsMenu();
             delay(10);
             Restart();
             break;
           }
-          case 2: {
+          case 2: {  // Brightness
             lumstep++;
             if (lumstep >= 16) lumstep = 1;
             display->SetBrightness(lumstep);
@@ -1177,7 +1184,7 @@ void setup() {
             SaveLum();
             break;
           }
-          case 3: {
+          case 3: {  // Transport
             if (++transport > TRANSPORT_SPI) transport = TRANSPORT_USB;
             display->DisplayText(
                 transport == TRANSPORT_USB
@@ -1187,7 +1194,7 @@ void setup() {
             SaveTransport();
             break;
           }
-          case 4: {
+          case 4: {  // RGB order
             if (rgbModeLoaded != 0) {
               rgbMode = 0;
               SaveRgbOrder();
@@ -1202,6 +1209,8 @@ void setup() {
           }
         }
       }
+
+      delay(10);
     }
   }
 
