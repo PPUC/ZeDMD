@@ -8,6 +8,7 @@
 
 #include <cstring>
 
+// Specific improvements and #define for the ESP32 S3 series
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
 #include "S3Specific.h"
 #endif
@@ -52,11 +53,6 @@
 #define SERIAL_BUFFER 2048  // Serial buffer size in byte.
 #define SERIAL_TIMEOUT \
   8  // Time in milliseconds to wait for the next data chunk.
-
-// Specific improvements and #define for the ESP32 S3 series
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
-#include "S3Specific.h"
-#endif
 
 #ifdef ARDUINO_ESP32_S3_N16R8
 #define RGB_ORDER_BUTTON_PIN 45
@@ -474,7 +470,7 @@ void Task_ReadSerial(void *pvParameters) {
         command = byte;
 
         switch (command) {
-          case 12:  // ask for resolution (and shake hands)
+          case 12:  // handshake
           {
             for (u_int8_t i = 0; i < N_INTERMEDIATE_CTR_CHARS; i++) {
               Serial.write(CtrlChars[i]);
@@ -483,6 +479,9 @@ void Task_ReadSerial(void *pvParameters) {
             Serial.write((TOTAL_WIDTH >> 8) & 0xff);
             Serial.write(TOTAL_HEIGHT & 0xff);
             Serial.write((TOTAL_HEIGHT >> 8) & 0xff);
+            Serial.write(ZEDMD_VERSION_MAJOR);
+            Serial.write(ZEDMD_VERSION_MINOR);
+            Serial.write(ZEDMD_VERSION_PATCH);
             numCtrlCharsFound = 0;
             transportActive = true;
             Serial.write('R');
