@@ -34,7 +34,7 @@
 #define N_INTERMEDIATE_CTR_CHARS 4
 #ifdef BOARD_HAS_PSRAM
 #define NUM_BUFFERS 128  // Number of buffers
-#ifdef DISPLAY_RM67162_AMOLED
+#if defined(DISPLAY_RM67162_AMOLED) || !defined(ZEDMD_HD)
 // @fixme double buffering doesn't work on Lilygo Amoled
 #define NUM_RENDER_BUFFERS 1
 #else
