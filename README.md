@@ -14,18 +14,13 @@ It is or will be supported by:
 A full tutorial of its installation is available in [English](https://www.pincabpassion.net/t14796-tuto-zedmd-installation-english) and in [French](https://www.pincabpassion.net/t14798-tuto-installation-du-zedmd)
 
 Meanwhile, there're different "flavours" of the ZeDMD firmware. Because it pushes the cheap ESP32 to its limits, we can't provide a unified firmware, so you have to pick the appropriate one:
-* ZeDMD: using two 64x32 panels driven by an ESP32 connected over USB
-* ZeDMD HD: using four 64x64 or two 128x64 panels driven by an ESP32 connected over USB
-* ZeDMD HALF: using one 128x64 panel driven by an ESP32 connected over USB
-* ZeDMD WiFi: using two 64x32 panels driven by an ESP32 connected over WiFi
-* ZeDMD HALF WiFi: using one 128x64 panel driven by an ESP32 connected over WiFi
-* ZeDMD S3: using two 64x32 panels driven by an ESP32 S3 N16R8 connected over USB
-* ZeDMD S3 HD: using four 64x64 or two 128x64 panels  driven by an ESP32 S3 N16R8 connected over USB
-* ZeDMD S3 HALF: using one 128x64 panel driven by an ESP32 S3 N16R8 connected over USB
-* ZeDMD S3 WiFi: using two 64x32 panels  driven by an ESP32 S3 N16R8 connected over WiFi
-* ZeDMD S3 HD WiFi: using four 64x64 or two 128x64 panels driven by an ESP32 S3 N16R8 connected over WiFi
-* ZeDMD S3 HALF WiFi: using one 128x64 panel driven by an ESP32 S3 N16R8 connected over WiFi
-* ZeDMD S3 AMOLED: using a small OLED driven by a LilyGo AMOLED T-Display-S3 V2 connected via USB
+* ZeDMD 128x32: using two 64x32 panels driven by an ESP32 connected over USB or WiFi
+* ZeDMD HD 256x64: using four 64x64 or two 128x64 panels driven by an ESP32 connected over USB or WiFi
+* ZeDMD 128x64: using one 128x64 panel driven by an ESP32 connected over USB or WiFi, showing 128x32 content with an offset, suitable for mini cabinets
+* ZeDMD S3 128x32: using two 64x32 panels driven by an ESP32 S3 N16R8 connected over USB CDC or WiFi
+* ZeDMD S3 HD 256x64: using four 64x64 or two 128x64 panels  driven by an ESP32 S3 N16R8 connected over USB CDC or WiFi
+* ZeDMD S3 128x64: using one 128x64 panel driven by an ESP32 S3 N16R8 connected over USB CDC or WiFi, showing 128x32 content with an offset, suitable for mini cabinets
+* ZeDMD S3 AMOLED: using a small OLED driven by a LilyGo AMOLED T-Display-S3 V2 connected via USB CDC
 * ZeDMD S3 AMOLED WiFi: using a small OLED driven by a LilyGo AMOLED T-Display-S3 V2 connected via WiFi
 
 Here's are short demo of ZeDMD and ZeDMD HD in parallel:
@@ -71,17 +66,15 @@ Download and install the [ZeDMD_Updater](https://github.com/zesinger/ZeDMD_Updat
 ## First start
 
 After flashing the firmware you'll see the ZeDMD logo. But due to the different panels available on the market,
-you need to adjust the colors. While the logo is visible you can press the RGB button to rotate the colors until
-`red` in the left top corner is red, `green` is green and `blue` is shown in blue.
+you need to adjust the colors. While the logo is visible you can press the brightness button on older ZeDMD or the forward button on newer ZeDMD to enter the settings menu.
+To set the correct RGB order, rotate the colors until `red` in the left top corner is red, `green` is green and `blue` is shown in blue.
 
 Using the brightness butten you can adjust the brightness.
 
 ## ZeDMD-WiFi
 
-After flashing the ZeDMD-WiFi firmware, connect your mobile device or laptop to the "ZeDMD-WiFi" network using the password zedmd1234.
-
-After connecting to the ZeDMD-WiFI network, open your web browser and navigate to http://ZeDMD-WiFi.local (IP: 192.168.4.1) to access the configuration settings.
-
+After activating the WiFi mode in the settings menu, connect your mobile device or laptop to the `ZeDMD-WiFi` network using the password `zedmd1234`.
+Then open your web browser and navigate to http://ZeDMD-WiFi.local (IP: 192.168.4.1) to access the configuration settings.
 
 ## IMPORTANT LEGAL NOTICES:
 
@@ -139,3 +132,16 @@ If you find out what config adjustment gets a specific panel to work, you should
 ### "I'm running a shop, can I assemble and sell ZeDMDs?"
 
 Yes, you can, as long as you respect the legal notices above. You could also do your own hardware design. But it would be nice if you sent us a ready to-use device for testing because people might ask here or on discord about problems with a specific variation of ZeDMD.
+
+### ZeDMD S3 crashes when connected via USB to a Windows machine
+
+This is a known issue. ZeDMD S3 works perfectly well with Linux and macOS. But if you're using Windows you should use the WiFi mode.
+
+### ZeDMD S3 crashed, how can I help fixing the issue
+
+If you discover a crash, there's a good chance that a coredump has been written to flash. If you flashed the device using `pio`, you can extract and interpret the coredump:
+```shell
+python ~/esp/v5.3.2/esp-idf/components/espcoredump/espcoredump.py info_corefile .pio/build/S3-N16R8_128x32/firmware.elf
+```
+
+

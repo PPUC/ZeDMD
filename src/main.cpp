@@ -1314,7 +1314,8 @@ void setup() {
           }
 #ifdef ZEDMD_HD_HALF
           case 6: {  // Y Offset
-            if (++yOffset > 32) yOffset = 0;
+            if (up && ++yOffset > 32) yOffset = 0;
+            else if (down && --yOffset < 0) yOffset = 32;
             display->ClearScreen();
             RefreshSetupScreen();
             display->DisplayText("Y Offset",
