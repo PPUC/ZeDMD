@@ -34,7 +34,7 @@
 #define N_INTERMEDIATE_CTR_CHARS 4
 #ifdef BOARD_HAS_PSRAM
 #define NUM_BUFFERS 128  // Number of buffers
-#if defined(DISPLAY_RM67162_AMOLED) || !defined(ZEDMD_HD)
+#ifdef DISPLAY_RM67162_AMOLED
 // @fixme double buffering doesn't work on Lilygo Amoled
 #define NUM_RENDER_BUFFERS 1
 #else
@@ -55,14 +55,16 @@
   8  // Time in milliseconds to wait for the next data chunk.
 
 #ifdef ARDUINO_ESP32_S3_N16R8
-#define RGB_ORDER_BUTTON_PIN 45
-#define BRIGHTNESS_BUTTON_PIN 48
+#define UP_BUTTON_PIN 0
+#define DOWN_BUTTON_PIN 45
+#define FORWARD_BUTTON_PIN 48
+#define BACKWARD_BUTTON_PIN 47
 #elif defined(DISPLAY_RM67162_AMOLED)
-#define RGB_ORDER_BUTTON_PIN 0
-#define BRIGHTNESS_BUTTON_PIN 21
+#define UP_BUTTON_PIN 0
+#define FORWARD_BUTTON_PIN 21
 #else
-#define RGB_ORDER_BUTTON_PIN 21
-#define BRIGHTNESS_BUTTON_PIN 33
+#define UP_BUTTON_PIN 21
+#define FORWARD_BUTTON_PIN 33
 #endif
 
 #define LED_CHECK_DELAY 1000  // ms per color
@@ -96,12 +98,13 @@ static uint8_t processingBuffer __attribute__((aligned(4))) = NUM_BUFFERS - 1;
 // Init display on a low brightness to avoid power issues, but bright enough to
 // see something.
 #ifdef DISPLAY_RM67162_AMOLED
-uint8_t lumstep = 5;
+uint8_t brightness = 5;
 #else
-uint8_t lumstep = 2;
+uint8_t brightness = 2;
 #endif
 
 uint8_t settingsMenu = 0;
+uint8_t debug = 0;
 
 String ssid;
 String pwd;
@@ -110,9 +113,9 @@ uint8_t ssid_length;
 uint8_t pwd_length;
 bool wifiActive = false;
 #ifdef ZEDMD_WIFI
-uint8_t transport = TRANSPORT_WIFI;
+int8_t transport = TRANSPORT_WIFI;
 #else
-uint8_t transport = TRANSPORT_USB;
+int8_t transport = TRANSPORT_USB;
 #endif
 static bool transportActive = false;
 uint8_t transportWaitCounter = 0;
@@ -161,8 +164,8 @@ void DisplayLum(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
                        b);
   display->DisplayText("Brightness:", (TOTAL_WIDTH / 2) - 26, TOTAL_HEIGHT - 6,
                        r, g, b);
-  DisplayNumber(lumstep, 2, (TOTAL_WIDTH / 2) + 18, TOTAL_HEIGHT - 6, 255, 191,
-                0);
+  DisplayNumber(brightness, 2, (TOTAL_WIDTH / 2) + 18, TOTAL_HEIGHT - 6, 255,
+                191, 0);
 }
 
 void DisplayRGB(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
@@ -228,15 +231,43 @@ void SaveRgbOrder() {
 void LoadLum() {
   File f = LittleFS.open("/lum.val", "r");
   if (!f) return;
-  lumstep = f.read();
+  brightness = f.read();
   f.close();
 }
 
 void SaveLum() {
   File f = LittleFS.open("/lum.val", "w");
-  f.write(lumstep);
+  f.write(brightness);
   f.close();
 }
+
+void LoadDebug() {
+  File f = LittleFS.open("/debug.val", "r");
+  if (!f) return;
+  debug = f.read();
+  f.close();
+}
+
+void SaveDebug() {
+  File f = LittleFS.open("/debug.val", "w");
+  f.write(debug);
+  f.close();
+}
+
+#ifdef ZEDMD_HD_HALF
+void LoadYOffset() {
+  File f = LittleFS.open("/y_offset.val", "r");
+  if (!f) return;
+  yOffset = f.read();
+  f.close();
+}
+
+void SaveYOffset() {
+  File f = LittleFS.open("/y_offset.val", "w");
+  f.write(yOffset);
+  f.close();
+}
+#endif
 
 void LoadScale() {
   File f = LittleFS.open("/scale.val", "r");
@@ -432,11 +463,25 @@ void DisplayUpdate(void) {
   Render();
 }
 
-/// @brief Refreshes screen after color change, needed for webserver
 void RefreshSetupScreen() {
   DisplayLogo();
   DisplayRGB();
   DisplayLum();
+  display->DisplayText(transport == TRANSPORT_USB
+                           ? "USB "
+                           : (transport == TRANSPORT_WIFI ? "WiFi" : "SPI "),
+                       7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 128,
+                       128, 128);
+  display->DisplayText("Debug:", 7 * (TOTAL_WIDTH / 128),
+                       (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
+  DisplayNumber(debug, 1, 7 * (TOTAL_WIDTH / 128) + (6 * 4),
+                (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
+#ifdef ZEDMD_HD_HALF
+  display->DisplayText("Y Offset", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
+                       (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
+#endif
+  display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
+                       (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
 }
 
 void Task_ReadSerial(void *pvParameters) {
@@ -453,8 +498,11 @@ void Task_ReadSerial(void *pvParameters) {
   Serial.setTimeout(SERIAL_TIMEOUT);
   Serial.begin(SERIAL_BAUD);
   while (!Serial);
-  DisplayNumber(SERIAL_BAUD, (SERIAL_BAUD >= 1000000 ? 7 : 6), 0, 0, 0, 0, 0,
-                1);
+  if (debug)
+    DisplayNumber(SERIAL_BAUD, (SERIAL_BAUD >= 1000000 ? 7 : 6), 0, 0, 0, 0, 0,
+                  1);
+  else
+    display->DisplayText("USB UART", 0, 0, 0, 0, 0, 1);
 #endif
 
   while (1) {
@@ -515,8 +563,8 @@ void Task_ReadSerial(void *pvParameters) {
 
           case 22:  // set brightness
           {
-            lumstep = Serial.read();
-            display->SetBrightness(lumstep);
+            brightness = Serial.read();
+            display->SetBrightness(brightness);
             Serial.write('A');
             numCtrlCharsFound = 0;
             break;
@@ -532,7 +580,7 @@ void Task_ReadSerial(void *pvParameters) {
 
           case 24:  // get brightness
           {
-            Serial.write(lumstep);
+            Serial.write(brightness);
             numCtrlCharsFound = 0;
             break;
           }
@@ -548,6 +596,7 @@ void Task_ReadSerial(void *pvParameters) {
           {
             SaveLum();
             SaveRgbOrder();
+            SaveDebug();
             Serial.write('A');
             numCtrlCharsFound = 0;
             break;
@@ -591,14 +640,33 @@ void Task_ReadSerial(void *pvParameters) {
             break;
           }
 
+          case 98:  // disable debug mode
+          {
+            Serial.write('A');
+            debug = false;
+            numCtrlCharsFound = 0;
+            break;
+          }
+
+          case 99:  // enable debug mode
+          {
+            Serial.write('A');
+            debug = true;
+            numCtrlCharsFound = 0;
+            break;
+          }
+
           case 5:  // mode RGB565 zones streaming
           {
             // Read payload size (next 2 bytes)
             payloadSize = (Serial.read() << 8) | Serial.read();
 
             if (payloadSize > BUFFER_SIZE || payloadSize == 0) {
-              // display->DisplayText("payloadSize > BUFFER_SIZE", 10, 13, 255,
-              // 0, 0); while (1);
+              if (debug) {
+                display->DisplayText("payloadSize > BUFFER_SIZE", 10, 13, 255,
+                                     0, 0);
+                while (1);
+              }
               Serial.write('E');
               numCtrlCharsFound = 0;
               break;
@@ -877,8 +945,8 @@ void Task_WiFi(void *pvParameters) {
           if (request->hasParam("brightness", true)) {
             String brightnessValue =
                 request->getParam("brightness", true)->value();
-            lumstep = brightnessValue.toInt();
-            GetDisplayObject()->SetBrightness(lumstep);
+            brightness = brightnessValue.toInt();
+            GetDisplayObject()->SetBrightness(brightness);
             SaveLum();
             RefreshSetupScreen();
             request->send(200, "text/plain", "Brightness updated successfully");
@@ -949,7 +1017,7 @@ void Task_WiFi(void *pvParameters) {
       json += "\"ssid\":\"" + trimmedSsid + "\",";
       json += "\"port\":" + String(port) + ",";
       json += "\"rgbOrder\":" + String(rgbMode) + ",";
-      json += "\"brightness\":" + String(lumstep) + ",";
+      json += "\"brightness\":" + String(brightness) + ",";
       json += "\"scaleMode\":" + String(display->GetCurrentScalingMode());
       json += "}";
       request->send(200, "application/json", json);
@@ -1028,7 +1096,7 @@ void Task_WiFi(void *pvParameters) {
 
 void Task_SettingsMenu(void *pvParameters) {
   while (1) {
-    if (!digitalRead(BRIGHTNESS_BUTTON_PIN)) {
+    if (!digitalRead(FORWARD_BUTTON_PIN)) {
       File f = LittleFS.open("/settings_menu.val", "w");
       f.write(1);
       f.close();
@@ -1049,6 +1117,10 @@ void setup() {
     LoadTransport();
     LoadRgbOrder();
     LoadLum();
+    LoadDebug();
+#ifdef ZEDMD_HD_HALF
+    LoadYOffset();
+#endif
   }
 
 #ifdef DISPLAY_RM67162_AMOLED
@@ -1056,7 +1128,7 @@ void setup() {
 #elif defined(DISPLAY_LED_MATRIX)
   display = new LedMatrix();  // For LED matrix display
 #endif
-  display->SetBrightness(lumstep);
+  display->SetBrightness(brightness);
 
   if (!fileSystemOK) {
     display->DisplayText("Error reading file system!", 0, 0, 255, 0, 0);
@@ -1086,88 +1158,105 @@ void setup() {
 
   if (settingsMenu) {
     RefreshSetupScreen();
-    display->DisplayText(transport == TRANSPORT_USB
-                             ? "USB "
-                             : (transport == TRANSPORT_WIFI ? "WiFi" : "SPI "),
-                         7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 128,
-                         128, 128);
     display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
                          (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
 
-    Bounce2::Button *brightnessButton = new Bounce2::Button();
-    brightnessButton->attach(BRIGHTNESS_BUTTON_PIN, INPUT_PULLUP);
-    brightnessButton->interval(100);
-    brightnessButton->setPressedState(LOW);
+    Bounce2::Button *forwardButton = new Bounce2::Button();
+    forwardButton->attach(FORWARD_BUTTON_PIN, INPUT_PULLUP);
+    forwardButton->interval(100);
+    forwardButton->setPressedState(LOW);
 
-    Bounce2::Button *rgbOrderButton = new Bounce2::Button();
-    rgbOrderButton->attach(RGB_ORDER_BUTTON_PIN, INPUT_PULLUP);
-    rgbOrderButton->interval(100);
-    rgbOrderButton->setPressedState(LOW);
+    Bounce2::Button *upButton = new Bounce2::Button();
+    upButton->attach(UP_BUTTON_PIN, INPUT_PULLUP);
+    upButton->interval(100);
+    upButton->setPressedState(LOW);
+
+#ifdef ARDUINO_ESP32_S3_N16R8
+    Bounce2::Button *backwardButton = new Bounce2::Button();
+    backwardButton->attach(BACKWARD_BUTTON_PIN, INPUT_PULLUP);
+    backwardButton->interval(100);
+    backwardButton->setPressedState(LOW);
+
+    Bounce2::Button *downButton = new Bounce2::Button();
+    downButton->attach(DOWN_BUTTON_PIN, INPUT_PULLUP);
+    downButton->interval(100);
+    downButton->setPressedState(LOW);
+#endif
 
     uint8_t position = 1;
     while (1) {
-      brightnessButton->update();
-      if (brightnessButton->pressed()) {
-        if (++position > 4) position = 1;
-
+      forwardButton->update();
+      bool forward = forwardButton->pressed();
+      bool backward = false;
+#ifdef ARDUINO_ESP32_S3_N16R8
+      backwardButton->update();
+      backward = backwardButton->pressed();
+#endif
+      if (forward || backward) {
+#ifdef ZEDMD_HD_HALF
+        if (forward && ++position > 6)
+          position = 1;
+        else if (backward && --position < 1)
+          position = 6;
+#else
+        if (forward && ++position > 5)
+          position = 1;
+        else if (backward && --position < 1)
+          position = 5;
+#endif
         switch (position) {
           case 1: {  // Exit
-            DisplayLum();
-            DisplayRGB();
-            display->DisplayText(
-                transport == TRANSPORT_USB
-                    ? "USB "
-                    : (transport == TRANSPORT_WIFI ? "WiFi" : "SPI "),
-                7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
+            RefreshSetupScreen();
             display->DisplayText("Exit",
                                  TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
                                  (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             break;
           }
           case 2: {  // Brightness
+            RefreshSetupScreen();
             DisplayLum(255, 191, 0);
-            DisplayRGB();
-            display->DisplayText(
-                transport == TRANSPORT_USB
-                    ? "USB "
-                    : (transport == TRANSPORT_WIFI ? "WiFi" : "SPI "),
-                7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
-            display->DisplayText("Exit",
-                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
-                                 (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
             break;
           }
           case 3: {  // Transport
-            DisplayLum();
-            DisplayRGB();
+            RefreshSetupScreen();
             display->DisplayText(
                 transport == TRANSPORT_USB
                     ? "USB "
                     : (transport == TRANSPORT_WIFI ? "WiFi" : "SPI "),
                 7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
-            display->DisplayText("Exit",
-                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
-                                 (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
             break;
           }
-          case 4: {  // RGB order
-            DisplayLum();
+          case 4: {  // Debug
+            RefreshSetupScreen();
+            display->DisplayText("Debug:", 7 * (TOTAL_WIDTH / 128),
+                                 (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
+            break;
+          }
+          case 5: {  // RGB order
+            RefreshSetupScreen();
             DisplayRGB(255, 191, 0);
-            display->DisplayText(
-                transport == TRANSPORT_USB
-                    ? "USB "
-                    : (transport == TRANSPORT_WIFI ? "WiFi" : "SPI "),
-                7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
-            display->DisplayText("Exit",
-                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
-                                 (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
             break;
           }
+#ifdef ZEDMD_HD_HALF
+          case 6: {  // Y Offset
+            RefreshSetupScreen();
+            display->DisplayText("Y Offset",
+                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
+                                 (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
+            break;
+          }
+#endif
         }
       }
 
-      rgbOrderButton->update();
-      if (rgbOrderButton->pressed()) {
+      upButton->update();
+      bool up = upButton->pressed();
+      bool down = false;
+#ifdef ARDUINO_ESP32_S3_N16R8
+      downButton->update();
+      down = downButton->pressed();
+#endif
+      if (up || down) {
         switch (position) {
           case 1: {  // Exit
             settingsMenu = false;
@@ -1177,15 +1266,21 @@ void setup() {
             break;
           }
           case 2: {  // Brightness
-            lumstep++;
-            if (lumstep >= 16) lumstep = 1;
-            display->SetBrightness(lumstep);
+            if (up && ++brightness > 15)
+              brightness = 1;
+            else if (down && --brightness < 1)
+              brightness = 15;
+
+            display->SetBrightness(brightness);
             DisplayLum(255, 191, 0);
             SaveLum();
             break;
           }
           case 3: {  // Transport
-            if (++transport > TRANSPORT_SPI) transport = TRANSPORT_USB;
+            if (up && ++transport > TRANSPORT_SPI)
+              transport = TRANSPORT_USB;
+            else if (down && --transport < TRANSPORT_USB)
+              transport = TRANSPORT_SPI;
             display->DisplayText(
                 transport == TRANSPORT_USB
                     ? "USB "
@@ -1194,19 +1289,41 @@ void setup() {
             SaveTransport();
             break;
           }
-          case 4: {  // RGB order
+          case 4: {  // Debug
+            if (++debug > 1) debug = 0;
+            DisplayNumber(debug, 1, 7 * (TOTAL_WIDTH / 128) + (6 * 4),
+                          (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
+            SaveDebug();
+            break;
+          }
+          case 5: {  // RGB order
             if (rgbModeLoaded != 0) {
               rgbMode = 0;
               SaveRgbOrder();
               delay(10);
               Restart();
             }
-            if (++rgbMode > 5) rgbMode = 0;
+            if (up && ++rgbMode > 5)
+              rgbMode = 0;
+            else if (down && --rgbMode < 0)
+              rgbMode = 5;
             RefreshSetupScreen();
             DisplayRGB(255, 191, 0);
             SaveRgbOrder();
             break;
           }
+#ifdef ZEDMD_HD_HALF
+          case 6: {  // Y Offset
+            if (++yOffset > 32) yOffset = 0;
+            display->ClearScreen();
+            RefreshSetupScreen();
+            display->DisplayText("Y Offset",
+                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
+                                 (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
+            SaveYOffset();
+            break;
+          }
+#endif
         }
       }
 
@@ -1214,7 +1331,7 @@ void setup() {
     }
   }
 
-  pinMode(BRIGHTNESS_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(FORWARD_BUTTON_PIN, INPUT_PULLUP);
 
   DisplayLogo();
 
@@ -1323,7 +1440,6 @@ void loop() {
     vTaskDelay(pdMS_TO_TICKS(100));
   }
 
-  // display->DisplayText("enter loop", 10, 13, 255, 0, 0);
   if (AcquireNextProcessingBuffer()) {
     if (2 == bufferSizes[processingBuffer] &&
         255 == buffers[processingBuffer][0] &&
@@ -1407,8 +1523,10 @@ void loop() {
           }
         }
       } else {
-        display->DisplayText("miniz error ", 0, 0, 255, 0, 0);
-        DisplayNumber(minizStatus, 3, 0, 6, 255, 0, 0);
+        if (debug) {
+          display->DisplayText("miniz error ", 0, 0, 255, 0, 0);
+          DisplayNumber(minizStatus, 3, 0, 6, 255, 0, 0);
+        }
       }
     }
   }

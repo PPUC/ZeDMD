@@ -47,11 +47,11 @@ void LedMatrix::SetCurrentScalingMode(uint8_t mode) {}
 
 void LedMatrix::DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g,
                           uint8_t b) {
-  dma_display->drawPixelRGB888(x, y, r, g, b);
+  dma_display->drawPixelRGB888(x, y + yOffset, r, g, b);
 }
 
 void LedMatrix::DrawPixel(uint16_t x, uint16_t y, uint16_t color) {
-  dma_display->drawPixel(x, y, color);
+  dma_display->drawPixel(x, y + yOffset, color);
 }
 
 void LedMatrix::ClearScreen() { dma_display->clearScreen(); }
@@ -78,7 +78,7 @@ void LedMatrix::DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t r,
         if (transparent && !p) {
           continue;
         }
-        dma_display->drawPixelRGB888(x + pixel + (ti * 4), y + tj, r * p, g * p,
+        dma_display->drawPixelRGB888(x + pixel + (ti * 4), y + yOffset + tj, r * p, g * p,
                                      b * p);
       }
     }
@@ -86,40 +86,40 @@ void LedMatrix::DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t r,
 }
 
 void IRAM_ATTR LedMatrix::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
-  const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
-  const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
+  const uint8_t zoneYOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
+  const uint8_t zoneXOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
 
   for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
     for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
       uint16_t pos = (y * ZONE_WIDTH + x) * 3;
 
-      dma_display->drawPixelRGB888(x + xOffset, y + yOffset, pBuffer[pos],
+      dma_display->drawPixelRGB888(x + zoneXOffset, y + zoneYOffset + yOffset, pBuffer[pos],
                                    pBuffer[pos + 1], pBuffer[pos + 2]);
     }
   }
 }
 
 void IRAM_ATTR LedMatrix::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
-  const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
-  const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
+  const uint8_t zoneYOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
+  const uint8_t zoneXOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
 
   for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
     for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
       uint16_t pos = (y * ZONE_WIDTH + x) * 2;
       dma_display->drawPixel(
-          x + xOffset, y + yOffset,
+          x + zoneXOffset, y + zoneYOffset + yOffset,
           (((uint16_t)pBuffer[pos + 1]) << 8) + pBuffer[pos]);
     }
   }
 }
 
 void IRAM_ATTR LedMatrix::ClearZone(uint8_t idx) {
-  const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
-  const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
+  const uint8_t zoneYOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
+  const uint8_t zoneXOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
 
   for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
     for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
-      dma_display->drawPixelRGB888(x + xOffset, y + yOffset, 0, 0, 0);
+      dma_display->drawPixelRGB888(x + zoneXOffset, y + zoneYOffset + yOffset, 0, 0, 0);
     }
   }
 }
@@ -131,7 +131,7 @@ void IRAM_ATTR LedMatrix::FillPanelRaw(uint8_t *pBuffer) {
     for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
       pos = (y * TOTAL_WIDTH + x) * 3;
 
-      dma_display->drawPixelRGB888(x, y, pBuffer[pos], pBuffer[pos + 1],
+      dma_display->drawPixelRGB888(x, y + yOffset, pBuffer[pos], pBuffer[pos + 1],
                                    pBuffer[pos + 2]);
     }
   }

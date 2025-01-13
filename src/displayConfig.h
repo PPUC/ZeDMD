@@ -8,8 +8,9 @@
 #define BC 2
 
 // Global variables
-extern uint8_t rgbMode;
+extern int8_t rgbMode;
 extern uint8_t rgbModeLoaded;
+extern uint8_t yOffset;
 
 // Constant array
 extern const uint8_t rgbOrder[3 * 6];
