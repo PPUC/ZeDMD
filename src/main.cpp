@@ -183,6 +183,12 @@ void DisplayRGB(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
 /// @brief Get DisplayDriver object, required for webserver
 DisplayDriver *GetDisplayObject() { return display; }
 
+void SaveSettingsMenu() {
+  File f = LittleFS.open("/settings_menu.val", "w");
+  f.write(settingsMenu);
+  f.close();
+}
+
 void LoadSettingsMenu() {
   File f = LittleFS.open("/settings_menu.val", "r");
   if (!f) {
@@ -190,22 +196,10 @@ void LoadSettingsMenu() {
     // Show settings menu on freshly installed device
     settingsMenu = 1;
 #endif
+    SaveSettingsMenu();
     return;
   }
   settingsMenu = f.read();
-  f.close();
-}
-
-void SaveSettingsMenu() {
-  File f = LittleFS.open("/settings_menu.val", "w");
-  f.write(settingsMenu);
-  f.close();
-}
-
-void LoadTransport() {
-  File f = LittleFS.open("/transport.val", "r");
-  if (!f) return;
-  transport = f.read();
   f.close();
 }
 
@@ -215,10 +209,13 @@ void SaveTransport() {
   f.close();
 }
 
-void LoadRgbOrder() {
-  File f = LittleFS.open("/rgb_order.val", "r");
-  if (!f) return;
-  rgbMode = rgbModeLoaded = f.read();
+void LoadTransport() {
+  File f = LittleFS.open("/transport.val", "r");
+  if (!f) {
+    SaveTransport();
+    return;
+  }
+  transport = f.read();
   f.close();
 }
 
@@ -228,10 +225,13 @@ void SaveRgbOrder() {
   f.close();
 }
 
-void LoadLum() {
-  File f = LittleFS.open("/lum.val", "r");
-  if (!f) return;
-  brightness = f.read();
+void LoadRgbOrder() {
+  File f = LittleFS.open("/rgb_order.val", "r");
+  if (!f) {
+    SaveRgbOrder();
+    return;
+  }
+  rgbMode = rgbModeLoaded = f.read();
   f.close();
 }
 
@@ -241,10 +241,13 @@ void SaveLum() {
   f.close();
 }
 
-void LoadDebug() {
-  File f = LittleFS.open("/debug.val", "r");
-  if (!f) return;
-  debug = f.read();
+void LoadLum() {
+  File f = LittleFS.open("/lum.val", "r");
+  if (!f) {
+    SaveLum();
+    return;
+  }
+  brightness = f.read();
   f.close();
 }
 
@@ -254,31 +257,47 @@ void SaveDebug() {
   f.close();
 }
 
-#ifdef ZEDMD_HD_HALF
-void LoadYOffset() {
-  File f = LittleFS.open("/y_offset.val", "r");
-  if (!f) return;
-  yOffset = f.read();
+void LoadDebug() {
+  File f = LittleFS.open("/debug.val", "r");
+  if (!f) {
+    SaveDebug();
+    return;
+  }
+  debug = f.read();
   f.close();
 }
 
+#ifdef ZEDMD_HD_HALF
 void SaveYOffset() {
   File f = LittleFS.open("/y_offset.val", "w");
   f.write(yOffset);
   f.close();
 }
-#endif
 
-void LoadScale() {
-  File f = LittleFS.open("/scale.val", "r");
-  if (!f) return;
-  display->SetCurrentScalingMode(f.read());
+void LoadYOffset() {
+  File f = LittleFS.open("/y_offset.val", "r");
+  if (!f) {
+    SaveYOffset();
+    return;
+  }
+  yOffset = f.read();
   f.close();
 }
+#endif
 
 void SaveScale() {
   File f = LittleFS.open("/scale.val", "w");
   f.write(display->GetCurrentScalingMode());
+  f.close();
+}
+
+void LoadScale() {
+  File f = LittleFS.open("/scale.val", "r");
+  if (!f) {
+    SaveScale();
+    return;
+  }
+  display->SetCurrentScalingMode(f.read());
   f.close();
 }
 
@@ -309,6 +328,7 @@ bool SaveWiFiConfig() {
   wifiConfig.close();
   return true;
 }
+
 void LedTester(void) {
   display->FillScreen(255, 0, 0);
   delay(LED_CHECK_DELAY);
