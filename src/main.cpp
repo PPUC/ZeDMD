@@ -1139,7 +1139,7 @@ void setup() {
     LoadTransport();
     LoadRgbOrder();
     LoadLum();
-    LoadDebug();
+    // LoadDebug();
 #ifdef ZEDMD_HD_HALF
     LoadYOffset();
 #endif
