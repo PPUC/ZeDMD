@@ -498,11 +498,12 @@ void Task_ReadSerial(void *pvParameters) {
   Serial.setTimeout(SERIAL_TIMEOUT);
   Serial.begin(SERIAL_BAUD);
   while (!Serial);
-  if (debug)
+  if (debug) {
     DisplayNumber(SERIAL_BAUD, (SERIAL_BAUD >= 1000000 ? 7 : 6), 0, 0, 0, 0, 0,
                   1);
-  else
+  } else {
     display->DisplayText("USB UART", 0, 0, 0, 0, 0, 1);
+  }
 #endif
 
   while (1) {
@@ -538,6 +539,7 @@ void Task_ReadSerial(void *pvParameters) {
             Serial.write(ZEDMD_VERSION_PATCH);
             numCtrlCharsFound = 0;
             transportActive = true;
+            display->DisplayText("CONNECTED", 0, TOTAL_HEIGHT - 5, 0, 0, 0, 1);
             Serial.write('R');
             break;
           }
@@ -643,7 +645,7 @@ void Task_ReadSerial(void *pvParameters) {
           case 98:  // disable debug mode
           {
             Serial.write('A');
-            debug = false;
+            debug = 0;
             numCtrlCharsFound = 0;
             break;
           }
@@ -651,7 +653,7 @@ void Task_ReadSerial(void *pvParameters) {
           case 99:  // enable debug mode
           {
             Serial.write('A');
-            debug = true;
+            debug = 1;
             numCtrlCharsFound = 0;
             break;
           }
@@ -1314,8 +1316,10 @@ void setup() {
           }
 #ifdef ZEDMD_HD_HALF
           case 6: {  // Y Offset
-            if (up && ++yOffset > 32) yOffset = 0;
-            else if (down && --yOffset < 0) yOffset = 32;
+            if (up && ++yOffset > 32)
+              yOffset = 0;
+            else if (down && --yOffset < 0)
+              yOffset = 32;
             display->ClearScreen();
             RefreshSetupScreen();
             display->DisplayText("Y Offset",
