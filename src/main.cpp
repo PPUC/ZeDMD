@@ -104,7 +104,7 @@ uint8_t brightness = 2;
 #endif
 
 uint8_t settingsMenu = 0;
-uint8_t debug = 0;
+static uint8_t debug = 0;
 
 String ssid;
 String pwd;
@@ -518,7 +518,7 @@ void Task_ReadSerial(void *pvParameters) {
   Serial.setTimeout(SERIAL_TIMEOUT);
   Serial.begin(SERIAL_BAUD);
   while (!Serial);
-  if (debug) {
+  if (1 == debug) {
     DisplayNumber(SERIAL_BAUD, (SERIAL_BAUD >= 1000000 ? 7 : 6), 0, 0, 0, 0, 0,
                   1);
   } else {
@@ -684,7 +684,7 @@ void Task_ReadSerial(void *pvParameters) {
             payloadSize = (Serial.read() << 8) | Serial.read();
 
             if (payloadSize > BUFFER_SIZE || payloadSize == 0) {
-              if (debug) {
+              if (1 == debug) {
                 display->DisplayText("payloadSize > BUFFER_SIZE", 10, 13, 255,
                                      0, 0);
                 while (1);
@@ -1548,7 +1548,7 @@ void loop() {
           }
         }
       } else {
-        if (debug) {
+        if (1 == debug) {
           display->DisplayText("miniz error ", 0, 0, 255, 0, 0);
           DisplayNumber(minizStatus, 3, 0, 6, 255, 0, 0);
         }
