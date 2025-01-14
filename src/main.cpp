@@ -41,7 +41,7 @@
 #define NUM_RENDER_BUFFERS 2
 #endif
 #else
-#define NUM_BUFFERS 16  // Number of buffers
+#define NUM_BUFFERS 12  // Number of buffers
 #define NUM_RENDER_BUFFERS 1
 #endif
 #define BUFFER_SIZE 1152
