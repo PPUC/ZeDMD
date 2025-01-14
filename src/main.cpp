@@ -661,7 +661,7 @@ void Task_ReadSerial(void *pvParameters) {
             numCtrlCharsFound = 0;
             break;
           }
-
+/*
           case 98:  // disable debug mode
           {
             Serial.write('A');
@@ -677,7 +677,7 @@ void Task_ReadSerial(void *pvParameters) {
             numCtrlCharsFound = 0;
             break;
           }
-
+*/
           case 5:  // mode RGB565 zones streaming
           {
             // Read payload size (next 2 bytes)
