@@ -5,8 +5,8 @@
 #include "fonts/tiny4x6.h"
 
 LedMatrix::LedMatrix() {
-  const uint8_t colorPins1[3] = {R1_PIN, G1_PIN, B1_PIN};
-  const uint8_t colorPins2[3] = {R2_PIN, G2_PIN, B2_PIN};
+  int8_t colorPins1[3] = {R1_PIN, G1_PIN, B1_PIN};
+  int8_t colorPins2[3] = {R2_PIN, G2_PIN, B2_PIN};
   const HUB75_I2S_CFG::i2s_pins pins = {colorPins1[rgbOrder[rgbMode * 3]],
                                         colorPins1[rgbOrder[rgbMode * 3 + 1]],
                                         colorPins1[rgbOrder[rgbMode * 3 + 2]],
