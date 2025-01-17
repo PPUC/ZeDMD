@@ -17,6 +17,7 @@
 #include "esp_log.h"
 #include "esp_task_wdt.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/portmacro.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "miniz/miniz.h"
@@ -72,25 +73,24 @@
 enum { TRANSPORT_USB = 0, TRANSPORT_WIFI = 1, TRANSPORT_SPI = 2 };
 
 DisplayDriver *display;
-AsyncUDP udp;
+AsyncUDP *udp;
+AsyncWebServer *server;
+
+static portMUX_TYPE bufferMutex = portMUX_INITIALIZER_UNLOCKED;
 
 // Buffers for storing data
-uint8_t *buffers[NUM_BUFFERS];
-uint16_t bufferSizes[NUM_BUFFERS] __attribute__((aligned(4))) = {0};
-
-// Semaphores
-static SemaphoreHandle_t xBufferMutex;
-static SemaphoreHandle_t xRenderMutex;
+static uint8_t *buffers[NUM_BUFFERS];
+static uint16_t bufferSizes[NUM_BUFFERS] __attribute__((aligned(4))) = {0};
 
 // The uncompress buffer should be bug enough
-uint8_t uncompressBuffer[2048] __attribute__((aligned(4)));
+static uint8_t uncompressBuffer[2048] __attribute__((aligned(4)));
 static uint8_t *renderBuffer[NUM_RENDER_BUFFERS];
 static uint8_t currentRenderBuffer __attribute__((aligned(4))) = 0;
 static uint8_t lastRenderBuffer __attribute__((aligned(4))) =
     NUM_RENDER_BUFFERS - 1;
 
-uint16_t payloadSize __attribute__((aligned(4))) = 0;
-uint8_t command __attribute__((aligned(4))) = 0;
+static uint16_t payloadSize __attribute__((aligned(4))) = 0;
+static uint8_t command __attribute__((aligned(4))) = 0;
 static uint8_t currentBuffer __attribute__((aligned(4))) = NUM_BUFFERS - 1;
 static uint8_t lastBuffer __attribute__((aligned(4))) = currentBuffer;
 static uint8_t processingBuffer __attribute__((aligned(4))) = NUM_BUFFERS - 1;
@@ -103,7 +103,7 @@ uint8_t brightness = 5;
 uint8_t brightness = 2;
 #endif
 
-uint8_t settingsMenu = 0;
+static uint8_t settingsMenu = 0;
 static uint8_t debug = 0;
 
 String ssid;
@@ -343,81 +343,65 @@ void LedTester(void) {
 }
 
 bool AcquireNextBuffer() {
-  if (xSemaphoreTake(xBufferMutex, portMAX_DELAY)) {
-    if (currentBuffer == lastBuffer &&
-        ((currentBuffer + 1) % NUM_BUFFERS) != processingBuffer) {
-      currentBuffer = (currentBuffer + 1) % NUM_BUFFERS;
-      return true;
-    }
-    xSemaphoreGive(xBufferMutex);
-  } else {
-    display->DisplayText("Failed to acquire new buffer", 0, 0, 255, 0, 0);
-    DisplayNumber(currentBuffer, 2, (TOTAL_WIDTH / 2) + 18, TOTAL_HEIGHT - 6,
-                  255, 191, 0);
+  portENTER_CRITICAL(&bufferMutex);
+  if (currentBuffer == lastBuffer &&
+      ((currentBuffer + 1) % NUM_BUFFERS) != processingBuffer) {
+    currentBuffer = (currentBuffer + 1) % NUM_BUFFERS;
+    portEXIT_CRITICAL(&bufferMutex);
+    return true;
   }
-  vTaskDelay(pdMS_TO_TICKS(1));
+  portEXIT_CRITICAL(&bufferMutex);
   return false;
 }
 
 void MarkCurrentBufferDone() {
+  portENTER_CRITICAL(&bufferMutex);
   lastBuffer = currentBuffer;
-  xSemaphoreGive(xBufferMutex);
+  portEXIT_CRITICAL(&bufferMutex);
 }
 
 bool AcquireNextProcessingBuffer() {
-  if (xSemaphoreTake(xBufferMutex, portMAX_DELAY)) {
-    if (processingBuffer != currentBuffer &&
-        (((processingBuffer + 1) % NUM_BUFFERS) != currentBuffer ||
-         currentBuffer == lastBuffer)) {
-      processingBuffer = (processingBuffer + 1) % NUM_BUFFERS;
-      return true;
-    }
-    xSemaphoreGive(xBufferMutex);
+  if (processingBuffer != currentBuffer &&
+      (((processingBuffer + 1) % NUM_BUFFERS) != currentBuffer ||
+       currentBuffer == lastBuffer)) {
+    processingBuffer = (processingBuffer + 1) % NUM_BUFFERS;
+    return true;
   }
-  vTaskDelay(pdMS_TO_TICKS(2));
   return false;
 }
 
-void MarkBufferProcessed() { xSemaphoreGive(xBufferMutex); }
-
 void Render() {
-  if (xSemaphoreTake(xRenderMutex, portMAX_DELAY)) {
-    if (NUM_RENDER_BUFFERS == 1) {
-      display->FillPanelRaw(renderBuffer[currentRenderBuffer]);
-    } else if (currentRenderBuffer != lastRenderBuffer) {
-      uint16_t pos;
+  if (NUM_RENDER_BUFFERS == 1) {
+    display->FillPanelRaw(renderBuffer[currentRenderBuffer]);
+  } else if (currentRenderBuffer != lastRenderBuffer) {
+    uint16_t pos;
 
-      for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
-        for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
-          pos = (y * TOTAL_WIDTH + x) * 3;
-          if (!(0 == memcmp(&renderBuffer[currentRenderBuffer][pos],
-                            &renderBuffer[lastRenderBuffer][pos], 3))) {
-            display->DrawPixel(x, y, renderBuffer[currentRenderBuffer][pos],
-                               renderBuffer[currentRenderBuffer][pos + 1],
-                               renderBuffer[currentRenderBuffer][pos + 2]);
-          }
+    for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
+      for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
+        pos = (y * TOTAL_WIDTH + x) * 3;
+        if (!(0 == memcmp(&renderBuffer[currentRenderBuffer][pos],
+                          &renderBuffer[lastRenderBuffer][pos], 3))) {
+          display->DrawPixel(x, y, renderBuffer[currentRenderBuffer][pos],
+                             renderBuffer[currentRenderBuffer][pos + 1],
+                             renderBuffer[currentRenderBuffer][pos + 2]);
         }
       }
-
-      lastRenderBuffer = currentRenderBuffer;
-      currentRenderBuffer = (currentRenderBuffer + 1) % NUM_RENDER_BUFFERS;
-      memcpy(renderBuffer[currentRenderBuffer], renderBuffer[lastRenderBuffer],
-             TOTAL_BYTES);
     }
-    xSemaphoreGive(xRenderMutex);
+
+    lastRenderBuffer = currentRenderBuffer;
+    currentRenderBuffer = (currentRenderBuffer + 1) % NUM_RENDER_BUFFERS;
+    memcpy(renderBuffer[currentRenderBuffer], renderBuffer[lastRenderBuffer],
+           TOTAL_BYTES);
   }
 }
 
 void ClearScreen() {
   display->ClearScreen();
-  if (xSemaphoreTake(xRenderMutex, portMAX_DELAY)) {
-    memset(renderBuffer[currentRenderBuffer], 0, TOTAL_BYTES);
+  memset(renderBuffer[currentRenderBuffer], 0, TOTAL_BYTES);
 
-    if (NUM_RENDER_BUFFERS > 1) {
-      lastRenderBuffer = currentRenderBuffer;
-      currentRenderBuffer = (currentRenderBuffer + 1) % NUM_RENDER_BUFFERS;
-    }
-    xSemaphoreGive(xRenderMutex);
+  if (NUM_RENDER_BUFFERS > 1) {
+    lastRenderBuffer = currentRenderBuffer;
+    currentRenderBuffer = (currentRenderBuffer + 1) % NUM_RENDER_BUFFERS;
   }
 }
 
@@ -434,22 +418,19 @@ void DisplayLogo(void) {
     display->DisplayText("Logo is missing", 0, 0, 255, 0, 0);
     return;
   }
-  if (xSemaphoreTake(xRenderMutex, portMAX_DELAY)) {
-    for (uint16_t tj = 0; tj < TOTAL_BYTES; tj += 3) {
-      if (rgbMode == rgbModeLoaded) {
-        renderBuffer[currentRenderBuffer][tj] = f.read();
-        renderBuffer[currentRenderBuffer][tj + 1] = f.read();
-        renderBuffer[currentRenderBuffer][tj + 2] = f.read();
-      } else {
-        renderBuffer[currentRenderBuffer][tj + rgbOrder[rgbMode * 3]] =
-            f.read();
-        renderBuffer[currentRenderBuffer][tj + rgbOrder[rgbMode * 3 + 1]] =
-            f.read();
-        renderBuffer[currentRenderBuffer][tj + rgbOrder[rgbMode * 3 + 2]] =
-            f.read();
-      }
+
+  for (uint16_t tj = 0; tj < TOTAL_BYTES; tj += 3) {
+    if (rgbMode == rgbModeLoaded) {
+      renderBuffer[currentRenderBuffer][tj] = f.read();
+      renderBuffer[currentRenderBuffer][tj + 1] = f.read();
+      renderBuffer[currentRenderBuffer][tj + 2] = f.read();
+    } else {
+      renderBuffer[currentRenderBuffer][tj + rgbOrder[rgbMode * 3]] = f.read();
+      renderBuffer[currentRenderBuffer][tj + rgbOrder[rgbMode * 3 + 1]] =
+          f.read();
+      renderBuffer[currentRenderBuffer][tj + rgbOrder[rgbMode * 3 + 2]] =
+          f.read();
     }
-    xSemaphoreGive(xRenderMutex);
   }
 
   f.close();
@@ -471,11 +452,8 @@ void DisplayUpdate(void) {
     return;
   }
 
-  if (xSemaphoreTake(xRenderMutex, portMAX_DELAY)) {
-    for (uint16_t tj = 0; tj < TOTAL_BYTES; tj++) {
-      renderBuffer[currentRenderBuffer][tj] = f.read();
-    }
-    xSemaphoreGive(xRenderMutex);
+  for (uint16_t tj = 0; tj < TOTAL_BYTES; tj++) {
+    renderBuffer[currentRenderBuffer][tj] = f.read();
   }
 
   f.close();
@@ -771,7 +749,6 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
   uint16_t receivedBytes = packet.length();
   if (receivedBytes >= 1 && receivedBytes <= (BUFFER_SIZE + 1)) {
     command = pPacket[0];
-
     switch (command) {
       case 16: {
         LedTester();
@@ -779,8 +756,7 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
         break;
       }
 
-      case 10:  // clear screen
-      {
+      case 10: {  // Clear screen
         if (AcquireNextBuffer()) {
           bufferSizes[currentBuffer] = 2;
           buffers[currentBuffer][0] = 0;
@@ -790,9 +766,8 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
         break;
       }
 
-      case 5:  // RGB565 Zones Stream
-      {
-        payloadSize = receivedBytes - 1;
+      case 5: {  // RGB565 Zones Stream
+        uint16_t payloadSize = receivedBytes - 1;
         if (AcquireNextBuffer()) {
           bufferSizes[currentBuffer] = payloadSize;
           memcpy(buffers[currentBuffer], &pPacket[1], payloadSize);
@@ -801,8 +776,7 @@ void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
         break;
       }
 
-      case 6:  // Render
-      {
+      case 6: {  // Render
 #if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
         if (AcquireNextBuffer()) {
           bufferSizes[currentBuffer] = 2;
@@ -878,256 +852,228 @@ void StartWiFi() {
     Restart();
   }
 
-  if (udp.listen(ip, port)) {
-    udp.onPacket(HandlePacket);  // Start listening to ZeDMD UDP traffic
+  udp = new AsyncUDP();
+  if (udp->listen(ip, port)) {
+    udp->onPacket(HandlePacket);  // Start listening to ZeDMD UDP traffic
   }
 
   wifiActive = true;
-}
 
-void Task_WiFi(void *pvParameters) {
-  StartWiFi();
-  AsyncWebServer server(80);
-  if (wifiActive) {
-    // Start the MDNS server for easy detection
-    RunMDNS();
+  // Start the MDNS server for easy detection
+  RunMDNS();
 
-    // Serve index.html
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-      request->send(LittleFS, "/index.html", String(), false);
-    });
+  server = new AsyncWebServer(80);
 
-    // Handle AJAX request to save WiFi configuration
-    server.on("/save_wifi", HTTP_POST, [](AsyncWebServerRequest *request) {
-      if (request->hasParam("ssid", true) &&
-          request->hasParam("password", true) &&
-          request->hasParam("port", true)) {
-        ssid = request->getParam("ssid", true)->value();
-        pwd = request->getParam("password", true)->value();
-        port = request->getParam("port", true)->value().toInt();
-        ssid_length = ssid.length();
-        pwd_length = pwd.length();
+  // Serve index.html
+  server->on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(LittleFS, "/index.html", String(), false);
+  });
 
-        bool success = SaveWiFiConfig();
-        if (success) {
-          request->send(200, "text/plain", "Config saved successfully!");
-          Restart();
-        } else {
-          request->send(500, "text/plain", "Failed to save config!");
-        }
+  // Handle AJAX request to save WiFi configuration
+  server->on("/save_wifi", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (request->hasParam("ssid", true) &&
+        request->hasParam("password", true) &&
+        request->hasParam("port", true)) {
+      ssid = request->getParam("ssid", true)->value();
+      pwd = request->getParam("password", true)->value();
+      port = request->getParam("port", true)->value().toInt();
+      ssid_length = ssid.length();
+      pwd_length = pwd.length();
+
+      bool success = SaveWiFiConfig();
+      if (success) {
+        request->send(200, "text/plain", "Config saved successfully!");
+        Restart();
       } else {
-        request->send(400, "text/plain", "Missing parameters!");
+        request->send(500, "text/plain", "Failed to save config!");
       }
-    });
+    } else {
+      request->send(400, "text/plain", "Missing parameters!");
+    }
+  });
 
-    server.on("/wifi_status", HTTP_GET, [](AsyncWebServerRequest *request) {
-      String jsonResponse;
-      if (WiFi.status() == WL_CONNECTED) {
-        int rssi = WiFi.RSSI();
-        IPAddress ip = WiFi.localIP();  // Get the local IP address
+  server->on("/wifi_status", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String jsonResponse;
+    if (WiFi.status() == WL_CONNECTED) {
+      int rssi = WiFi.RSSI();
+      IPAddress ip = WiFi.localIP();  // Get the local IP address
 
-        jsonResponse = "{\"connected\":true,\"ssid\":\"" + WiFi.SSID() +
-                       "\",\"signal\":" + String(rssi) + "," + "\"ip\":\"" +
-                       ip.toString() + "\"," + "\"port\":" + String(port) + "}";
-      } else {
-        jsonResponse = "{\"connected\":false}";
-      }
+      jsonResponse = "{\"connected\":true,\"ssid\":\"" + WiFi.SSID() +
+                     "\",\"signal\":" + String(rssi) + "," + "\"ip\":\"" +
+                     ip.toString() + "\"," + "\"port\":" + String(port) + "}";
+    } else {
+      jsonResponse = "{\"connected\":false}";
+    }
 
-      request->send(200, "application/json", jsonResponse);
-    });
+    request->send(200, "application/json", jsonResponse);
+  });
 
-    // Route to save RGB order
-    server.on("/save_rgb_order", HTTP_POST, [](AsyncWebServerRequest *request) {
-      if (request->hasParam("rgbOrder", true)) {
-        if (rgbModeLoaded != 0) {
-          request->send(
-              200, "text/plain",
-              "ZeDMD needs to reboot first before the RGB order can be "
-              "adjusted. Try again in a few seconds.");
+  // Route to save RGB order
+  server->on("/save_rgb_order", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (request->hasParam("rgbOrder", true)) {
+      if (rgbModeLoaded != 0) {
+        request->send(200, "text/plain",
+                      "ZeDMD needs to reboot first before the RGB order can be "
+                      "adjusted. Try again in a few seconds.");
 
-          rgbMode = 0;
-          SaveRgbOrder();
-          Restart();
-        }
-
-        String rgbOrderValue = request->getParam("rgbOrder", true)->value();
-        rgbMode =
-            rgbOrderValue.toInt();  // Convert to integer and set the RGB mode
+        rgbMode = 0;
         SaveRgbOrder();
-        RefreshSetupScreen();
-        request->send(200, "text/plain", "RGB order updated successfully");
-      } else {
-        request->send(400, "text/plain", "Missing RGB order parameter");
+        Restart();
       }
-    });
 
-    // Route to save brightness
-    server.on(
-        "/save_brightness", HTTP_POST, [](AsyncWebServerRequest *request) {
-          if (request->hasParam("brightness", true)) {
-            String brightnessValue =
-                request->getParam("brightness", true)->value();
-            brightness = brightnessValue.toInt();
-            GetDisplayObject()->SetBrightness(brightness);
-            SaveLum();
-            RefreshSetupScreen();
-            request->send(200, "text/plain", "Brightness updated successfully");
-          } else {
-            request->send(400, "text/plain", "Missing brightness parameter");
-          }
-        });
+      String rgbOrderValue = request->getParam("rgbOrder", true)->value();
+      rgbMode =
+          rgbOrderValue.toInt();  // Convert to integer and set the RGB mode
+      SaveRgbOrder();
+      RefreshSetupScreen();
+      request->send(200, "text/plain", "RGB order updated successfully");
+    } else {
+      request->send(400, "text/plain", "Missing RGB order parameter");
+    }
+  });
 
-    server.on("/get_version", HTTP_GET, [](AsyncWebServerRequest *request) {
-      String version = String(ZEDMD_VERSION_MAJOR) + "." +
-                       String(ZEDMD_VERSION_MINOR) + "." +
-                       String(ZEDMD_VERSION_PATCH);
-      request->send(200, "text/plain", version);
-    });
+  // Route to save brightness
+  server->on("/save_brightness", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (request->hasParam("brightness", true)) {
+      String brightnessValue = request->getParam("brightness", true)->value();
+      brightness = brightnessValue.toInt();
+      GetDisplayObject()->SetBrightness(brightness);
+      SaveLum();
+      RefreshSetupScreen();
+      request->send(200, "text/plain", "Brightness updated successfully");
+    } else {
+      request->send(400, "text/plain", "Missing brightness parameter");
+    }
+  });
 
-    server.on("/get_height", HTTP_GET, [](AsyncWebServerRequest *request) {
-      request->send(200, "text/plain", String(TOTAL_HEIGHT));
-    });
+  server->on("/get_version", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String version = String(ZEDMD_VERSION_MAJOR) + "." +
+                     String(ZEDMD_VERSION_MINOR) + "." +
+                     String(ZEDMD_VERSION_PATCH);
+    request->send(200, "text/plain", version);
+  });
 
-    server.on("/get_width", HTTP_GET, [](AsyncWebServerRequest *request) {
-      request->send(200, "text/plain", String(TOTAL_WIDTH));
-    });
+  server->on("/get_height", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", String(TOTAL_HEIGHT));
+  });
 
-    server.on("/get_s3", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server->on("/get_width", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", String(TOTAL_WIDTH));
+  });
+
+  server->on("/get_s3", HTTP_GET, [](AsyncWebServerRequest *request) {
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
-      request->send(200, "text/plain", String(1));
+    request->send(200, "text/plain", String(1));
 #else
     request->send(200, "text/plain", String(0));
 #endif
-    });
+  });
 
-    server.on("/ppuc.png", HTTP_GET, [](AsyncWebServerRequest *request) {
-      request->send(LittleFS, "/ppuc.png", "image/png");
-    });
+  server->on("/ppuc.png", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(LittleFS, "/ppuc.png", "image/png");
+  });
 
-    server.on("/reset_wifi", HTTP_POST, [](AsyncWebServerRequest *request) {
-      LittleFS.remove("/wifi_config.txt");  // Remove Wi-Fi config
-      request->send(200, "text/plain", "Wi-Fi reset successful.");
-      Restart();  // Restart the device
-    });
+  server->on("/reset_wifi", HTTP_POST, [](AsyncWebServerRequest *request) {
+    LittleFS.remove("/wifi_config.txt");  // Remove Wi-Fi config
+    request->send(200, "text/plain", "Wi-Fi reset successful.");
+    Restart();  // Restart the device
+  });
 
-    server.on("/apply", HTTP_POST, [](AsyncWebServerRequest *request) {
-      request->send(200, "text/plain", "Apply successful.");
-      Restart();  // Restart the device
-    });
+  server->on("/apply", HTTP_POST, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "Apply successful.");
+    Restart();  // Restart the device
+  });
 
-    // Serve debug information
-    server.on("/debug_info", HTTP_GET, [](AsyncWebServerRequest *request) {
-      String debugInfo = "IP Address: " + WiFi.localIP().toString() + "\n";
-      debugInfo += "SSID: " + WiFi.SSID() + "\n";
-      debugInfo += "RSSI: " + String(WiFi.RSSI()) + "\n";
-      debugInfo += "Heap Free: " + String(ESP.getFreeHeap()) + " bytes\n";
-      debugInfo += "Uptime: " + String(millis() / 1000) + " seconds\n";
-      // Add more here if you need it
-      request->send(200, "text/plain", debugInfo);
-    });
+  // Serve debug information
+  server->on("/debug_info", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String debugInfo = "IP Address: " + WiFi.localIP().toString() + "\n";
+    debugInfo += "SSID: " + WiFi.SSID() + "\n";
+    debugInfo += "RSSI: " + String(WiFi.RSSI()) + "\n";
+    debugInfo += "Heap Free: " + String(ESP.getFreeHeap()) + " bytes\n";
+    debugInfo += "Uptime: " + String(millis() / 1000) + " seconds\n";
+    // Add more here if you need it
+    request->send(200, "text/plain", debugInfo);
+  });
 
-    // Route to return the current settings as JSON
-    server.on("/get_config", HTTP_GET, [](AsyncWebServerRequest *request) {
-      String trimmedSsid = ssid;
-      trimmedSsid.trim();
+  // Route to return the current settings as JSON
+  server->on("/get_config", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String trimmedSsid = ssid;
+    trimmedSsid.trim();
 
-      if (port == 0) {
-        port = 3333;  // Set default port number for webinterface
-      }
-
-      String json = "{";
-      json += "\"ssid\":\"" + trimmedSsid + "\",";
-      json += "\"port\":" + String(port) + ",";
-      json += "\"rgbOrder\":" + String(rgbMode) + ",";
-      json += "\"brightness\":" + String(brightness) + ",";
-      json += "\"scaleMode\":" + String(display->GetCurrentScalingMode());
-      json += "}";
-      request->send(200, "application/json", json);
-    });
-
-    server.on(
-        "/get_scaling_modes", HTTP_GET, [](AsyncWebServerRequest *request) {
-          if (!display) {
-            request->send(500, "application/json",
-                          "{\"error\":\"Display object not initialized\"}");
-            return;
-          }
-
-          String jsonResponse;
-          if (display->HasScalingModes()) {
-            jsonResponse = "{";
-            jsonResponse += "\"hasScalingModes\":true,";
-
-            // Fetch current scaling mode
-            uint8_t currentMode = display->GetCurrentScalingMode();
-            jsonResponse += "\"currentMode\":" + String(currentMode) + ",";
-
-            // Add the list of available scaling modes
-            jsonResponse += "\"modes\":[";
-            const char **scalingModes = display->GetScalingModes();
-            uint8_t modeCount = display->GetScalingModeCount();
-            for (uint8_t i = 0; i < modeCount; i++) {
-              jsonResponse += "\"" + String(scalingModes[i]) + "\"";
-              if (i < modeCount - 1) {
-                jsonResponse += ",";
-              }
-            }
-            jsonResponse += "]";
-            jsonResponse += "}";
-          } else {
-            jsonResponse = "{\"hasScalingModes\":false}";
-          }
-
-          request->send(200, "application/json", jsonResponse);
-        });
-
-    // POST request to save the selected scaling mode
-    server.on(
-        "/save_scaling_mode", HTTP_POST, [](AsyncWebServerRequest *request) {
-          if (!display) {
-            request->send(500, "text/plain", "Display object not initialized");
-            return;
-          }
-
-          if (request->hasParam("scalingMode", true)) {
-            String scalingModeValue =
-                request->getParam("scalingMode", true)->value();
-            uint8_t scalingMode = scalingModeValue.toInt();
-
-            // Update the scaling mode using the global display object
-            display->SetCurrentScalingMode(scalingMode);
-            SaveScale();
-            request->send(200, "text/plain",
-                          "Scaling mode updated successfully");
-          } else {
-            request->send(400, "text/plain", "Missing scaling mode parameter");
-          }
-        });
-
-    // Start the web server
-    server.begin();
-  } else {
-    display->DisplayText("No WiFi connection", 10, 13, 255, 0, 0);
-    while (1);
-  }
-  while (1) {
-    // Avoid busy-waiting
-    vTaskDelay(pdMS_TO_TICKS(1));
-  }
-}
-
-void Task_SettingsMenu(void *pvParameters) {
-  while (1) {
-    if (!digitalRead(FORWARD_BUTTON_PIN)) {
-      File f = LittleFS.open("/settings_menu.val", "w");
-      f.write(1);
-      f.close();
-      delay(100);
-      Restart();
+    if (port == 0) {
+      port = 3333;  // Set default port number for webinterface
     }
-    // Avoid busy-waiting
-    vTaskDelay(pdMS_TO_TICKS(100));
-  }
+
+    String json = "{";
+    json += "\"ssid\":\"" + trimmedSsid + "\",";
+    json += "\"port\":" + String(port) + ",";
+    json += "\"rgbOrder\":" + String(rgbMode) + ",";
+    json += "\"brightness\":" + String(brightness) + ",";
+    json += "\"scaleMode\":" + String(display->GetCurrentScalingMode());
+    json += "}";
+    request->send(200, "application/json", json);
+  });
+
+  server->on(
+      "/get_scaling_modes", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if (!display) {
+          request->send(500, "application/json",
+                        "{\"error\":\"Display object not initialized\"}");
+          return;
+        }
+
+        String jsonResponse;
+        if (display->HasScalingModes()) {
+          jsonResponse = "{";
+          jsonResponse += "\"hasScalingModes\":true,";
+
+          // Fetch current scaling mode
+          uint8_t currentMode = display->GetCurrentScalingMode();
+          jsonResponse += "\"currentMode\":" + String(currentMode) + ",";
+
+          // Add the list of available scaling modes
+          jsonResponse += "\"modes\":[";
+          const char **scalingModes = display->GetScalingModes();
+          uint8_t modeCount = display->GetScalingModeCount();
+          for (uint8_t i = 0; i < modeCount; i++) {
+            jsonResponse += "\"" + String(scalingModes[i]) + "\"";
+            if (i < modeCount - 1) {
+              jsonResponse += ",";
+            }
+          }
+          jsonResponse += "]";
+          jsonResponse += "}";
+        } else {
+          jsonResponse = "{\"hasScalingModes\":false}";
+        }
+
+        request->send(200, "application/json", jsonResponse);
+      });
+
+  // POST request to save the selected scaling mode
+  server->on(
+      "/save_scaling_mode", HTTP_POST, [](AsyncWebServerRequest *request) {
+        if (!display) {
+          request->send(500, "text/plain", "Display object not initialized");
+          return;
+        }
+
+        if (request->hasParam("scalingMode", true)) {
+          String scalingModeValue =
+              request->getParam("scalingMode", true)->value();
+          uint8_t scalingMode = scalingModeValue.toInt();
+
+          // Update the scaling mode using the global display object
+          display->SetCurrentScalingMode(scalingMode);
+          SaveScale();
+          request->send(200, "text/plain", "Scaling mode updated successfully");
+        } else {
+          request->send(400, "text/plain", "Missing scaling mode parameter");
+        }
+      });
+
+  // Start the web server
+  server->begin();
 }
 
 void setup() {
@@ -1159,9 +1105,6 @@ void setup() {
     while (true);
   }
 
-  xRenderMutex = xSemaphoreCreateMutex();
-  while (!xSemaphoreTake(xRenderMutex, portMAX_DELAY));
-
   for (uint8_t i = 0; i < NUM_RENDER_BUFFERS; i++) {
 #ifdef BOARD_HAS_PSRAM
     renderBuffer[i] = (uint8_t *)heap_caps_malloc(
@@ -1175,8 +1118,6 @@ void setup() {
     }
     memset(renderBuffer[i], 0, TOTAL_BYTES);
   }
-
-  xSemaphoreGive(xRenderMutex);
 
   if (settingsMenu) {
     RefreshSetupScreen();
@@ -1352,7 +1293,7 @@ void setup() {
         }
       }
 
-      delay(10);
+      delay(1);
     }
   }
 
@@ -1374,10 +1315,6 @@ void setup() {
     }
   }
 
-  xBufferMutex = xSemaphoreCreateMutex();
-  while (!xSemaphoreTake(xBufferMutex, portMAX_DELAY));
-  xSemaphoreGive(xBufferMutex);
-
   switch (transport) {
     case TRANSPORT_USB: {
 #ifdef BOARD_HAS_PSRAM
@@ -1391,11 +1328,7 @@ void setup() {
     }
 
     case TRANSPORT_WIFI: {
-#ifdef BOARD_HAS_PSRAM
-      xTaskCreatePinnedToCore(Task_WiFi, "Task_WiFi", 8192, NULL, 1, NULL, 0);
-#else
-      xTaskCreatePinnedToCore(Task_WiFi, "Task_WiFi", 4096, NULL, 1, NULL, 0);
-#endif
+      StartWiFi();
       break;
     }
 
@@ -1406,14 +1339,18 @@ void setup() {
     }
   }
 
-  xTaskCreatePinnedToCore(Task_SettingsMenu, "Task_SettingsMenu", 4096, NULL, 1,
-                          NULL, 1);
-
   display->DrawPixel(TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 2,
                      TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 2, 127, 127, 127);
 }
 
 void loop() {
+  if (!digitalRead(FORWARD_BUTTON_PIN)) {
+    settingsMenu = true;
+    SaveSettingsMenu();
+    delay(100);
+    Restart();
+  }
+
   while (!transportActive) {
     for (uint8_t i = 0; i <= 127; i += 127) {
       switch (transportWaitCounter) {
@@ -1462,31 +1399,30 @@ void loop() {
       if (!i) transportWaitCounter = (transportWaitCounter + 1) % 8;
     }
 
-    vTaskDelay(pdMS_TO_TICKS(100));
+    delay(100);
   }
 
   if (AcquireNextProcessingBuffer()) {
     if (2 == bufferSizes[processingBuffer] &&
         255 == buffers[processingBuffer][0] &&
         255 == buffers[processingBuffer][1]) {
-      MarkBufferProcessed();
 #if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
       Render();
 #endif
     } else if (2 == bufferSizes[processingBuffer] &&
                0 == buffers[processingBuffer][0] &&
                0 == buffers[processingBuffer][1]) {
-      MarkBufferProcessed();
       ClearScreen();
     } else {
       mz_ulong compressedBufferSize = (mz_ulong)bufferSizes[processingBuffer];
       mz_ulong uncompressedBufferSize = (mz_ulong)TOTAL_BYTES;
       memset(uncompressBuffer, 0, 2048);
+
+      portENTER_CRITICAL(&bufferMutex);
       int minizStatus =
           mz_uncompress2(uncompressBuffer, &uncompressedBufferSize,
                          buffers[processingBuffer], &compressedBufferSize);
-
-      MarkBufferProcessed();
+      portEXIT_CRITICAL(&bufferMutex);
 
       if (MZ_OK == minizStatus) {
         uint16_t uncompressedBufferPosition = 0;
@@ -1497,14 +1433,10 @@ void loop() {
                 uncompressBuffer[uncompressedBufferPosition++] - 128;
             const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
             const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
-            if (xSemaphoreTake(xRenderMutex, portMAX_DELAY)) {
-              for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
-                memset(
-                    &renderBuffer[currentRenderBuffer]
-                                 [((yOffset + y) * TOTAL_WIDTH + xOffset) * 3],
-                    0, ZONE_WIDTH * 3);
-              }
-              xSemaphoreGive(xRenderMutex);
+            for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
+              memset(&renderBuffer[currentRenderBuffer]
+                                  [((yOffset + y) * TOTAL_WIDTH + xOffset) * 3],
+                     0, ZONE_WIDTH * 3);
             }
 #else
             display->ClearZone(uncompressBuffer[uncompressedBufferPosition++] -
@@ -1516,28 +1448,25 @@ void loop() {
             const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
             const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
 
-            if (xSemaphoreTake(xRenderMutex, portMAX_DELAY)) {
-              for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
-                for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
-                  const uint16_t rgb565 =
-                      uncompressBuffer[uncompressedBufferPosition++] +
-                      (((uint16_t)
-                            uncompressBuffer[uncompressedBufferPosition++])
-                       << 8);
-                  uint8_t rgb888[3];
-                  rgb888[0] = (rgb565 >> 8) & 0xf8;
-                  rgb888[1] = (rgb565 >> 3) & 0xfc;
-                  rgb888[2] = (rgb565 << 3);
-                  rgb888[0] |= (rgb888[0] >> 5);
-                  rgb888[1] |= (rgb888[1] >> 6);
-                  rgb888[2] |= (rgb888[2] >> 5);
-                  memcpy(&renderBuffer
-                             [currentRenderBuffer]
-                             [((yOffset + y) * TOTAL_WIDTH + xOffset + x) * 3],
-                         rgb888, 3);
-                }
+            for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
+              for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
+                const uint16_t rgb565 =
+                    uncompressBuffer[uncompressedBufferPosition++] +
+                    (((uint16_t)uncompressBuffer[uncompressedBufferPosition++])
+                     << 8);
+                uint8_t rgb888[3];
+                rgb888[0] = (rgb565 >> 8) & 0xf8;
+                rgb888[1] = (rgb565 >> 3) & 0xfc;
+                rgb888[2] = (rgb565 << 3);
+                rgb888[0] |= (rgb888[0] >> 5);
+                rgb888[1] |= (rgb888[1] >> 6);
+                rgb888[2] |= (rgb888[2] >> 5);
+                memcpy(
+                    &renderBuffer[currentRenderBuffer]
+                                 [((yOffset + y) * TOTAL_WIDTH + xOffset + x) *
+                                  3],
+                    rgb888, 3);
               }
-              xSemaphoreGive(xRenderMutex);
             }
 #else
             display->FillZoneRaw565(
