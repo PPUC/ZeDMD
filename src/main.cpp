@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include <AsyncUDP.h>
+#include <AsyncTCP.h>
 #include <Bounce2.h>
 #include <ESPAsyncWebServer.h>
 #include <ESPmDNS.h>
@@ -39,7 +39,7 @@
 // @fixme double buffering doesn't work on Lilygo Amoled
 #define NUM_RENDER_BUFFERS 1
 #else
-#define NUM_RENDER_BUFFERS 2
+#define NUM_RENDER_BUFFERS 1
 #endif
 #else
 #define NUM_BUFFERS 12  // Number of buffers
@@ -73,7 +73,7 @@
 enum { TRANSPORT_USB = 0, TRANSPORT_WIFI = 1, TRANSPORT_SPI = 2 };
 
 DisplayDriver *display;
-AsyncUDP *udp;
+AsyncServer *tcp;
 AsyncWebServer *server;
 
 static portMUX_TYPE bufferMutex = portMUX_INITIALIZER_UNLOCKED;
@@ -744,63 +744,97 @@ void Task_ReadSerial(void *pvParameters) {
 
 /// @brief Handles the UDP Packet parsing for ZeDMD WiFi and ZeDMD-HD WiFi
 /// @param packet
-void IRAM_ATTR HandlePacket(AsyncUDPPacket packet) {
-  uint8_t *pPacket = packet.data();
-  uint16_t receivedBytes = packet.length();
-  if (receivedBytes >= 1 && receivedBytes <= (BUFFER_SIZE + 1)) {
-    command = pPacket[0];
-    switch (command) {
-      case 16: {
-        LedTester();
-        Restart();
-        break;
-      }
-
-      case 10: {  // Clear screen
-        if (AcquireNextBuffer()) {
-          bufferSizes[currentBuffer] = 2;
-          buffers[currentBuffer][0] = 0;
-          buffers[currentBuffer][1] = 0;
-          MarkCurrentBufferDone();
-        }
-        break;
-      }
-
-      case 5: {  // RGB565 Zones Stream
-        uint16_t payloadSize = receivedBytes - 1;
-        if (AcquireNextBuffer()) {
-          bufferSizes[currentBuffer] = payloadSize;
-          memcpy(buffers[currentBuffer], &pPacket[1], payloadSize);
-          MarkCurrentBufferDone();
-        }
-        break;
-      }
-
-      case 6: {  // Render
-#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
-        if (AcquireNextBuffer()) {
-          bufferSizes[currentBuffer] = 2;
-          buffers[currentBuffer][0] = 255;
-          buffers[currentBuffer][1] = 255;
-          MarkCurrentBufferDone();
-        }
-#endif
-        break;
-      }
+static void HandlePacket(uint8_t *packet, size_t packetSize) {
+  switch (command) {
+    case 16: {
+      LedTester();
+      Restart();
+      break;
     }
 
-    if (!transportActive) {
-      transportActive = true;
+    case 10: {  // Clear screen
+      if (AcquireNextBuffer()) {
+        bufferSizes[currentBuffer] = 2;
+        buffers[currentBuffer][0] = 0;
+        buffers[currentBuffer][1] = 0;
+        MarkCurrentBufferDone();
+      }
+      break;
+    }
+
+    case 5: {  // RGB565 Zones Stream
+      if (AcquireNextBuffer()) {
+        display->DisplayText("Zones", 10, 13, 255, 0, 0);
+        DisplayNumber(packetSize, 3, 0, 0, 255, 255, 255);
+        bufferSizes[currentBuffer] = packetSize;
+        memcpy(buffers[currentBuffer], packet, packetSize);
+        MarkCurrentBufferDone();
+      }
+      break;
+    }
+
+    case 6: {  // Render
+      display->DisplayText("Render", 10, TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
+#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
+      if (AcquireNextBuffer()) {
+        bufferSizes[currentBuffer] = 2;
+        buffers[currentBuffer][0] = 255;
+        buffers[currentBuffer][1] = 255;
+        MarkCurrentBufferDone();
+      }
+#endif
+      break;
     }
   }
 }
 
-/// @brief Handles the mDNS Packets for ZeDMD WiFi, this allows autodiscovery
-void RunMDNS() {
-  if (!MDNS.begin("ZeDMD-WiFi")) {
-    return;
+static std::vector<uint8_t> incompleteBuffer;
+
+void ProcessData(uint8_t *buffer, size_t length) {
+  // Append new data to the persistent buffer
+  incompleteBuffer.insert(incompleteBuffer.end(), buffer, buffer + length);
+
+  size_t offset = 0;
+
+  while (offset < incompleteBuffer.size()) {
+    // Ensure there is enough data for a chunk header
+    if (incompleteBuffer.size() - offset < 3) {
+      // Wait for more data to complete the header
+      break;
+    }
+
+    // Parse header
+    command = incompleteBuffer[offset++];
+    uint16_t packetSize =
+        (incompleteBuffer[offset++] << 8) | (incompleteBuffer[offset++]);
+
+    // Ensure there is enough data for the payload
+    if (incompleteBuffer.size() - offset < packetSize) {
+      // Wait for more data to complete the payload
+      offset -= 3;  // Rewind to the start of the chunk header
+      break;
+    }
+
+    // Process the chunk
+    HandlePacket(incompleteBuffer.data() + offset, packetSize);
+    offset += packetSize;
   }
-  MDNS.addService("zedmd-wifi", "udp", port);
+
+  // Remove processed data from the buffer
+  if (offset > 0) {
+    incompleteBuffer.erase(incompleteBuffer.begin(),
+                           incompleteBuffer.begin() + offset);
+  }
+}
+
+static void HandleNewClient(void *arg, AsyncClient *client) {
+  if (!transportActive) {
+    transportActive = true;
+  }
+
+  client->onData([](void *arg, AsyncClient *client, void *data,
+                    size_t len) { ProcessData((uint8_t *)data, len); },
+                 nullptr);
 }
 
 void StartWiFi() {
@@ -852,15 +886,19 @@ void StartWiFi() {
     Restart();
   }
 
-  udp = new AsyncUDP();
-  if (udp->listen(ip, port)) {
-    udp->onPacket(HandlePacket);  // Start listening to ZeDMD UDP traffic
-  }
-
   wifiActive = true;
 
+  tcp = new AsyncServer(port);
+  tcp->onClient(&HandleNewClient, tcp);
+  tcp->begin();
+
   // Start the MDNS server for easy detection
-  RunMDNS();
+  if (!MDNS.begin("zedmd-wifi")) {
+    display->DisplayText("MDNS could not be started", 10, TOTAL_HEIGHT / 2 - 9,
+                         255, 0, 0);
+    while (1);
+  }
+  //  MDNS.addService("zedmd-wifi", "tcp", port);
 
   server = new AsyncWebServer(80);
 
@@ -961,6 +999,10 @@ void StartWiFi() {
     request->send(200, "text/plain", String(TOTAL_WIDTH));
   });
 
+  server->on("/get_port", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", String(port));
+  });
+
   server->on("/get_s3", HTTP_GET, [](AsyncWebServerRequest *request) {
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
     request->send(200, "text/plain", String(1));
@@ -999,10 +1041,6 @@ void StartWiFi() {
   server->on("/get_config", HTTP_GET, [](AsyncWebServerRequest *request) {
     String trimmedSsid = ssid;
     trimmedSsid.trim();
-
-    if (port == 0) {
-      port = 3333;  // Set default port number for webinterface
-    }
 
     String json = "{";
     json += "\"ssid\":\"" + trimmedSsid + "\",";
