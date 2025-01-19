@@ -137,7 +137,7 @@ Yes, you can, as long as you respect the legal notices above. You could also do 
 
 This is a known issue. ZeDMD S3 works perfectly well with Linux and macOS. But if you're using Windows you should use the WiFi mode.
 
-### I have installed all of the latest files, but I still get crashes
+### I have installed all of the latest files, but I still get crashes on a Windows machine
 A few users have reported that VPX and ZeDMD consistently crash if the latest Visual C++ Redistributable Runtime packages are not installed. To resolve this issue, ensure you have the most up-to-date runtime packages installed. If the latest version doesn’t resolve the issue, it may be necessary to install all available versions of the Visual C++ Redistributable Runtime packages.
 
 ### ZeDMD S3 crashed, how can I help fixing the issue
