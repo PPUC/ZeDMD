@@ -1,6 +1,7 @@
+
 #include <Arduino.h>
 #include <Bounce2.h>
-#include <ESPAsyncWebServer.h>
+#include <ESPAsyncWebserver.h>
 #include <ESPmDNS.h>
 #include <LittleFS.h>
 #include <WiFi.h>
@@ -76,6 +77,8 @@ const uint8_t CtrlChars[5]
     __attribute__((aligned(4))) = {'Z', 'e', 'D', 'M', 'D'};
 uint8_t numCtrlCharsFound = 0;
 
+AsyncWebServer *server;
+AsyncServer *tcp;
 DisplayDriver *display;
 
 static portMUX_TYPE bufferMutex = portMUX_INITIALIZER_UNLOCKED;
@@ -92,6 +95,8 @@ static uint8_t lastRenderBuffer __attribute__((aligned(4))) =
     NUM_RENDER_BUFFERS - 1;
 
 static uint16_t payloadSize __attribute__((aligned(4))) = 0;
+static uint16_t payloadMissing __attribute__((aligned(4))) = 0;
+static uint8_t headerBytesReceived __attribute__((aligned(4))) = 0;
 static uint8_t command __attribute__((aligned(4))) = 0;
 static uint8_t currentBuffer __attribute__((aligned(4))) = NUM_BUFFERS - 1;
 static uint8_t lastBuffer __attribute__((aligned(4))) = currentBuffer;
@@ -728,26 +733,172 @@ void Task_ReadSerial(void *pvParameters) {
   }
 }
 
-size_t readTcpBytes(uint8_t *buffer, size_t size, WiFiClient &client) {
-  size_t totalRead = 0;
-  while (totalRead < size) {
-    if (client.available()) {
-      int bytesRead = client.read(buffer + totalRead, size - totalRead);
-      if (bytesRead > 0) {
-        totalRead += bytesRead;
+static void IRAM_ATTR HandleTcpData(void *arg, AsyncClient *client, void *data,
+                                    size_t len) {
+  uint8_t *pData = (uint8_t *)data;
+  uint16_t pos = 0;
+
+  while (pos < len) {
+    if (numCtrlCharsFound < N_CTRL_CHARS) {
+      // Detect 5 consecutive start bits
+      if (pData[pos++] == CtrlChars[numCtrlCharsFound]) {
+        numCtrlCharsFound++;
       } else {
-        // Handle unexpected disconnection
-        break;
+        numCtrlCharsFound = 0;
+        // esp_task_wdt_reset();
       }
-    } else {
-      // Avoid busy-waiting
-      vTaskDelay(pdMS_TO_TICKS(1));
+    } else if (numCtrlCharsFound == N_CTRL_CHARS) {
+      if (headerBytesReceived == 0) {
+        command = pData[pos++];
+        ++headerBytesReceived;
+        continue;
+      } else if (headerBytesReceived == 1) {
+        payloadSize = pData[pos++] << 8;
+        ++headerBytesReceived;
+        continue;
+      } else if (headerBytesReceived == 2) {
+        payloadSize |= pData[pos++];
+        ++headerBytesReceived;
+        payloadMissing = payloadSize;
+        continue;
+      } else {
+        if (payloadSize > BUFFER_SIZE) {
+          display->DisplayText("Error, payloadSize > BUFFER_SIZE", 10, 13, 255,
+                               0, 0);
+          DisplayNumber(payloadSize, 5, 10, 19, 255, 0, 0);
+          DisplayNumber(BUFFER_SIZE, 5, 10, 25, 255, 0, 0);
+          while (1);
+        }
+
+        switch (command) {
+          case 16: {
+            LedTester();
+            Restart();
+            break;
+          }
+
+          case 10: {  // Clear screen
+            AcquireNextBuffer();
+            bufferSizes[currentBuffer] = 2;
+            buffers[currentBuffer][0] = 0;
+            buffers[currentBuffer][1] = 0;
+            MarkCurrentBufferDone();
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            break;
+          }
+
+          case 98:  // disable debug mode
+          {
+            debug = 0;
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            break;
+          }
+
+          case 99:  // enable debug mode
+          {
+            debug = 1;
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            break;
+          }
+
+          case 5: {  // RGB565 Zones Stream
+            if (payloadMissing == payloadSize) {
+              AcquireNextBuffer();
+              bufferSizes[currentBuffer] = payloadSize;
+              if (payloadMissing > (len - pos)) {
+                memcpy(&buffers[currentBuffer][0], &pData[pos], len - pos);
+                payloadMissing -= len - pos;
+                return;
+              } else {
+                memcpy(&buffers[currentBuffer][0], &pData[pos], payloadSize);
+                pos += payloadSize;
+                MarkCurrentBufferDone();
+                payloadMissing = 0;
+                headerBytesReceived = 0;
+                numCtrlCharsFound = 0;
+              }
+            } else {
+              if (payloadMissing > (len - pos)) {
+                memcpy(&buffers[currentBuffer][payloadSize - payloadMissing],
+                       &pData[pos], len - pos);
+                payloadMissing -= len - pos;
+                return;
+              } else {
+                memcpy(&buffers[currentBuffer][payloadSize - payloadMissing],
+                       &pData[pos], payloadMissing);
+                pos += payloadMissing;
+                MarkCurrentBufferDone();
+                payloadMissing = 0;
+                headerBytesReceived = 0;
+                numCtrlCharsFound = 0;
+              }
+            }
+
+            break;
+          }
+
+          case 6: {  // Render
+#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
+            AcquireNextBuffer();
+            bufferSizes[currentBuffer] = 2;
+            buffers[currentBuffer][0] = 255;
+            buffers[currentBuffer][1] = 255;
+            MarkCurrentBufferDone();
+#endif
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            break;
+          }
+
+          default: {
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            break;
+          }
+        }
+      }
     }
   }
-  return totalRead;
+
+  client->ack(len);
 }
 
-void Task_ReadTcp(void *pvParameters) {
+static void HandleTcpDisconnect(void *arg, AsyncClient *client) {
+  delete client;
+  MarkCurrentBufferDone();
+  AcquireNextBuffer();
+  bufferSizes[currentBuffer] = 2;
+  buffers[currentBuffer][0] = 0;
+  buffers[currentBuffer][1] = 0;
+  MarkCurrentBufferDone();
+  ClearScreen();
+  payloadMissing = 0;
+  headerBytesReceived = 0;
+  numCtrlCharsFound = 0;
+  delay(100);
+  transportActive = false;
+}
+
+static void NewTcpClient(void *arg, AsyncClient *client) {
+  if (transportActive) {
+    client->stop();
+    delete client;
+    return;
+  }
+  payloadMissing = 0;
+  headerBytesReceived = 0;
+  numCtrlCharsFound = 0;
+  transportActive = true;
+  client->setNoDelay(true);
+  client->setAckTimeout(2);
+  client->onData(&HandleTcpData, NULL);
+  client->onDisconnect(&HandleTcpDisconnect, NULL);
+}
+
+void StartWiFi() {
   const char *apSSID = "ZeDMD-WiFi";
   const char *apPassword = "zedmd1234";
 
@@ -805,15 +956,15 @@ void Task_ReadTcp(void *pvParameters) {
     while (1);
   }
 
-  AsyncWebServer server(80);
+  server = new AsyncWebServer(80);
 
   // Serve index.html
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server->on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(LittleFS, "/index.html", String(), false);
   });
 
   // Handle AJAX request to save WiFi configuration
-  server.on("/save_wifi", HTTP_POST, [](AsyncWebServerRequest *request) {
+  server->on("/save_wifi", HTTP_POST, [](AsyncWebServerRequest *request) {
     if (request->hasParam("ssid", true) &&
         request->hasParam("password", true) &&
         request->hasParam("port", true)) {
@@ -835,7 +986,7 @@ void Task_ReadTcp(void *pvParameters) {
     }
   });
 
-  server.on("/wifi_status", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server->on("/wifi_status", HTTP_GET, [](AsyncWebServerRequest *request) {
     String jsonResponse;
     if (WiFi.status() == WL_CONNECTED) {
       int rssi = WiFi.RSSI();
@@ -852,7 +1003,7 @@ void Task_ReadTcp(void *pvParameters) {
   });
 
   // Route to save RGB order
-  server.on("/save_rgb_order", HTTP_POST, [](AsyncWebServerRequest *request) {
+  server->on("/save_rgb_order", HTTP_POST, [](AsyncWebServerRequest *request) {
     if (request->hasParam("rgbOrder", true)) {
       if (rgbModeLoaded != 0) {
         request->send(200, "text/plain",
@@ -876,7 +1027,7 @@ void Task_ReadTcp(void *pvParameters) {
   });
 
   // Route to save brightness
-  server.on("/save_brightness", HTTP_POST, [](AsyncWebServerRequest *request) {
+  server->on("/save_brightness", HTTP_POST, [](AsyncWebServerRequest *request) {
     if (request->hasParam("brightness", true)) {
       String brightnessValue = request->getParam("brightness", true)->value();
       brightness = brightnessValue.toInt();
@@ -889,26 +1040,26 @@ void Task_ReadTcp(void *pvParameters) {
     }
   });
 
-  server.on("/get_version", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server->on("/get_version", HTTP_GET, [](AsyncWebServerRequest *request) {
     String version = String(ZEDMD_VERSION_MAJOR) + "." +
                      String(ZEDMD_VERSION_MINOR) + "." +
                      String(ZEDMD_VERSION_PATCH);
     request->send(200, "text/plain", version);
   });
 
-  server.on("/get_height", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server->on("/get_height", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(200, "text/plain", String(TOTAL_HEIGHT));
   });
 
-  server.on("/get_width", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server->on("/get_width", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(200, "text/plain", String(TOTAL_WIDTH));
   });
 
-  server.on("/get_port", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server->on("/get_port", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(200, "text/plain", String(port));
   });
 
-  server.on("/get_s3", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server->on("/get_s3", HTTP_GET, [](AsyncWebServerRequest *request) {
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
     request->send(200, "text/plain", String(1));
 #else
@@ -916,23 +1067,23 @@ void Task_ReadTcp(void *pvParameters) {
 #endif
   });
 
-  server.on("/ppuc.png", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server->on("/ppuc.png", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(LittleFS, "/ppuc.png", "image/png");
   });
 
-  server.on("/reset_wifi", HTTP_POST, [](AsyncWebServerRequest *request) {
+  server->on("/reset_wifi", HTTP_POST, [](AsyncWebServerRequest *request) {
     LittleFS.remove("/wifi_config.txt");  // Remove Wi-Fi config
     request->send(200, "text/plain", "Wi-Fi reset successful.");
     Restart();  // Restart the device
   });
 
-  server.on("/apply", HTTP_POST, [](AsyncWebServerRequest *request) {
+  server->on("/apply", HTTP_POST, [](AsyncWebServerRequest *request) {
     request->send(200, "text/plain", "Apply successful.");
     Restart();  // Restart the device
   });
 
   // Serve debug information
-  server.on("/debug_info", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server->on("/debug_info", HTTP_GET, [](AsyncWebServerRequest *request) {
     String debugInfo = "IP Address: " + WiFi.localIP().toString() + "\n";
     debugInfo += "SSID: " + WiFi.SSID() + "\n";
     debugInfo += "RSSI: " + String(WiFi.RSSI()) + "\n";
@@ -943,7 +1094,7 @@ void Task_ReadTcp(void *pvParameters) {
   });
 
   // Route to return the current settings as JSON
-  server.on("/get_config", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server->on("/get_config", HTTP_GET, [](AsyncWebServerRequest *request) {
     String trimmedSsid = ssid;
     trimmedSsid.trim();
 
@@ -957,43 +1108,44 @@ void Task_ReadTcp(void *pvParameters) {
     request->send(200, "application/json", json);
   });
 
-  server.on("/get_scaling_modes", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (!display) {
-      request->send(500, "application/json",
-                    "{\"error\":\"Display object not initialized\"}");
-      return;
-    }
-
-    String jsonResponse;
-    if (display->HasScalingModes()) {
-      jsonResponse = "{";
-      jsonResponse += "\"hasScalingModes\":true,";
-
-      // Fetch current scaling mode
-      uint8_t currentMode = display->GetCurrentScalingMode();
-      jsonResponse += "\"currentMode\":" + String(currentMode) + ",";
-
-      // Add the list of available scaling modes
-      jsonResponse += "\"modes\":[";
-      const char **scalingModes = display->GetScalingModes();
-      uint8_t modeCount = display->GetScalingModeCount();
-      for (uint8_t i = 0; i < modeCount; i++) {
-        jsonResponse += "\"" + String(scalingModes[i]) + "\"";
-        if (i < modeCount - 1) {
-          jsonResponse += ",";
+  server->on(
+      "/get_scaling_modes", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if (!display) {
+          request->send(500, "application/json",
+                        "{\"error\":\"Display object not initialized\"}");
+          return;
         }
-      }
-      jsonResponse += "]";
-      jsonResponse += "}";
-    } else {
-      jsonResponse = "{\"hasScalingModes\":false}";
-    }
 
-    request->send(200, "application/json", jsonResponse);
-  });
+        String jsonResponse;
+        if (display->HasScalingModes()) {
+          jsonResponse = "{";
+          jsonResponse += "\"hasScalingModes\":true,";
+
+          // Fetch current scaling mode
+          uint8_t currentMode = display->GetCurrentScalingMode();
+          jsonResponse += "\"currentMode\":" + String(currentMode) + ",";
+
+          // Add the list of available scaling modes
+          jsonResponse += "\"modes\":[";
+          const char **scalingModes = display->GetScalingModes();
+          uint8_t modeCount = display->GetScalingModeCount();
+          for (uint8_t i = 0; i < modeCount; i++) {
+            jsonResponse += "\"" + String(scalingModes[i]) + "\"";
+            if (i < modeCount - 1) {
+              jsonResponse += ",";
+            }
+          }
+          jsonResponse += "]";
+          jsonResponse += "}";
+        } else {
+          jsonResponse = "{\"hasScalingModes\":false}";
+        }
+
+        request->send(200, "application/json", jsonResponse);
+      });
 
   // POST request to save the selected scaling mode
-  server.on(
+  server->on(
       "/save_scaling_mode", HTTP_POST, [](AsyncWebServerRequest *request) {
         if (!display) {
           request->send(500, "text/plain", "Display object not initialized");
@@ -1015,119 +1167,12 @@ void Task_ReadTcp(void *pvParameters) {
       });
 
   // Start the web server
-  server.begin();
+  server->begin();
 
-  WiFiServer tcp(port);
-  tcp.begin();
-
-  uint8_t header[2] __attribute__((aligned(4)));
-  while (1) {
-    WiFiClient client = tcp.available();  // Check for a client
-    if (client) {
-      if (!transportActive) {
-        transportActive = true;
-      }
-
-      while (client.connected()) {
-        if (client.available() >= 1 && client.read(header, 1) == 1) {
-          if (numCtrlCharsFound < N_CTRL_CHARS) {
-            // Detect 5 consecutive start bits
-            if (header[0] == CtrlChars[numCtrlCharsFound]) {
-              numCtrlCharsFound++;
-            } else {
-              numCtrlCharsFound = 0;
-              esp_task_wdt_reset();
-            }
-          } else if (numCtrlCharsFound == N_CTRL_CHARS) {
-            // display->DisplayText("Byte ", 0, 12, 255, 0, 0);
-            // DisplayNumber(header[1], 3, 0, 18, 255, 0, 0);
-            command = header[0];
-            readTcpBytes(header, 2, client);
-            // Read payload size (next 2 bytes)
-            payloadSize = (header[0] << 8) | header[1];
-            if (payloadSize > BUFFER_SIZE) {
-              display->DisplayText("Error, payloadSize > BUFFER_SIZE", 10, 13,
-                                   255, 0, 0);
-              DisplayNumber(payloadSize, 5, 10, 19, 255, 0, 0);
-              DisplayNumber(BUFFER_SIZE, 5, 10, 25, 255, 0, 0);
-              while (1);
-            }
-            switch (command) {
-              case 16: {
-                LedTester();
-                Restart();
-                break;
-              }
-
-              case 10: {  // Clear screen
-                AcquireNextBuffer();
-                bufferSizes[currentBuffer] = 2;
-                buffers[currentBuffer][0] = 0;
-                buffers[currentBuffer][1] = 0;
-                MarkCurrentBufferDone();
-                numCtrlCharsFound = 0;
-                break;
-              }
-
-              case 98:  // disable debug mode
-              {
-                debug = 0;
-                numCtrlCharsFound = 0;
-                break;
-              }
-
-              case 99:  // enable debug mode
-              {
-                debug = 1;
-                numCtrlCharsFound = 0;
-                break;
-              }
-
-              case 5: {  // RGB565 Zones Stream
-                AcquireNextBuffer();
-                bufferSizes[currentBuffer] = payloadSize;
-                if (readTcpBytes(buffers[currentBuffer], payloadSize, client) ==
-                    payloadSize) {
-                  MarkCurrentBufferDone();
-                } else {
-                  display->DisplayText("Error reading TCP data", 10, 13, 255, 0,
-                                       0);
-                  while (1);
-                }
-                numCtrlCharsFound = 0;
-                break;
-              }
-
-              case 6: {  // Render
-#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
-                AcquireNextBuffer();
-                bufferSizes[currentBuffer] = 2;
-                buffers[currentBuffer][0] = 255;
-                buffers[currentBuffer][1] = 255;
-                MarkCurrentBufferDone();
-#endif
-                numCtrlCharsFound = 0;
-                break;
-              }
-
-              default: {
-                numCtrlCharsFound = 0;
-                break;
-              }
-            }
-          }
-        } else {
-          // Avoid busy-waiting
-          vTaskDelay(pdMS_TO_TICKS(1));
-        }
-      }
-
-      client.stop();
-    } else {
-      // Avoid busy-waiting
-      vTaskDelay(pdMS_TO_TICKS(1));
-    }
-  }
+  tcp = new AsyncServer(port);
+  tcp->setNoDelay(true);
+  tcp->onClient(&NewTcpClient, tcp);
+  tcp->begin();
 }
 
 void setup() {
@@ -1382,13 +1427,7 @@ void setup() {
     }
 
     case TRANSPORT_WIFI: {
-#ifdef BOARD_HAS_PSRAM
-      xTaskCreatePinnedToCore(Task_ReadTcp, "Task_ReadTcp", 8192, NULL, 1, NULL,
-                              0);
-#else
-      xTaskCreatePinnedToCore(Task_ReadTcp, "Task_ReadTcp", 4096, NULL, 1, NULL,
-                              0);
-#endif
+      StartWiFi();
       break;
     }
 
@@ -1398,9 +1437,6 @@ void setup() {
       break;
     }
   }
-
-  display->DrawPixel(TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 2,
-                     TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 2, 127, 127, 127);
 }
 
 void loop() {
@@ -1412,6 +1448,10 @@ void loop() {
   }
 
   if (!transportActive) {
+    display->DrawPixel(TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 2,
+                       TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 2, 127, 127,
+                       127);
+
     for (uint8_t i = 0; i <= 127; i += 127) {
       switch (transportWaitCounter) {
         case 0:
@@ -1460,8 +1500,7 @@ void loop() {
     }
 
     delay(100);
-  }
-  else if (AcquireNextProcessingBuffer()) {
+  } else if (AcquireNextProcessingBuffer()) {
     if (2 == bufferSizes[processingBuffer] &&
         255 == buffers[processingBuffer][0] &&
         255 == buffers[processingBuffer][1]) {
@@ -1537,8 +1576,11 @@ void loop() {
         }
       } else {
         if (1 == debug) {
-          display->DisplayText("miniz error ", 0, 0, 255, 0, 0);
-          DisplayNumber(minizStatus, 3, 0, 6, 255, 0, 0);
+          display->DisplayText("miniz error: ", 0, 0, 255, 0, 0);
+          DisplayNumber(minizStatus, 3, 13 * 4, 0, 255, 0, 0);
+          display->DisplayText("free heap: ", 0, 6, 255, 0, 0);
+          DisplayNumber(esp_get_free_heap_size(), 8, 11 * 4, 6, 255, 0, 0);
+          while (1);
         }
       }
     }
