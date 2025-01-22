@@ -49,10 +49,16 @@
 #endif
 #if defined(ARDUINO_ESP32_S3_N16R8)
 #define SERIAL_BAUD 2000000  // Serial baud rate.
+#if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
+#define USB_PACKAGE_SIZE 512
+#else
+#define USB_PACKAGE_SIZE 256
+#endif
 #else
 #define SERIAL_BAUD 921600  // Serial baud rate.
+#define USB_PACKAGE_SIZE 512
 #endif
-#define SERIAL_BUFFER 2048  // Serial buffer size in byte.
+#define SERIAL_BUFFER 2048
 #define SERIAL_TIMEOUT \
   8  // Time in milliseconds to wait for the next data chunk.
 
@@ -542,15 +548,17 @@ static void IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
         }
 
         switch (command) {
-#if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
           case 12:  // handshake
           {
             display->DisplayText("HANDSHAKE", 0, TOTAL_HEIGHT - 5, 198, 198,
                                  198);
 
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
             if (wifiActive) break;
 
-            uint8_t *response = (uint8_t *)malloc(N_INTERMEDIATE_CTR_CHARS + 8);
+            uint8_t *response =
+                (uint8_t *)malloc(N_INTERMEDIATE_CTR_CHARS + 10);
             memcpy(response, CtrlChars, N_INTERMEDIATE_CTR_CHARS);
             response[N_INTERMEDIATE_CTR_CHARS] = TOTAL_WIDTH & 0xff;
             response[N_INTERMEDIATE_CTR_CHARS + 1] = (TOTAL_WIDTH >> 8) & 0xff;
@@ -559,16 +567,97 @@ static void IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             response[N_INTERMEDIATE_CTR_CHARS + 4] = ZEDMD_VERSION_MAJOR;
             response[N_INTERMEDIATE_CTR_CHARS + 5] = ZEDMD_VERSION_MINOR;
             response[N_INTERMEDIATE_CTR_CHARS + 6] = ZEDMD_VERSION_PATCH;
-            response[N_INTERMEDIATE_CTR_CHARS + 7] = 'R';
-            Serial.write(response, N_INTERMEDIATE_CTR_CHARS + 8);
-            headerBytesReceived = 0;
-            numCtrlCharsFound = 0;
+            response[N_INTERMEDIATE_CTR_CHARS + 7] = USB_PACKAGE_SIZE & 0xff;
+            response[N_INTERMEDIATE_CTR_CHARS + 8] =
+                (USB_PACKAGE_SIZE >> 8) & 0xff;
+            response[N_INTERMEDIATE_CTR_CHARS + 9] = 'R';
+            Serial.write(response, N_INTERMEDIATE_CTR_CHARS + 10);
             display->DisplayText("CONNECTED", 0, TOTAL_HEIGHT - 5, 198, 198,
                                  198);
             free(response);
             break;
           }
-#endif
+
+          case 32:  // get version
+          {
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            if (wifiActive) break;
+
+            Serial.write(ZEDMD_VERSION_MAJOR);
+            Serial.write(ZEDMD_VERSION_MINOR);
+            Serial.write(ZEDMD_VERSION_PATCH);
+            break;
+          }
+
+          case 33:  // get panel resolution
+          {
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            if (wifiActive) break;
+
+            Serial.write(TOTAL_WIDTH & 0xff);
+            Serial.write((TOTAL_WIDTH >> 8) & 0xff);
+            Serial.write(TOTAL_HEIGHT & 0xff);
+            Serial.write((TOTAL_HEIGHT >> 8) & 0xff);
+            break;
+          }
+
+          case 22:  // set brightness
+          {
+            brightness = Serial.read();
+            display->SetBrightness(brightness);
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            break;
+          }
+
+          case 23:  // set RGB order
+          {
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            if (wifiActive) break;
+
+            rgbMode = Serial.read();
+            break;
+          }
+
+          case 24:  // get brightness
+          {
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            if (wifiActive) break;
+
+            Serial.write(brightness);
+            break;
+          }
+
+          case 25:  // get RGB order
+          {
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            if (wifiActive) break;
+
+            Serial.write(rgbMode);
+            break;
+          }
+
+          case 30:  // save settings
+          {
+            SaveLum();
+            SaveRgbOrder();
+            SaveDebug();
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            break;
+          }
+
+          case 31:  // reset
+          {
+            Restart();
+            break;
+          }
+
           case 16: {
             LedTester();
             Restart();
@@ -669,15 +758,6 @@ void Task_ReadSerial(void *pvParameters) {
 #if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
   // S3 USB CDC. The actual baud rate doesn't matter.
   Serial.begin(115200);
-#ifdef BOARD_HAS_PSRAM
-  uint8_t *pCdcBuffer =
-      (uint8_t *)heap_caps_malloc(SERIAL_BUFFER, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
-#else
-  uint8_t *pCdcBuffer = (uint8_t *)malloc(SERIAL_BUFFER);
-#endif
-  payloadMissing = 0;
-  headerBytesReceived = 0;
-  numCtrlCharsFound = 0;
   display->DisplayText("USB CDC", 0, 0, 0, 0, 0, 1);
 #else
   Serial.setTimeout(SERIAL_TIMEOUT);
@@ -691,234 +771,28 @@ void Task_ReadSerial(void *pvParameters) {
   }
 #endif
 
+#ifdef BOARD_HAS_PSRAM
+  uint8_t *pUsbBuffer = (uint8_t *)heap_caps_malloc(
+      USB_PACKAGE_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
+#else
+  uint8_t *pUsbBuffer = (uint8_t *)malloc(USB_PACKAGE_SIZE);
+#endif
+  payloadMissing = 0;
+  headerBytesReceived = 0;
+  numCtrlCharsFound = 0;
+
+  int16_t received;
+
   while (1) {
     // Wait for data to be ready
-    if (Serial.available()) {
-#if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
-      size_t len = min(SERIAL_BUFFER, Serial.available());
-      size_t received = Serial.readBytes(pCdcBuffer, len);
-      HandleData(pCdcBuffer, received);
+    if (Serial.available() >= USB_PACKAGE_SIZE) {
+      received = Serial.readBytes(pUsbBuffer, USB_PACKAGE_SIZE);
+      HandleData(pUsbBuffer, received);
       Serial.write('A');
       transportActive = true;
-#else
-      uint8_t byte __attribute__((aligned(4))) = Serial.read();
-      // DisplayNumber(byte, 2, TOTAL_WIDTH - 2 * 4, TOTAL_HEIGHT - 6, 255, 255,
-      //               255);
-
-      if (numCtrlCharsFound < N_CTRL_CHARS) {
-        // Detect 5 consecutive start bits
-        if (byte == CtrlChars[numCtrlCharsFound]) {
-          numCtrlCharsFound++;
-        } else {
-          numCtrlCharsFound = 0;
-          esp_task_wdt_reset();
-        }
-      } else if (numCtrlCharsFound == N_CTRL_CHARS) {
-        // Read payload size (next 2 bytes)
-        payloadSize = (Serial.read() << 8) | Serial.read();
-
-        if (payloadSize > BUFFER_SIZE) {
-          if (debug) {
-            display->DisplayText("Error, payloadSize > BUFFER_SIZE", 10, 13,
-                                 255, 0, 0);
-            DisplayNumber(payloadSize, 5, 10, 19, 255, 0, 0);
-            DisplayNumber(BUFFER_SIZE, 5, 10, 25, 255, 0, 0);
-            while (1);
-          }
-          Serial.write('E');
-          numCtrlCharsFound = 0;
-          break;
-        }
-
-        command = byte;
-        switch (command) {
-          case 12:  // handshake
-          {
-            for (u_int8_t i = 0; i < N_INTERMEDIATE_CTR_CHARS; i++) {
-              Serial.write(CtrlChars[i]);
-            }
-            Serial.write(TOTAL_WIDTH & 0xff);
-            Serial.write((TOTAL_WIDTH >> 8) & 0xff);
-            Serial.write(TOTAL_HEIGHT & 0xff);
-            Serial.write((TOTAL_HEIGHT >> 8) & 0xff);
-            Serial.write(ZEDMD_VERSION_MAJOR);
-            Serial.write(ZEDMD_VERSION_MINOR);
-            Serial.write(ZEDMD_VERSION_PATCH);
-            numCtrlCharsFound = 0;
-            transportActive = true;
-            display->DisplayText("CONNECTED", 0, TOTAL_HEIGHT - 5, 198, 198,
-                                 198);
-            Serial.write('R');
-            break;
-          }
-
-          case 32:  // get version
-          {
-            Serial.write(ZEDMD_VERSION_MAJOR);
-            Serial.write(ZEDMD_VERSION_MINOR);
-            Serial.write(ZEDMD_VERSION_PATCH);
-            numCtrlCharsFound = 0;
-            break;
-          }
-
-          case 33:  // get panel resolution
-          {
-            Serial.write(TOTAL_WIDTH & 0xff);
-            Serial.write((TOTAL_WIDTH >> 8) & 0xff);
-            Serial.write(TOTAL_HEIGHT & 0xff);
-            Serial.write((TOTAL_HEIGHT >> 8) & 0xff);
-            numCtrlCharsFound = 0;
-            break;
-          }
-
-          case 22:  // set brightness
-          {
-            brightness = Serial.read();
-            display->SetBrightness(brightness);
-            Serial.write('A');
-            numCtrlCharsFound = 0;
-            break;
-          }
-
-          case 23:  // set RGB order
-          {
-            rgbMode = Serial.read();
-            Serial.write('A');
-            numCtrlCharsFound = 0;
-            break;
-          }
-
-          case 24:  // get brightness
-          {
-            Serial.write(brightness);
-            numCtrlCharsFound = 0;
-            break;
-          }
-
-          case 25:  // get RGB order
-          {
-            Serial.write(rgbMode);
-            numCtrlCharsFound = 0;
-            break;
-          }
-
-          case 30:  // save settings
-          {
-            SaveLum();
-            SaveRgbOrder();
-            SaveDebug();
-            Serial.write('A');
-            numCtrlCharsFound = 0;
-            break;
-          }
-
-          case 31:  // reset
-          {
-            Serial.write('A');
-            Restart();
-            numCtrlCharsFound = 0;
-            break;
-          }
-
-          case 16: {
-            Serial.write('A');
-            LedTester();
-            Restart();
-            numCtrlCharsFound = 0;
-            break;
-          }
-
-          case 10:  // clear screen
-          {
-            AcquireNextBuffer();
-            bufferSizes[currentBuffer] = 2;
-            buffers[currentBuffer][0] = 0;
-            buffers[currentBuffer][1] = 0;
-            MarkCurrentBufferDone();
-            // Send an (A)cknowledge signal to tell the client that we
-            // successfully read the data.
-            // 'F' requests a full frame as next frame.
-            Serial.write(transportActive ? 'A' : 'F');
-            if (!transportActive) {
-              transportActive = true;
-            }
-            numCtrlCharsFound = 0;
-            break;
-          }
-
-          case 98:  // disable debug mode
-          {
-            Serial.write('A');
-            debug = 0;
-            numCtrlCharsFound = 0;
-            break;
-          }
-
-          case 99:  // enable debug mode
-          {
-            Serial.write('A');
-            debug = 1;
-            numCtrlCharsFound = 0;
-            break;
-          }
-
-          case 5:  // mode RGB565 zones streaming
-          {
-            AcquireNextBuffer();
-            bufferSizes[currentBuffer] = payloadSize;
-
-            uint16_t bytesRead = 0;
-            while (bytesRead < payloadSize) {
-              int avail = Serial.available();
-              while (avail < 1) {
-                vTaskDelay(pdMS_TO_TICKS(1));
-                avail = Serial.available();
-              }
-              // Fill the buffer with payload
-              bytesRead +=
-                  Serial.readBytes(&buffers[currentBuffer][bytesRead],
-                                   min(avail, payloadSize - bytesRead));
-            }
-
-            MarkCurrentBufferDone();
-
-            // Send an (A)cknowledge signal to tell the client that we
-            // successfully read the data.
-            Serial.write('A');
-            numCtrlCharsFound = 0;
-
-            break;
-          }
-
-          case 6:  // Render
-          {
-#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
-            AcquireNextBuffer();
-            bufferSizes[currentBuffer] = 2;
-            buffers[currentBuffer][0] = 255;
-            buffers[currentBuffer][1] = 255;
-            MarkCurrentBufferDone();
-#endif
-            // Send an (A)cknowledge signal to tell the client that we
-            // successfully read the data.
-            Serial.write('A');
-            numCtrlCharsFound = 0;
-
-            break;
-          }
-
-          default: {
-            display->DisplayText("Unsupported Command", 10, 13, 255, 0, 0);
-            DisplayNumber(command, 3, 0, 0, 255, 255, 255);
-            Serial.write('E');
-            numCtrlCharsFound = 0;
-          }
-        }
-      }
-#endif
     } else {
       // Avoid busy-waiting
-      vTaskDelay(pdMS_TO_TICKS(5));
+      vTaskDelay(pdMS_TO_TICKS(1));
     }
   }
 }
@@ -1648,7 +1522,7 @@ void loop() {
       }
     }
   } else {
-    //Avoid busy-waiting
+    // Avoid busy-waiting
     vTaskDelay(pdMS_TO_TICKS(1));
   }
 }
