@@ -65,11 +65,15 @@ Download and install the [ZeDMD_Updater](https://github.com/zesinger/ZeDMD_Updat
 
 ## First start
 
-After flashing the firmware you'll see the ZeDMD logo. But due to the different panels available on the market,
-you need to adjust the colors. While the logo is visible you can press the brightness button on older ZeDMD or the forward button on newer ZeDMD to enter the settings menu.
-To set the correct RGB order, rotate the colors until `red` in the left top corner is red, `green` is green and `blue` is shown in blue.
-
-Using the brightness butten you can adjust the brightness.
+After flashing the firmware, the ZeDMD logo will appear. Since various panels are available on the market, you’ll need to adjust the RGB values. While the logo is displayed, press the brightness button on older ZeDMD models or the forward button on newer models to access the settings menu.
+In the settings menu, adjust the RGB order by rotating the colors until the following alignment is achieved:
+* The top-left corner displays `red` as red.
+* `Green` appears as green.
+* `Blue` is shown as blue.
+  
+Using the brightness button you can adjust the brightness.
+> [!IMPORTANT]
+> From version 5.0.0 onwards: Exiting the menu now requires navigating to the 'Exit' button. This step is required to enable the ZeDMD to enter handshake mode.
 
 ## ZeDMD-WiFi
 
