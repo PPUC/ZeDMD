@@ -11,8 +11,10 @@
             "-DARDUINO_ESP32_S3_N16R8",
             "-DARDUINO_USB_MODE=1",
             "-DARDUINO_USB_CDC_ON_BOOT=1",
+            "-DCFG_TUD_CDC_RX_BUFSIZE=2048",
+            "-DCFG_TUD_CDC_TX_BUFSIZE=32",
             "-DARDUINO_RUNNING_CORE=1",
-            "-DARDUINO_EVENT_RUNNING_CORE=1"
+            "-DARDUINO_EVENT_RUNNING_CORE=0"
         ],
         "f_cpu": "240000000L",
         "f_flash": "80000000L",

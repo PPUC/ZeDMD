@@ -492,11 +492,192 @@ void RefreshSetupScreen() {
                        (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
 }
 
+static void IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
+  uint16_t pos = 0;
+  bool headerCompleted = false;
+
+  while (pos < len || (headerCompleted && command != 5)) {
+    headerCompleted = false;
+    if (numCtrlCharsFound < N_CTRL_CHARS) {
+      // Detect 5 consecutive start bits
+      if (pData[pos++] == CtrlChars[numCtrlCharsFound]) {
+        numCtrlCharsFound++;
+      } else {
+        numCtrlCharsFound = 0;
+      }
+    } else if (numCtrlCharsFound == N_CTRL_CHARS) {
+      if (headerBytesReceived == 0) {
+        command = pData[pos++];
+        ++headerBytesReceived;
+        continue;
+      } else if (headerBytesReceived == 1) {
+        payloadSize = pData[pos++] << 8;
+        ++headerBytesReceived;
+        continue;
+      } else if (headerBytesReceived == 2) {
+        payloadSize |= pData[pos++];
+        payloadMissing = payloadSize;
+        ++headerBytesReceived;
+        headerCompleted = true;
+        continue;
+      } else if (headerBytesReceived == 3) {
+        esp_task_wdt_reset();
+        if (payloadSize > BUFFER_SIZE) {
+          display->DisplayText("Error, payloadSize > BUFFER_SIZE", 10, 13, 255,
+                               0, 0);
+          DisplayNumber(payloadSize, 5, 10, 19, 255, 0, 0);
+          DisplayNumber(BUFFER_SIZE, 5, 10, 25, 255, 0, 0);
+          while (1);
+        }
+
+        if (debug) {
+          display->DisplayText("Command:", 7 * (TOTAL_WIDTH / 128),
+                               (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
+          DisplayNumber(command, 2, 7 * (TOTAL_WIDTH / 128) + (8 * 4),
+                        (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
+          display->DisplayText("Payload:", 7 * (TOTAL_WIDTH / 128),
+                               (TOTAL_HEIGHT / 2) - 4, 128, 128, 128);
+          DisplayNumber(payloadSize, 2, 7 * (TOTAL_WIDTH / 128) + (8 * 4),
+                        (TOTAL_HEIGHT / 2) - 4, 255, 191, 0);
+        }
+
+        switch (command) {
+#if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
+          case 12:  // handshake
+          {
+            display->DisplayText("HANDSHAKE", 0, TOTAL_HEIGHT - 5, 198, 198,
+                                 198);
+
+            if (wifiActive) break;
+
+            uint8_t *response = (uint8_t *)malloc(N_INTERMEDIATE_CTR_CHARS + 8);
+            memcpy(response, CtrlChars, N_INTERMEDIATE_CTR_CHARS);
+            response[N_INTERMEDIATE_CTR_CHARS] = TOTAL_WIDTH & 0xff;
+            response[N_INTERMEDIATE_CTR_CHARS + 1] = (TOTAL_WIDTH >> 8) & 0xff;
+            response[N_INTERMEDIATE_CTR_CHARS + 2] = TOTAL_HEIGHT & 0xff;
+            response[N_INTERMEDIATE_CTR_CHARS + 3] = (TOTAL_HEIGHT >> 8) & 0xff;
+            response[N_INTERMEDIATE_CTR_CHARS + 4] = ZEDMD_VERSION_MAJOR;
+            response[N_INTERMEDIATE_CTR_CHARS + 5] = ZEDMD_VERSION_MINOR;
+            response[N_INTERMEDIATE_CTR_CHARS + 6] = ZEDMD_VERSION_PATCH;
+            response[N_INTERMEDIATE_CTR_CHARS + 7] = 'R';
+            Serial.write(response, N_INTERMEDIATE_CTR_CHARS + 8);
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            display->DisplayText("CONNECTED", 0, TOTAL_HEIGHT - 5, 198, 198,
+                                 198);
+            free(response);
+            break;
+          }
+#endif
+          case 16: {
+            LedTester();
+            Restart();
+            break;
+          }
+
+          case 10: {  // Clear screen
+            AcquireNextBuffer();
+            bufferSizes[currentBuffer] = 2;
+            buffers[currentBuffer][0] = 0;
+            buffers[currentBuffer][1] = 0;
+            MarkCurrentBufferDone();
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            break;
+          }
+
+          case 98:  // disable debug mode
+          {
+            debug = 0;
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            break;
+          }
+
+          case 99:  // enable debug mode
+          {
+            debug = 1;
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            break;
+          }
+
+          case 5: {  // RGB565 Zones Stream
+            if (payloadMissing == payloadSize) {
+              AcquireNextBuffer();
+              bufferSizes[currentBuffer] = payloadSize;
+              if (payloadMissing > (len - pos)) {
+                memcpy(&buffers[currentBuffer][0], &pData[pos], len - pos);
+                payloadMissing -= len - pos;
+                pos += len - pos;
+                break;
+              } else {
+                memcpy(&buffers[currentBuffer][0], &pData[pos], payloadSize);
+                pos += payloadSize;
+                MarkCurrentBufferDone();
+                payloadMissing = 0;
+                headerBytesReceived = 0;
+                numCtrlCharsFound = 0;
+              }
+            } else {
+              if (payloadMissing > (len - pos)) {
+                memcpy(&buffers[currentBuffer][payloadSize - payloadMissing],
+                       &pData[pos], len - pos);
+                payloadMissing -= len - pos;
+                pos += len - pos;
+                break;
+              } else {
+                memcpy(&buffers[currentBuffer][payloadSize - payloadMissing],
+                       &pData[pos], payloadMissing);
+                pos += payloadMissing;
+                MarkCurrentBufferDone();
+                payloadMissing = 0;
+                headerBytesReceived = 0;
+                numCtrlCharsFound = 0;
+              }
+            }
+
+            break;
+          }
+
+          case 6: {  // Render
+#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
+            AcquireNextBuffer();
+            bufferSizes[currentBuffer] = 2;
+            buffers[currentBuffer][0] = 255;
+            buffers[currentBuffer][1] = 255;
+            MarkCurrentBufferDone();
+#endif
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            break;
+          }
+
+          default: {
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            break;
+          }
+        }
+      }
+    }
+  }
+}
+
 void Task_ReadSerial(void *pvParameters) {
   Serial.setRxBufferSize(SERIAL_BUFFER);
 #if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
   // S3 USB CDC. The actual baud rate doesn't matter.
   Serial.begin(115200);
+#ifdef BOARD_HAS_PSRAM
+  uint8_t *pCdcBuffer =
+      (uint8_t *)heap_caps_malloc(SERIAL_BUFFER, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
+#else
+  uint8_t *pCdcBuffer = (uint8_t *)malloc(SERIAL_BUFFER);
+#endif
+  payloadMissing = 0;
+  headerBytesReceived = 0;
+  numCtrlCharsFound = 0;
   display->DisplayText("USB CDC", 0, 0, 0, 0, 0, 1);
 #else
   Serial.setTimeout(SERIAL_TIMEOUT);
@@ -513,6 +694,13 @@ void Task_ReadSerial(void *pvParameters) {
   while (1) {
     // Wait for data to be ready
     if (Serial.available()) {
+#if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
+      size_t len = min(SERIAL_BUFFER, Serial.available());
+      size_t received = Serial.readBytes(pCdcBuffer, len);
+      HandleData(pCdcBuffer, received);
+      Serial.write('A');
+      transportActive = true;
+#else
       uint8_t byte __attribute__((aligned(4))) = Serial.read();
       // DisplayNumber(byte, 2, TOTAL_WIDTH - 2 * 4, TOTAL_HEIGHT - 6, 255, 255,
       //               255);
@@ -558,7 +746,8 @@ void Task_ReadSerial(void *pvParameters) {
             Serial.write(ZEDMD_VERSION_PATCH);
             numCtrlCharsFound = 0;
             transportActive = true;
-            display->DisplayText("CONNECTED", 0, TOTAL_HEIGHT - 5, 0, 0, 0, 1);
+            display->DisplayText("CONNECTED", 0, TOTAL_HEIGHT - 5, 198, 198,
+                                 198);
             Serial.write('R');
             break;
           }
@@ -726,143 +915,17 @@ void Task_ReadSerial(void *pvParameters) {
           }
         }
       }
+#endif
     } else {
       // Avoid busy-waiting
-      vTaskDelay(pdMS_TO_TICKS(1));
+      vTaskDelay(pdMS_TO_TICKS(5));
     }
   }
 }
 
-static void IRAM_ATTR HandleTcpData(void *arg, AsyncClient *client, void *data,
-                                    size_t len) {
-  uint8_t *pData = (uint8_t *)data;
-  uint16_t pos = 0;
-
-  while (pos < len) {
-    if (numCtrlCharsFound < N_CTRL_CHARS) {
-      // Detect 5 consecutive start bits
-      if (pData[pos++] == CtrlChars[numCtrlCharsFound]) {
-        numCtrlCharsFound++;
-      } else {
-        numCtrlCharsFound = 0;
-        // esp_task_wdt_reset();
-      }
-    } else if (numCtrlCharsFound == N_CTRL_CHARS) {
-      if (headerBytesReceived == 0) {
-        command = pData[pos++];
-        ++headerBytesReceived;
-        continue;
-      } else if (headerBytesReceived == 1) {
-        payloadSize = pData[pos++] << 8;
-        ++headerBytesReceived;
-        continue;
-      } else if (headerBytesReceived == 2) {
-        payloadSize |= pData[pos++];
-        ++headerBytesReceived;
-        payloadMissing = payloadSize;
-        continue;
-      } else {
-        if (payloadSize > BUFFER_SIZE) {
-          display->DisplayText("Error, payloadSize > BUFFER_SIZE", 10, 13, 255,
-                               0, 0);
-          DisplayNumber(payloadSize, 5, 10, 19, 255, 0, 0);
-          DisplayNumber(BUFFER_SIZE, 5, 10, 25, 255, 0, 0);
-          while (1);
-        }
-
-        switch (command) {
-          case 16: {
-            LedTester();
-            Restart();
-            break;
-          }
-
-          case 10: {  // Clear screen
-            AcquireNextBuffer();
-            bufferSizes[currentBuffer] = 2;
-            buffers[currentBuffer][0] = 0;
-            buffers[currentBuffer][1] = 0;
-            MarkCurrentBufferDone();
-            headerBytesReceived = 0;
-            numCtrlCharsFound = 0;
-            break;
-          }
-
-          case 98:  // disable debug mode
-          {
-            debug = 0;
-            headerBytesReceived = 0;
-            numCtrlCharsFound = 0;
-            break;
-          }
-
-          case 99:  // enable debug mode
-          {
-            debug = 1;
-            headerBytesReceived = 0;
-            numCtrlCharsFound = 0;
-            break;
-          }
-
-          case 5: {  // RGB565 Zones Stream
-            if (payloadMissing == payloadSize) {
-              AcquireNextBuffer();
-              bufferSizes[currentBuffer] = payloadSize;
-              if (payloadMissing > (len - pos)) {
-                memcpy(&buffers[currentBuffer][0], &pData[pos], len - pos);
-                payloadMissing -= len - pos;
-                return;
-              } else {
-                memcpy(&buffers[currentBuffer][0], &pData[pos], payloadSize);
-                pos += payloadSize;
-                MarkCurrentBufferDone();
-                payloadMissing = 0;
-                headerBytesReceived = 0;
-                numCtrlCharsFound = 0;
-              }
-            } else {
-              if (payloadMissing > (len - pos)) {
-                memcpy(&buffers[currentBuffer][payloadSize - payloadMissing],
-                       &pData[pos], len - pos);
-                payloadMissing -= len - pos;
-                return;
-              } else {
-                memcpy(&buffers[currentBuffer][payloadSize - payloadMissing],
-                       &pData[pos], payloadMissing);
-                pos += payloadMissing;
-                MarkCurrentBufferDone();
-                payloadMissing = 0;
-                headerBytesReceived = 0;
-                numCtrlCharsFound = 0;
-              }
-            }
-
-            break;
-          }
-
-          case 6: {  // Render
-#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
-            AcquireNextBuffer();
-            bufferSizes[currentBuffer] = 2;
-            buffers[currentBuffer][0] = 255;
-            buffers[currentBuffer][1] = 255;
-            MarkCurrentBufferDone();
-#endif
-            headerBytesReceived = 0;
-            numCtrlCharsFound = 0;
-            break;
-          }
-
-          default: {
-            headerBytesReceived = 0;
-            numCtrlCharsFound = 0;
-            break;
-          }
-        }
-      }
-    }
-  }
-
+static void HandleTcpData(void *arg, AsyncClient *client, void *data,
+                          size_t len) {
+  HandleData((uint8_t *)data, len);
   client->ack(len);
 }
 
@@ -1380,7 +1443,7 @@ void setup() {
               yOffset = 0;
             else if (down && --yOffset < 0)
               yOffset = 32;
-            display->ClearScreen();
+            ClearScreen();
             RefreshSetupScreen();
             display->DisplayText("Y Offset",
                                  TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
@@ -1584,5 +1647,8 @@ void loop() {
         }
       }
     }
+  } else {
+    //Avoid busy-waiting
+    vTaskDelay(pdMS_TO_TICKS(1));
   }
 }
