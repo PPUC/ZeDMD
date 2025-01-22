@@ -1,3 +1,4 @@
+#ifdef DISPLAY_RM67162_AMOLED
 #include "rm67162.h"
 
 #include "Arduino.h"
@@ -171,9 +172,14 @@ void lcd_setRotation(uint8_t r) {
 }
 
 void lcd_address_set(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2) {
+  uint8_t x1h = (uint8_t)(x1 >> 8);
+  uint8_t x2h = x2 >> 8;
+  uint8_t y1h = y1 >> 8;
+  uint8_t y2h = y2 >> 8;
+
   lcd_cmd_t t[3] = {
-      {0x2a, {x1 >> 8, x1, x2 >> 8, x2}, 0x04},
-      {0x2b, {y1 >> 8, y1, y2 >> 8, y2}, 0x04},
+      {0x2a, {x1h, (uint8_t)x1, x2h, (uint8_t)x2}, 0x04},
+      {0x2b, {y1h, (uint8_t)y1, y2h, (uint8_t)y2}, 0x04},
       {0x2c, {0x00}, 0x00},
   };
 
@@ -320,3 +326,4 @@ void lcd_display_high_brightness_mode_on(uint8_t hbm_en) {
 void lcd_display_high_brightness_mode_off(uint8_t hbm_en) {
   lcd_send_cmd(0xB0, &hbm_en, 0x01);
 }
+#endif
