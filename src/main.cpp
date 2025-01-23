@@ -92,6 +92,7 @@ static portMUX_TYPE bufferMutex = portMUX_INITIALIZER_UNLOCKED;
 // Buffers for storing data
 static uint8_t *buffers[NUM_BUFFERS];
 static uint16_t bufferSizes[NUM_BUFFERS] __attribute__((aligned(4))) = {0};
+static bool bufferCompressed[NUM_BUFFERS] __attribute__((aligned(4))) = {0};
 
 // The uncompress buffer should be bug enough
 static uint8_t uncompressBuffer[2048] __attribute__((aligned(4)));
@@ -100,6 +101,7 @@ static uint8_t currentRenderBuffer __attribute__((aligned(4))) = 0;
 static uint8_t lastRenderBuffer __attribute__((aligned(4))) =
     NUM_RENDER_BUFFERS - 1;
 
+static bool payloadCompressed __attribute__((aligned(4))) = 0;
 static uint16_t payloadSize __attribute__((aligned(4))) = 0;
 static uint16_t payloadMissing __attribute__((aligned(4))) = 0;
 static uint8_t headerBytesReceived __attribute__((aligned(4))) = 0;
@@ -524,15 +526,19 @@ static void IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
         payloadSize |= pData[pos++];
         payloadMissing = payloadSize;
         ++headerBytesReceived;
-        headerCompleted = true;
         continue;
       } else if (headerBytesReceived == 3) {
-        esp_task_wdt_reset();
+        payloadCompressed = (bool)pData[pos++];
+        ++headerBytesReceived;
+        headerCompleted = true;
+        continue;
+      } else if (headerBytesReceived == 4) {
+        // esp_task_wdt_reset();
         if (payloadSize > BUFFER_SIZE) {
-          display->DisplayText("Error, payloadSize > BUFFER_SIZE", 10, 13, 255,
+          display->DisplayText("Error, payloadSize > BUFFER_SIZE", 0, 13, 255,
                                0, 0);
-          DisplayNumber(payloadSize, 5, 10, 19, 255, 0, 0);
-          DisplayNumber(BUFFER_SIZE, 5, 10, 25, 255, 0, 0);
+          DisplayNumber(payloadSize, 5, 0, 19, 255, 0, 0);
+          DisplayNumber(BUFFER_SIZE, 5, 0, 25, 255, 0, 0);
           while (1);
         }
 
@@ -666,10 +672,23 @@ static void IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
 
           case 10: {  // Clear screen
             AcquireNextBuffer();
+            bufferCompressed[currentBuffer] = false;
             bufferSizes[currentBuffer] = 2;
             buffers[currentBuffer][0] = 0;
             buffers[currentBuffer][1] = 0;
             MarkCurrentBufferDone();
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            break;
+          }
+
+          case 11:  // KeepAlive
+          {
+            if (debug) {
+              display->DisplayText("KEEP ALIVE RECEIVED",
+                                   7 * (TOTAL_WIDTH / 128),
+                                   (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
+            }
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             break;
@@ -694,6 +713,7 @@ static void IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
           case 5: {  // RGB565 Zones Stream
             if (payloadMissing == payloadSize) {
               AcquireNextBuffer();
+              bufferCompressed[currentBuffer] = payloadCompressed;
               bufferSizes[currentBuffer] = payloadSize;
               if (payloadMissing > (len - pos)) {
                 memcpy(&buffers[currentBuffer][0], &pData[pos], len - pos);
@@ -732,6 +752,7 @@ static void IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
           case 6: {  // Render
 #if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
             AcquireNextBuffer();
+            bufferCompressed[currentBuffer] = false;
             bufferSizes[currentBuffer] = 2;
             buffers[currentBuffer][0] = 255;
             buffers[currentBuffer][1] = 255;
@@ -782,6 +803,7 @@ void Task_ReadSerial(void *pvParameters) {
   numCtrlCharsFound = 0;
 
   int16_t received;
+  uint16_t noDataMs = 0;
 
   while (1) {
     // Wait for data to be ready
@@ -790,7 +812,16 @@ void Task_ReadSerial(void *pvParameters) {
       HandleData(pUsbBuffer, received);
       Serial.write('A');
       transportActive = true;
+      noDataMs = 0;
     } else {
+      if (++noDataMs > 5000) {
+        transportActive = false;
+        noDataMs = 0;
+        // Empty the buffer.
+        while (Serial.available()) {
+          Serial.read();
+        }
+      }
       // Avoid busy-waiting
       vTaskDelay(pdMS_TO_TICKS(1));
     }
@@ -1437,6 +1468,7 @@ void loop() {
     }
 
     delay(100);
+
   } else if (AcquireNextProcessingBuffer()) {
     if (2 == bufferSizes[processingBuffer] &&
         255 == buffers[processingBuffer][0] &&
@@ -1449,75 +1481,81 @@ void loop() {
                0 == buffers[processingBuffer][1]) {
       ClearScreen();
     } else {
-      mz_ulong compressedBufferSize = (mz_ulong)bufferSizes[processingBuffer];
       mz_ulong uncompressedBufferSize = (mz_ulong)TOTAL_BYTES;
-      memset(uncompressBuffer, 0, 2048);
+      if (bufferCompressed[processingBuffer]) {
+        mz_ulong compressedBufferSize = (mz_ulong)bufferSizes[processingBuffer];
+        memset(uncompressBuffer, 0, 2048);
 
-      portENTER_CRITICAL(&bufferMutex);
-      int minizStatus =
-          mz_uncompress2(uncompressBuffer, &uncompressedBufferSize,
-                         buffers[processingBuffer], &compressedBufferSize);
-      portEXIT_CRITICAL(&bufferMutex);
+        portENTER_CRITICAL(&bufferMutex);
+        int minizStatus =
+            mz_uncompress2(uncompressBuffer, &uncompressedBufferSize,
+                           buffers[processingBuffer], &compressedBufferSize);
+        portEXIT_CRITICAL(&bufferMutex);
 
-      if (MZ_OK == minizStatus) {
-        uint16_t uncompressedBufferPosition = 0;
-        while (uncompressedBufferPosition < uncompressedBufferSize) {
-          if (uncompressBuffer[uncompressedBufferPosition] >= 128) {
-#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
-            const uint8_t idx =
-                uncompressBuffer[uncompressedBufferPosition++] - 128;
-            const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
-            const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
-            for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
-              memset(&renderBuffer[currentRenderBuffer]
-                                  [((yOffset + y) * TOTAL_WIDTH + xOffset) * 3],
-                     0, ZONE_WIDTH * 3);
-            }
-#else
-            display->ClearZone(uncompressBuffer[uncompressedBufferPosition++] -
-                               128);
-#endif
-          } else {
-#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
-            uint8_t idx = uncompressBuffer[uncompressedBufferPosition++];
-            const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
-            const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
-
-            for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
-              for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
-                const uint16_t rgb565 =
-                    uncompressBuffer[uncompressedBufferPosition++] +
-                    (((uint16_t)uncompressBuffer[uncompressedBufferPosition++])
-                     << 8);
-                uint8_t rgb888[3];
-                rgb888[0] = (rgb565 >> 8) & 0xf8;
-                rgb888[1] = (rgb565 >> 3) & 0xfc;
-                rgb888[2] = (rgb565 << 3);
-                rgb888[0] |= (rgb888[0] >> 5);
-                rgb888[1] |= (rgb888[1] >> 6);
-                rgb888[2] |= (rgb888[2] >> 5);
-                memcpy(
-                    &renderBuffer[currentRenderBuffer]
-                                 [((yOffset + y) * TOTAL_WIDTH + xOffset + x) *
-                                  3],
-                    rgb888, 3);
-              }
-            }
-#else
-            display->FillZoneRaw565(
-                uncompressBuffer[uncompressedBufferPosition++],
-                &uncompressBuffer[uncompressedBufferPosition]);
-            uncompressedBufferPosition += RGB565_ZONE_SIZE;
-#endif
+        if (MZ_OK != minizStatus) {
+          if (1 == debug) {
+            display->DisplayText("miniz error: ", 0, 0, 255, 0, 0);
+            DisplayNumber(minizStatus, 3, 13 * 4, 0, 255, 0, 0);
+            display->DisplayText("free heap: ", 0, 6, 255, 0, 0);
+            DisplayNumber(esp_get_free_heap_size(), 8, 11 * 4, 6, 255, 0, 0);
+            while (1);
           }
+          return;
         }
       } else {
-        if (1 == debug) {
-          display->DisplayText("miniz error: ", 0, 0, 255, 0, 0);
-          DisplayNumber(minizStatus, 3, 13 * 4, 0, 255, 0, 0);
-          display->DisplayText("free heap: ", 0, 6, 255, 0, 0);
-          DisplayNumber(esp_get_free_heap_size(), 8, 11 * 4, 6, 255, 0, 0);
-          while (1);
+        uncompressedBufferSize = bufferSizes[processingBuffer];
+        memcpy(uncompressBuffer, buffers[processingBuffer],
+               uncompressedBufferSize);
+      }
+
+      uint16_t uncompressedBufferPosition = 0;
+      while (uncompressedBufferPosition < uncompressedBufferSize) {
+        if (uncompressBuffer[uncompressedBufferPosition] >= 128) {
+#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
+          const uint8_t idx =
+              uncompressBuffer[uncompressedBufferPosition++] - 128;
+          const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
+          const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
+          for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
+            memset(&renderBuffer[currentRenderBuffer]
+                                [((yOffset + y) * TOTAL_WIDTH + xOffset) * 3],
+                   0, ZONE_WIDTH * 3);
+          }
+#else
+          display->ClearZone(uncompressBuffer[uncompressedBufferPosition++] -
+                             128);
+#endif
+        } else {
+#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
+          uint8_t idx = uncompressBuffer[uncompressedBufferPosition++];
+          const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
+          const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
+
+          for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
+            for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
+              const uint16_t rgb565 =
+                  uncompressBuffer[uncompressedBufferPosition++] +
+                  (((uint16_t)uncompressBuffer[uncompressedBufferPosition++])
+                   << 8);
+              uint8_t rgb888[3];
+              rgb888[0] = (rgb565 >> 8) & 0xf8;
+              rgb888[1] = (rgb565 >> 3) & 0xfc;
+              rgb888[2] = (rgb565 << 3);
+              rgb888[0] |= (rgb888[0] >> 5);
+              rgb888[1] |= (rgb888[1] >> 6);
+              rgb888[2] |= (rgb888[2] >> 5);
+              memcpy(&renderBuffer[currentRenderBuffer]
+                                  [((yOffset + y) * TOTAL_WIDTH + xOffset + x) *
+                                   3],
+                     rgb888, 3);
+            }
+          }
+#else
+          display->FillZoneRaw565(
+              uncompressBuffer[uncompressedBufferPosition++],
+              &uncompressBuffer[uncompressedBufferPosition]);
+          uncompressedBufferPosition += RGB565_ZONE_SIZE;
+#endif
         }
       }
     }
