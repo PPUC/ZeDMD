@@ -32,6 +32,7 @@
 #include "displays/LEDMatrix.h"
 #endif
 
+#define N_FRAME_CHARS 5
 #define N_CTRL_CHARS 5
 #define N_INTERMEDIATE_CTR_CHARS 4
 #ifdef BOARD_HAS_PSRAM
@@ -85,6 +86,8 @@ enum {
   TRANSPORT_SPI = 3
 };
 
+const uint8_t FrameChars[5]
+    __attribute__((aligned(4))) = {'F', 'R', 'A', 'M', 'E'};
 const uint8_t CtrlChars[5]
     __attribute__((aligned(4))) = {'Z', 'e', 'D', 'M', 'D'};
 uint8_t numCtrlCharsFound = 0;
@@ -509,7 +512,7 @@ void RefreshSetupScreen() {
                        (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
 }
 
-static void IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
+static bool IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
   uint16_t pos = 0;
   bool headerCompleted = false;
 
@@ -590,7 +593,7 @@ static void IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             display->DisplayText("CONNECTED", 0, TOTAL_HEIGHT - 5, 198, 198,
                                  198);
             free(response);
-            break;
+            return true;
           }
 
           case 32:  // get version
@@ -602,7 +605,7 @@ static void IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             Serial.write(ZEDMD_VERSION_MAJOR);
             Serial.write(ZEDMD_VERSION_MINOR);
             Serial.write(ZEDMD_VERSION_PATCH);
-            break;
+            return true;
           }
 
           case 33:  // get panel resolution
@@ -615,26 +618,26 @@ static void IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             Serial.write((TOTAL_WIDTH >> 8) & 0xff);
             Serial.write(TOTAL_HEIGHT & 0xff);
             Serial.write((TOTAL_HEIGHT >> 8) & 0xff);
-            break;
+            return true;
           }
 
           case 22:  // set brightness
           {
-            brightness = Serial.read();
+            brightness = pData[pos++];
             display->SetBrightness(brightness);
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            break;
+            if (wifiActive) break;
+            return true;
           }
 
           case 23:  // set RGB order
           {
+            rgbMode = pData[pos++];
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (wifiActive) break;
-
-            rgbMode = Serial.read();
-            break;
+            return true;
           }
 
           case 24:  // get brightness
@@ -644,7 +647,7 @@ static void IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             if (wifiActive) break;
 
             Serial.write(brightness);
-            break;
+            return true;
           }
 
           case 25:  // get RGB order
@@ -654,7 +657,7 @@ static void IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             if (wifiActive) break;
 
             Serial.write(rgbMode);
-            break;
+            return true;
           }
 
           case 30:  // save settings
@@ -664,19 +667,18 @@ static void IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             SaveDebug();
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            break;
+            if (wifiActive) break;
+            return true;
           }
 
           case 31:  // reset
           {
             Restart();
-            break;
           }
 
           case 16: {
             LedTester();
             Restart();
-            break;
           }
 
           case 10: {  // Clear screen
@@ -688,7 +690,8 @@ static void IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             MarkCurrentBufferDone();
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            break;
+            if (wifiActive) break;
+            return true;
           }
 
           case 11:  // KeepAlive
@@ -700,7 +703,8 @@ static void IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             }
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            break;
+            if (wifiActive) break;
+            return true;
           }
 
           case 98:  // disable debug mode
@@ -708,7 +712,8 @@ static void IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             debug = 0;
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            break;
+            if (wifiActive) break;
+            return true;
           }
 
           case 99:  // enable debug mode
@@ -716,7 +721,8 @@ static void IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             debug = 1;
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            break;
+            if (wifiActive) break;
+            return true;
           }
 
           case 5: {  // RGB565 Zones Stream
@@ -754,7 +760,6 @@ static void IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
                 numCtrlCharsFound = 0;
               }
             }
-
             break;
           }
 
@@ -769,18 +774,22 @@ static void IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
 #endif
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            break;
+            if (wifiActive) break;
+            return true;
           }
 
           default: {
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            break;
+            if (wifiActive) break;
+            return true;
           }
         }
       }
     }
   }
+
+  return false;
 }
 
 void Task_ReadSerial(void *pvParameters) {
@@ -811,28 +820,50 @@ void Task_ReadSerial(void *pvParameters) {
   headerBytesReceived = 0;
   numCtrlCharsFound = 0;
 
-  int16_t received;
+  int16_t received = 0;
+  int16_t expected = 0;
   uint16_t noDataMs = 0;
+  uint8_t numFrameCharsFound = 0;
+  bool lastCommand = false;
 
   while (1) {
-    // Wait for data to be ready
-    if (Serial.available() >= USB_PACKAGE_SIZE) {
-      received = Serial.readBytes(pUsbBuffer, USB_PACKAGE_SIZE);
-      HandleData(pUsbBuffer, received);
-      Serial.write('A');
-      transportActive = true;
-      noDataMs = 0;
-    } else {
-      if (++noDataMs > 5000) {
-        transportActive = false;
-        noDataMs = 0;
-        // Empty the buffer.
-        while (Serial.available()) {
-          Serial.read();
+    numFrameCharsFound = 0;
+    // Wait for FRAME header
+    while (numFrameCharsFound < N_FRAME_CHARS) {
+      if (Serial.available()) {
+        if (Serial.read() == FrameChars[numFrameCharsFound]) {
+          numFrameCharsFound++;
+        } else {
+          numFrameCharsFound = 0;
         }
+      } else {
+        // Avoid busy-waiting
+        vTaskDelay(pdMS_TO_TICKS(1));
       }
-      // Avoid busy-waiting
-      vTaskDelay(pdMS_TO_TICKS(1));
+    }
+
+    expected = USB_PACKAGE_SIZE - N_FRAME_CHARS;
+    transportActive = true;
+    noDataMs = 0;
+
+    while (1) {
+      // Wait for data to be ready
+      if (Serial.available() >= expected) {
+        received = Serial.readBytes(pUsbBuffer, expected);
+        lastCommand = HandleData(pUsbBuffer, received);
+        expected = USB_PACKAGE_SIZE;
+        Serial.write('A');
+        if (lastCommand) break;
+        noDataMs = 0;
+      } else {
+        if (++noDataMs > 5000) {
+          transportActive = false;
+          noDataMs = 0;
+          break;
+        }
+        // Avoid busy-waiting
+        vTaskDelay(pdMS_TO_TICKS(1));
+      }
     }
   }
 }
