@@ -1,5 +1,6 @@
 
 #include <Arduino.h>
+#include <AsyncUDP.h>
 #include <Bounce2.h>
 #include <ESPAsyncWebServer.h>
 #include <ESPmDNS.h>
@@ -77,7 +78,12 @@
 
 #define LED_CHECK_DELAY 1000  // ms per color
 
-enum { TRANSPORT_USB = 0, TRANSPORT_WIFI = 1, TRANSPORT_SPI = 2 };
+enum {
+  TRANSPORT_USB = 0,
+  TRANSPORT_WIFI_UDP = 1,
+  TRANSPORT_WIFI_TCP = 2,
+  TRANSPORT_SPI = 3
+};
 
 const uint8_t CtrlChars[5]
     __attribute__((aligned(4))) = {'Z', 'e', 'D', 'M', 'D'};
@@ -85,6 +91,7 @@ uint8_t numCtrlCharsFound = 0;
 
 AsyncWebServer *server;
 AsyncServer *tcp;
+AsyncUDP *udp;
 DisplayDriver *display;
 
 static portMUX_TYPE bufferMutex = portMUX_INITIALIZER_UNLOCKED;
@@ -128,7 +135,7 @@ uint8_t ssid_length;
 uint8_t pwd_length;
 bool wifiActive = false;
 #ifdef ZEDMD_WIFI
-int8_t transport = TRANSPORT_WIFI;
+int8_t transport = TRANSPORT_WIFI_UDP;
 #else
 int8_t transport = TRANSPORT_USB;
 #endif
@@ -483,11 +490,13 @@ void RefreshSetupScreen() {
   DisplayLogo();
   DisplayRGB();
   DisplayLum();
-  display->DisplayText(transport == TRANSPORT_USB
-                           ? "USB "
-                           : (transport == TRANSPORT_WIFI ? "WiFi" : "SPI "),
-                       7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 128,
-                       128, 128);
+  display->DisplayText(
+      transport == TRANSPORT_USB
+          ? "USB "
+          : (transport == TRANSPORT_WIFI_UDP
+                 ? "WiFi UDP"
+                 : (transport == TRANSPORT_WIFI_TCP ? "WiFi TCP" : "SPI ")),
+      7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
   display->DisplayText("Debug:", 7 * (TOTAL_WIDTH / 128),
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
   DisplayNumber(debug, 1, 7 * (TOTAL_WIDTH / 128) + (6 * 4),
@@ -828,6 +837,11 @@ void Task_ReadSerial(void *pvParameters) {
   }
 }
 
+static void HandleUdpPacket(AsyncUDPPacket packet) {
+  HandleData(packet.data(), packet.length());
+  transportActive = true;
+}
+
 static void HandleTcpData(void *arg, AsyncClient *client, void *data,
                           size_t len) {
   HandleData((uint8_t *)data, len);
@@ -1023,6 +1037,14 @@ void StartWiFi() {
     request->send(200, "text/plain", String(TOTAL_WIDTH));
   });
 
+  server->on("/get_protocol", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (TRANSPORT_WIFI_UDP == transport) {
+      request->send(200, "text/plain", "UDP");
+    } else {
+      request->send(200, "text/plain", "TCP");
+    }
+  });
+
   server->on("/get_port", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(200, "text/plain", String(port));
   });
@@ -1137,10 +1159,17 @@ void StartWiFi() {
   // Start the web server
   server->begin();
 
-  tcp = new AsyncServer(port);
-  tcp->setNoDelay(true);
-  tcp->onClient(&NewTcpClient, tcp);
-  tcp->begin();
+  if (TRANSPORT_WIFI_UDP == transport) {
+    udp = new AsyncUDP();
+    if (udp->listen(ip, port)) {
+      udp->onPacket(HandleUdpPacket);  // Start listening to ZeDMD UDP traffic
+    }
+  } else {
+    tcp = new AsyncServer(port);
+    tcp->setNoDelay(true);
+    tcp->onClient(&NewTcpClient, tcp);
+    tcp->begin();
+  }
 }
 
 void setup() {
@@ -1252,7 +1281,10 @@ void setup() {
             display->DisplayText(
                 transport == TRANSPORT_USB
                     ? "USB "
-                    : (transport == TRANSPORT_WIFI ? "WiFi" : "SPI "),
+                    : (transport == TRANSPORT_WIFI_UDP
+                           ? "WiFi UDP"
+                           : (transport == TRANSPORT_WIFI_TCP ? "WiFi TCP"
+                                                              : "SPI ")),
                 7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             break;
           }
@@ -1314,7 +1346,10 @@ void setup() {
             display->DisplayText(
                 transport == TRANSPORT_USB
                     ? "USB "
-                    : (transport == TRANSPORT_WIFI ? "WiFi" : "SPI "),
+                    : (transport == TRANSPORT_WIFI_UDP
+                           ? "WiFi UDP"
+                           : (transport == TRANSPORT_WIFI_TCP ? "WiFi TCP"
+                                                              : "SPI ")),
                 7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             SaveTransport();
             break;
@@ -1394,7 +1429,8 @@ void setup() {
       break;
     }
 
-    case TRANSPORT_WIFI: {
+    case TRANSPORT_WIFI_UDP:
+    case TRANSPORT_WIFI_TCP: {
       StartWiFi();
       break;
     }
