@@ -34,6 +34,7 @@
 
 #define N_FRAME_CHARS 5
 #define N_CTRL_CHARS 5
+#define N_ACK_CHARS (N_CTRL_CHARS + 1)
 #define N_INTERMEDIATE_CTR_CHARS 4
 #ifdef BOARD_HAS_PSRAM
 #define NUM_BUFFERS 128  // Number of buffers
@@ -91,8 +92,8 @@ enum {
 
 const uint8_t FrameChars[5]
     __attribute__((aligned(4))) = {'F', 'R', 'A', 'M', 'E'};
-const uint8_t CtrlChars[5]
-    __attribute__((aligned(4))) = {'Z', 'e', 'D', 'M', 'D'};
+const uint8_t CtrlChars[6]
+    __attribute__((aligned(4))) = {'Z', 'e', 'D', 'M', 'D', 'A'};
 uint8_t numCtrlCharsFound = 0;
 
 AsyncWebServer *server;
@@ -683,7 +684,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
           case 31:  // reset
           {
             if (!wifiActive) {
-              Serial.write('A');
+              Serial.write(CtrlChars, N_ACK_CHARS);
               vTaskDelay(pdMS_TO_TICKS(10));
             }
             Restart();
@@ -691,7 +692,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
 
           case 16: {
             if (!wifiActive) {
-              Serial.write('A');
+              Serial.write(CtrlChars, N_ACK_CHARS);
               vTaskDelay(pdMS_TO_TICKS(10));
             }
             LedTester();
@@ -879,6 +880,7 @@ void Task_ReadSerial(void *pvParameters) {
         result = HandleData(pUsbBuffer, received);
         expected = USB_PACKAGE_SIZE;
         if (2 == result) {
+          Serial.write(CtrlChars, N_CTRL_CHARS);
           Serial.write('F');
           vTaskDelay(pdMS_TO_TICKS(2));
           Serial.end();
@@ -887,7 +889,7 @@ void Task_ReadSerial(void *pvParameters) {
           while (!Serial);
           break;
         }
-        Serial.write('A');
+        Serial.write(CtrlChars, N_ACK_CHARS);
         if (1 == result) break;
         noDataMs = 0;
       } else {
