@@ -371,8 +371,8 @@ void LedTester(void) {
 }
 
 void AcquireNextBuffer() {
-  //currentBuffer = (currentBuffer + 1) % NUM_BUFFERS;
-  //return;
+  // currentBuffer = (currentBuffer + 1) % NUM_BUFFERS;
+  // return;
   while (1) {
     portENTER_CRITICAL(&bufferMutex);
     if (currentBuffer == lastBuffer &&
@@ -690,11 +690,11 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
           }
 
           case 16: {
-             if (!wifiActive) {
+            if (!wifiActive) {
               Serial.write('A');
               vTaskDelay(pdMS_TO_TICKS(10));
             }
-           LedTester();
+            LedTester();
             Restart();
           }
 
@@ -846,6 +846,7 @@ void Task_ReadSerial(void *pvParameters) {
   uint8_t result = 0;
 
   while (1) {
+    noDataMs = 0;
     numFrameCharsFound = 0;
     // Wait for FRAME header
     while (numFrameCharsFound < N_FRAME_CHARS) {
@@ -856,6 +857,11 @@ void Task_ReadSerial(void *pvParameters) {
           numFrameCharsFound = 0;
         }
       } else {
+        if (++noDataMs > 5000) {
+          transportActive = false;
+          noDataMs = 0;
+          break;
+        }
         // Avoid busy-waiting
         vTaskDelay(pdMS_TO_TICKS(1));
       }
@@ -1563,8 +1569,7 @@ void loop() {
       if (!i) transportWaitCounter = (transportWaitCounter + 1) % 8;
     }
 
-    delay(100);
-
+    vTaskDelay(pdMS_TO_TICKS(100));
   } else if (AcquireNextProcessingBuffer()) {
     if (2 == bufferSizes[processingBuffer] &&
         255 == buffers[processingBuffer][0] &&
@@ -1657,6 +1662,6 @@ void loop() {
     }
   } else {
     // Avoid busy-waiting
-    vTaskDelay(pdMS_TO_TICKS(1));
+    vTaskDelay(pdMS_TO_TICKS(2));
   }
 }
