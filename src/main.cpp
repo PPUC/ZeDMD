@@ -555,6 +555,7 @@ static bool IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
         }
 
         if (debug) {
+          portENTER_CRITICAL(&bufferMutex);
           display->DisplayText("Command:", 7 * (TOTAL_WIDTH / 128),
                                (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
           DisplayNumber(command, 2, 7 * (TOTAL_WIDTH / 128) + (8 * 4),
@@ -563,14 +564,12 @@ static bool IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
                                (TOTAL_HEIGHT / 2) - 4, 128, 128, 128);
           DisplayNumber(payloadSize, 2, 7 * (TOTAL_WIDTH / 128) + (8 * 4),
                         (TOTAL_HEIGHT / 2) - 4, 255, 191, 0);
+          portEXIT_CRITICAL(&bufferMutex);
         }
 
         switch (command) {
           case 12:  // handshake
           {
-            display->DisplayText("HANDSHAKE", 0, TOTAL_HEIGHT - 5, 198, 198,
-                                 198);
-
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (wifiActive) break;
@@ -590,8 +589,6 @@ static bool IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
                 (USB_PACKAGE_SIZE >> 8) & 0xff;
             response[N_INTERMEDIATE_CTR_CHARS + 9] = 'R';
             Serial.write(response, N_INTERMEDIATE_CTR_CHARS + 10);
-            display->DisplayText("CONNECTED", 0, TOTAL_HEIGHT - 5, 198, 198,
-                                 198);
             free(response);
             return true;
           }
@@ -697,9 +694,11 @@ static bool IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
           case 11:  // KeepAlive
           {
             if (debug) {
+              portENTER_CRITICAL(&bufferMutex);
               display->DisplayText("KEEP ALIVE RECEIVED",
                                    7 * (TOTAL_WIDTH / 128),
                                    (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
+              portEXIT_CRITICAL(&bufferMutex);
             }
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
@@ -797,6 +796,7 @@ void Task_ReadSerial(void *pvParameters) {
 #if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
   // S3 USB CDC. The actual baud rate doesn't matter.
   Serial.begin(115200);
+  while (!Serial)
   display->DisplayText("USB CDC", 0, 0, 0, 0, 0, 1);
 #else
   Serial.setTimeout(SERIAL_TIMEOUT);
@@ -1311,11 +1311,11 @@ void setup() {
             RefreshSetupScreen();
             display->DisplayText(
                 transport == TRANSPORT_USB
-                    ? "USB "
+                    ? "USB     "
                     : (transport == TRANSPORT_WIFI_UDP
                            ? "WiFi UDP"
                            : (transport == TRANSPORT_WIFI_TCP ? "WiFi TCP"
-                                                              : "SPI ")),
+                                                              : "SPI     ")),
                 7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             break;
           }
@@ -1376,11 +1376,11 @@ void setup() {
               transport = TRANSPORT_SPI;
             display->DisplayText(
                 transport == TRANSPORT_USB
-                    ? "USB "
+                    ? "USB     "
                     : (transport == TRANSPORT_WIFI_UDP
                            ? "WiFi UDP"
                            : (transport == TRANSPORT_WIFI_TCP ? "WiFi TCP"
-                                                              : "SPI ")),
+                                                              : "SPI     ")),
                 7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             SaveTransport();
             break;
