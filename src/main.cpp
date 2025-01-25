@@ -49,15 +49,18 @@
 #define NUM_RENDER_BUFFERS 1
 #define BUFFER_SIZE 1152
 #endif
-#if defined(ARDUINO_ESP32_S3_N16R8)
-#define SERIAL_BAUD 2000000  // Serial baud rate.
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
 #if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
+// USB CDC
+#define SERIAL_BAUD 115200
 #define USB_PACKAGE_SIZE 512
 #else
+// UART
+#define SERIAL_BAUD 921600
 #define USB_PACKAGE_SIZE 256
 #endif
 #else
-#define SERIAL_BAUD 921600  // Serial baud rate.
+#define SERIAL_BAUD 921600
 #define USB_PACKAGE_SIZE 512
 #endif
 #define SERIAL_BUFFER 2048
@@ -368,6 +371,8 @@ void LedTester(void) {
 }
 
 void AcquireNextBuffer() {
+  //currentBuffer = (currentBuffer + 1) % NUM_BUFFERS;
+  //return;
   while (1) {
     portENTER_CRITICAL(&bufferMutex);
     if (currentBuffer == lastBuffer &&
@@ -512,7 +517,7 @@ void RefreshSetupScreen() {
                        (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
 }
 
-static bool IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
+static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
   uint16_t pos = 0;
   bool headerCompleted = false;
 
@@ -545,13 +550,20 @@ static bool IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
         headerCompleted = true;
         continue;
       } else if (headerBytesReceived == 4) {
-        // esp_task_wdt_reset();
+        esp_task_wdt_reset();
         if (payloadSize > BUFFER_SIZE) {
-          display->DisplayText("Error, payloadSize > BUFFER_SIZE", 0, 13, 255,
-                               0, 0);
-          DisplayNumber(payloadSize, 5, 0, 19, 255, 0, 0);
-          DisplayNumber(BUFFER_SIZE, 5, 0, 25, 255, 0, 0);
-          while (1);
+          if (debug) {
+            portENTER_CRITICAL(&bufferMutex);
+            display->DisplayText("Error, payloadSize > BUFFER_SIZE", 0, 13, 255,
+                                 0, 0);
+            DisplayNumber(payloadSize, 5, 0, 19, 255, 0, 0);
+            DisplayNumber(BUFFER_SIZE, 5, 0, 25, 255, 0, 0);
+            portEXIT_CRITICAL(&bufferMutex);
+            while (1);
+          }
+          headerBytesReceived = 0;
+          numCtrlCharsFound = 0;
+          return 2;
         }
 
         if (debug) {
@@ -590,7 +602,7 @@ static bool IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             response[N_INTERMEDIATE_CTR_CHARS + 9] = 'R';
             Serial.write(response, N_INTERMEDIATE_CTR_CHARS + 10);
             free(response);
-            return true;
+            return 1;
           }
 
           case 32:  // get version
@@ -602,7 +614,7 @@ static bool IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             Serial.write(ZEDMD_VERSION_MAJOR);
             Serial.write(ZEDMD_VERSION_MINOR);
             Serial.write(ZEDMD_VERSION_PATCH);
-            return true;
+            return 1;
           }
 
           case 33:  // get panel resolution
@@ -615,7 +627,7 @@ static bool IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             Serial.write((TOTAL_WIDTH >> 8) & 0xff);
             Serial.write(TOTAL_HEIGHT & 0xff);
             Serial.write((TOTAL_HEIGHT >> 8) & 0xff);
-            return true;
+            return 1;
           }
 
           case 22:  // set brightness
@@ -625,7 +637,7 @@ static bool IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (wifiActive) break;
-            return true;
+            return 1;
           }
 
           case 23:  // set RGB order
@@ -634,7 +646,7 @@ static bool IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (wifiActive) break;
-            return true;
+            return 1;
           }
 
           case 24:  // get brightness
@@ -644,7 +656,7 @@ static bool IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             if (wifiActive) break;
 
             Serial.write(brightness);
-            return true;
+            return 1;
           }
 
           case 25:  // get RGB order
@@ -654,7 +666,7 @@ static bool IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             if (wifiActive) break;
 
             Serial.write(rgbMode);
-            return true;
+            return 1;
           }
 
           case 30:  // save settings
@@ -665,16 +677,24 @@ static bool IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (wifiActive) break;
-            return true;
+            return 1;
           }
 
           case 31:  // reset
           {
+            if (!wifiActive) {
+              Serial.write('A');
+              vTaskDelay(pdMS_TO_TICKS(10));
+            }
             Restart();
           }
 
           case 16: {
-            LedTester();
+             if (!wifiActive) {
+              Serial.write('A');
+              vTaskDelay(pdMS_TO_TICKS(10));
+            }
+           LedTester();
             Restart();
           }
 
@@ -688,7 +708,7 @@ static bool IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (wifiActive) break;
-            return true;
+            return 1;
           }
 
           case 11:  // KeepAlive
@@ -703,7 +723,7 @@ static bool IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (wifiActive) break;
-            return true;
+            return 1;
           }
 
           case 98:  // disable debug mode
@@ -712,7 +732,7 @@ static bool IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (wifiActive) break;
-            return true;
+            return 1;
           }
 
           case 99:  // enable debug mode
@@ -721,7 +741,7 @@ static bool IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (wifiActive) break;
-            return true;
+            return 1;
           }
 
           case 5: {  // RGB565 Zones Stream
@@ -774,21 +794,21 @@ static bool IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (wifiActive) break;
-            return true;
+            return 1;
           }
 
           default: {
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (wifiActive) break;
-            return true;
+            return 1;
           }
         }
       }
     }
   }
 
-  return false;
+  return 0;
 }
 
 void Task_ReadSerial(void *pvParameters) {
@@ -796,8 +816,7 @@ void Task_ReadSerial(void *pvParameters) {
 #if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
   // S3 USB CDC. The actual baud rate doesn't matter.
   Serial.begin(115200);
-  while (!Serial)
-  display->DisplayText("USB CDC", 0, 0, 0, 0, 0, 1);
+  while (!Serial) display->DisplayText("USB CDC", 0, 0, 0, 0, 0, 1);
 #else
   Serial.setTimeout(SERIAL_TIMEOUT);
   Serial.begin(SERIAL_BAUD);
@@ -824,7 +843,7 @@ void Task_ReadSerial(void *pvParameters) {
   int16_t expected = 0;
   uint16_t noDataMs = 0;
   uint8_t numFrameCharsFound = 0;
-  bool lastCommand = false;
+  uint8_t result = 0;
 
   while (1) {
     numFrameCharsFound = 0;
@@ -849,11 +868,21 @@ void Task_ReadSerial(void *pvParameters) {
     while (1) {
       // Wait for data to be ready
       if (Serial.available() >= expected) {
+        memset(pUsbBuffer, 0, USB_PACKAGE_SIZE);
         received = Serial.readBytes(pUsbBuffer, expected);
-        lastCommand = HandleData(pUsbBuffer, received);
+        result = HandleData(pUsbBuffer, received);
         expected = USB_PACKAGE_SIZE;
+        if (2 == result) {
+          Serial.write('F');
+          vTaskDelay(pdMS_TO_TICKS(2));
+          Serial.end();
+          vTaskDelay(pdMS_TO_TICKS(10));
+          Serial.begin(SERIAL_BAUD);
+          while (!Serial);
+          break;
+        }
         Serial.write('A');
-        if (lastCommand) break;
+        if (1 == result) break;
         noDataMs = 0;
       } else {
         if (++noDataMs > 5000) {
