@@ -54,17 +54,17 @@
 #if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
 // USB CDC
 #define SERIAL_BAUD 115200
-#define USB_PACKAGE_SIZE 512
+#define USB_PACKAGE_SIZE 64
 #else
 // UART
-#define SERIAL_BAUD 921600
-#define USB_PACKAGE_SIZE 256
+#define SERIAL_BAUD 2000000
+#define USB_PACKAGE_SIZE 64
 #endif
 #else
 #define SERIAL_BAUD 921600
-#define USB_PACKAGE_SIZE 512
+#define USB_PACKAGE_SIZE 64
 #endif
-#define SERIAL_BUFFER 2048
+#define SERIAL_BUFFER 512
 #define SERIAL_TIMEOUT \
   8  // Time in milliseconds to wait for the next data chunk.
 
@@ -819,10 +819,12 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
 
 void Task_ReadSerial(void *pvParameters) {
   Serial.setRxBufferSize(SERIAL_BUFFER);
+  Serial.setTxBufferSize(64);
 #if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
   // S3 USB CDC. The actual baud rate doesn't matter.
   Serial.begin(115200);
-  while (!Serial) display->DisplayText("USB CDC", 0, 0, 0, 0, 0, 1);
+  while (!Serial);
+  display->DisplayText("USB CDC", 0, 0, 0, 0, 0, 1);
 #else
   Serial.setTimeout(SERIAL_TIMEOUT);
   Serial.begin(SERIAL_BAUD);
@@ -875,6 +877,7 @@ void Task_ReadSerial(void *pvParameters) {
     expected = USB_PACKAGE_SIZE - N_FRAME_CHARS;
     transportActive = true;
     noDataMs = 0;
+    result = 0;
 
     while (1) {
       // Wait for data to be ready
@@ -883,7 +886,7 @@ void Task_ReadSerial(void *pvParameters) {
         received = Serial.readBytes(pUsbBuffer, expected);
         result = HandleData(pUsbBuffer, received);
         expected = USB_PACKAGE_SIZE;
-        if (2 == result) {
+        if (2 == result) {  // Error
           Serial.write(CtrlChars, N_CTRL_CHARS);
           Serial.write('F');
           Serial.flush();
@@ -896,9 +899,9 @@ void Task_ReadSerial(void *pvParameters) {
         }
         Serial.write(CtrlChars, N_ACK_CHARS);
         Serial.flush();
-        if (1 == result) break;
         noDataMs = 0;
       } else {
+        if (1 == result) break;  // Wait for the next FRAME header
         if (++noDataMs > 5000) {
           transportActive = false;
           noDataMs = 0;
