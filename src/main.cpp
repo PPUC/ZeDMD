@@ -527,7 +527,7 @@ void RefreshSetupScreen() {
                 (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
   display->DisplayText("USB Paket Size:", 7 * (TOTAL_WIDTH / 128),
                        (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
-  DisplayNumber(usbPackageSizeMultiplier * 32, 3,
+  DisplayNumber(usbPackageSizeMultiplier * 32, 4,
                 7 * (TOTAL_WIDTH / 128) + (15 * 4), (TOTAL_HEIGHT / 2) + 4, 255,
                 191, 0);
 
@@ -867,6 +867,12 @@ void Task_ReadSerial(void *pvParameters) {
 #else
   uint8_t *pUsbBuffer = (uint8_t *)malloc(usbPackageSize);
 #endif
+
+  if (nullptr == pUsbBuffer) {
+    display->DisplayText("out of memory", 10, 13, 255, 0, 0);
+    while (1);
+  }
+
   payloadMissing = 0;
   headerBytesReceived = 0;
   numCtrlCharsFound = 0;
@@ -1452,7 +1458,7 @@ void setup() {
             else if (down && --usbPackageSizeMultiplier < 1)
               usbPackageSizeMultiplier = 60;
 
-            DisplayNumber(usbPackageSizeMultiplier * 32, 3,
+            DisplayNumber(usbPackageSizeMultiplier * 32, 4,
                           7 * (TOTAL_WIDTH / 128) + (15 * 4),
                           (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
             SaveUsbPackageSizeMultiplier();
