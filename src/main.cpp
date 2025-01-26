@@ -131,7 +131,7 @@ uint8_t brightness = 5;
 #else
 uint8_t brightness = 2;
 #endif
-
+static uint8_t usbPackageSizeMultiplier = USB_PACKAGE_SIZE / 32;
 static uint8_t settingsMenu = 0;
 static uint8_t debug = 0;
 
@@ -293,6 +293,22 @@ void LoadDebug() {
     return;
   }
   debug = f.read();
+  f.close();
+}
+
+void SaveUsbPackageSizeMultiplier() {
+  File f = LittleFS.open("/usb_size.val", "w");
+  f.write(usbPackageSizeMultiplier);
+  f.close();
+}
+
+void LoadUsbPackageSizeMultiplier() {
+  File f = LittleFS.open("/usb_size.val", "r");
+  if (!f) {
+    SaveUsbPackageSizeMultiplier();
+    return;
+  }
+  usbPackageSizeMultiplier = f.read();
   f.close();
 }
 
@@ -510,6 +526,12 @@ void RefreshSetupScreen() {
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
   DisplayNumber(debug, 1, 7 * (TOTAL_WIDTH / 128) + (6 * 4),
                 (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
+  display->DisplayText("USB Paket Size:", 7 * (TOTAL_WIDTH / 128),
+                       (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
+  DisplayNumber(usbPackageSizeMultiplier * 32, 3,
+                7 * (TOTAL_WIDTH / 128) + (15 * 4), (TOTAL_HEIGHT / 2) + 4, 255,
+                191, 0);
+
 #ifdef ZEDMD_HD_HALF
   display->DisplayText("Y Offset", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
@@ -597,9 +619,10 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             response[N_INTERMEDIATE_CTR_CHARS + 4] = ZEDMD_VERSION_MAJOR;
             response[N_INTERMEDIATE_CTR_CHARS + 5] = ZEDMD_VERSION_MINOR;
             response[N_INTERMEDIATE_CTR_CHARS + 6] = ZEDMD_VERSION_PATCH;
-            response[N_INTERMEDIATE_CTR_CHARS + 7] = USB_PACKAGE_SIZE & 0xff;
+            response[N_INTERMEDIATE_CTR_CHARS + 7] =
+                (usbPackageSizeMultiplier * 32) & 0xff;
             response[N_INTERMEDIATE_CTR_CHARS + 8] =
-                (USB_PACKAGE_SIZE >> 8) & 0xff;
+                ((usbPackageSizeMultiplier * 32) >> 8) & 0xff;
             response[N_INTERMEDIATE_CTR_CHARS + 9] = 'R';
             Serial.write(response, N_INTERMEDIATE_CTR_CHARS + 10);
             Serial.flush();
@@ -837,11 +860,12 @@ void Task_ReadSerial(void *pvParameters) {
   }
 #endif
 
+  const uint16_t usbPackageSize = usbPackageSizeMultiplier * 32;
 #ifdef BOARD_HAS_PSRAM
   uint8_t *pUsbBuffer = (uint8_t *)heap_caps_malloc(
-      USB_PACKAGE_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
+      usbPackageSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
 #else
-  uint8_t *pUsbBuffer = (uint8_t *)malloc(USB_PACKAGE_SIZE);
+  uint8_t *pUsbBuffer = (uint8_t *)malloc(usbPackageSize);
 #endif
   payloadMissing = 0;
   headerBytesReceived = 0;
@@ -874,7 +898,7 @@ void Task_ReadSerial(void *pvParameters) {
       }
     }
 
-    expected = USB_PACKAGE_SIZE - N_FRAME_CHARS;
+    expected = usbPackageSize - N_FRAME_CHARS;
     transportActive = true;
     noDataMs = 0;
     result = 0;
@@ -882,10 +906,10 @@ void Task_ReadSerial(void *pvParameters) {
     while (1) {
       // Wait for data to be ready
       if (Serial.available() >= expected) {
-        memset(pUsbBuffer, 0, USB_PACKAGE_SIZE);
+        memset(pUsbBuffer, 0, usbPackageSize);
         received = Serial.readBytes(pUsbBuffer, expected);
         result = HandleData(pUsbBuffer, received);
-        expected = USB_PACKAGE_SIZE;
+        expected = usbPackageSize;
         if (2 == result) {  // Error
           Serial.write(CtrlChars, N_CTRL_CHARS);
           Serial.write('F');
@@ -1259,6 +1283,7 @@ void setup() {
     LoadRgbOrder();
     LoadLum();
     LoadDebug();
+    LoadUsbPackageSizeMultiplier();
 #ifdef ZEDMD_HD_HALF
     LoadYOffset();
 #endif
@@ -1330,15 +1355,15 @@ void setup() {
 #endif
       if (forward || backward) {
 #ifdef ZEDMD_HD_HALF
+        if (forward && ++position > 7)
+          position = 1;
+        else if (backward && --position < 1)
+          position = 7;
+#else
         if (forward && ++position > 6)
           position = 1;
         else if (backward && --position < 1)
           position = 6;
-#else
-        if (forward && ++position > 5)
-          position = 1;
-        else if (backward && --position < 1)
-          position = 5;
 #endif
         switch (position) {
           case 1: {  // Exit
@@ -1353,7 +1378,13 @@ void setup() {
             DisplayLum(255, 191, 0);
             break;
           }
-          case 3: {  // Transport
+          case 3: {  // USB Package Size
+            RefreshSetupScreen();
+            display->DisplayText("USB Paket Size:", 7 * (TOTAL_WIDTH / 128),
+                                 (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
+            break;
+          }
+          case 4: {  // Transport
             RefreshSetupScreen();
             display->DisplayText(
                 transport == TRANSPORT_USB
@@ -1365,19 +1396,19 @@ void setup() {
                 7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             break;
           }
-          case 4: {  // Debug
+          case 5: {  // Debug
             RefreshSetupScreen();
             display->DisplayText("Debug:", 7 * (TOTAL_WIDTH / 128),
                                  (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
             break;
           }
-          case 5: {  // RGB order
+          case 6: {  // RGB order
             RefreshSetupScreen();
             DisplayRGB(255, 191, 0);
             break;
           }
 #ifdef ZEDMD_HD_HALF
-          case 6: {  // Y Offset
+          case 7: {  // Y Offset
             RefreshSetupScreen();
             display->DisplayText("Y Offset",
                                  TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
@@ -1415,7 +1446,19 @@ void setup() {
             SaveLum();
             break;
           }
-          case 3: {  // Transport
+          case 3: {  // USB Package Size
+            if (up && ++usbPackageSizeMultiplier > 16)
+              usbPackageSizeMultiplier = 1;
+            else if (down && --usbPackageSizeMultiplier < 1)
+              usbPackageSizeMultiplier = 16;
+
+            DisplayNumber(usbPackageSizeMultiplier * 32, 3,
+                          7 * (TOTAL_WIDTH / 128) + (15 * 4),
+                          (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
+            SaveUsbPackageSizeMultiplier();
+            break;
+          }
+          case 4: {  // Transport
             if (up && ++transport > TRANSPORT_SPI)
               transport = TRANSPORT_USB;
             else if (down && --transport < TRANSPORT_USB)
@@ -1431,14 +1474,14 @@ void setup() {
             SaveTransport();
             break;
           }
-          case 4: {  // Debug
+          case 5: {  // Debug
             if (++debug > 1) debug = 0;
             DisplayNumber(debug, 1, 7 * (TOTAL_WIDTH / 128) + (6 * 4),
                           (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
             SaveDebug();
             break;
           }
-          case 5: {  // RGB order
+          case 6: {  // RGB order
             if (rgbModeLoaded != 0) {
               rgbMode = 0;
               SaveRgbOrder();
@@ -1455,7 +1498,7 @@ void setup() {
             break;
           }
 #ifdef ZEDMD_HD_HALF
-          case 6: {  // Y Offset
+          case 7: {  // Y Offset
             if (up && ++yOffset > 32)
               yOffset = 0;
             else if (down && --yOffset < 0)
