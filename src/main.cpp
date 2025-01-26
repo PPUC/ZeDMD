@@ -64,7 +64,6 @@
 #define SERIAL_BAUD 921600
 #define USB_PACKAGE_SIZE 64
 #endif
-#define SERIAL_BUFFER 512
 #define SERIAL_TIMEOUT \
   8  // Time in milliseconds to wait for the next data chunk.
 
@@ -841,7 +840,9 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
 }
 
 void Task_ReadSerial(void *pvParameters) {
-  Serial.setRxBufferSize(SERIAL_BUFFER);
+  const uint16_t usbPackageSize = usbPackageSizeMultiplier * 32;
+
+  Serial.setRxBufferSize(usbPackageSize + 128);
   Serial.setTxBufferSize(64);
 #if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
   // S3 USB CDC. The actual baud rate doesn't matter.
@@ -860,7 +861,6 @@ void Task_ReadSerial(void *pvParameters) {
   }
 #endif
 
-  const uint16_t usbPackageSize = usbPackageSizeMultiplier * 32;
 #ifdef BOARD_HAS_PSRAM
   uint8_t *pUsbBuffer = (uint8_t *)heap_caps_malloc(
       usbPackageSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
@@ -1447,10 +1447,10 @@ void setup() {
             break;
           }
           case 3: {  // USB Package Size
-            if (up && ++usbPackageSizeMultiplier > 16)
+            if (up && ++usbPackageSizeMultiplier > 60)
               usbPackageSizeMultiplier = 1;
             else if (down && --usbPackageSizeMultiplier < 1)
-              usbPackageSizeMultiplier = 16;
+              usbPackageSizeMultiplier = 60;
 
             DisplayNumber(usbPackageSizeMultiplier * 32, 3,
                           7 * (TOTAL_WIDTH / 128) + (15 * 4),
