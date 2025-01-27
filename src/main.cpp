@@ -154,7 +154,7 @@ void DoRestart(int sec) {
     MDNS.end();
     WiFi.disconnect(true);
   }
-  display->DisplayText("Restart", 10, 13, 255, 0, 0);
+  display->DisplayText("Restart", 0, 0, 255, 0, 0);
   sleep(sec);
   ESP.restart();
 }
@@ -584,7 +584,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
         if (payloadSize > BUFFER_SIZE) {
           if (debug) {
             portENTER_CRITICAL(&bufferMutex);
-            display->DisplayText("Error, payloadSize > BUFFER_SIZE", 0, 13, 255,
+            display->DisplayText("Error, payloadSize > BUFFER_SIZE", 0, 0, 255,
                                  0, 0);
             DisplayNumber(payloadSize, 5, 0, 19, 255, 0, 0);
             DisplayNumber(BUFFER_SIZE, 5, 0, 25, 255, 0, 0);
@@ -877,7 +877,7 @@ void Task_ReadSerial(void *pvParameters) {
 #endif
 
   if (nullptr == pUsbBuffer) {
-    display->DisplayText("out of memory", 10, 13, 255, 0, 0);
+    display->DisplayText("out of memory", 0, 0, 255, 0, 0);
     while (1);
   }
 
@@ -1048,7 +1048,7 @@ void StartWiFi() {
 
   // Start the MDNS server for easy detection
   if (!MDNS.begin("zedmd-wifi")) {
-    display->DisplayText("MDNS could not be started", 10, TOTAL_HEIGHT / 2 - 9,
+    display->DisplayText("MDNS could not be started", 0, 0,
                          255, 0, 0);
     while (1);
   }
@@ -1325,7 +1325,7 @@ void setup() {
     renderBuffer[i] = (uint8_t *)malloc(TOTAL_BYTES);
 #endif
     if (nullptr == renderBuffer[i]) {
-      display->DisplayText("out of memory", 10, 13, 255, 0, 0);
+      display->DisplayText("out of memory", 0, 0, 255, 0, 0);
       while (1);
     }
     memset(renderBuffer[i], 0, TOTAL_BYTES);
@@ -1546,7 +1546,7 @@ void setup() {
     buffers[i] = (uint8_t *)malloc(BUFFER_SIZE);
 #endif
     if (nullptr == buffers[i]) {
-      display->DisplayText("out of memory", 10, 13, 255, 0, 0);
+      display->DisplayText("out of memory", 0, 0, 255, 0, 0);
       while (1);
     }
   }
@@ -1570,7 +1570,7 @@ void setup() {
     }
 
     case TRANSPORT_SPI: {
-      display->DisplayText("SPI is not implemented yet", 10, 13, 255, 0, 0);
+      display->DisplayText("SPI is not implemented yet", 0, 0, 255, 0, 0);
       while (1);
       break;
     }
