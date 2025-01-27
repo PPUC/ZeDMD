@@ -67,6 +67,8 @@
 #define SERIAL_TIMEOUT \
   8  // Time in milliseconds to wait for the next data chunk.
 
+#define UDP_CONNECTION_TIMEOUT 4000
+
 #ifdef ARDUINO_ESP32_S3_N16R8
 #define UP_BUTTON_PIN 0
 #define DOWN_BUTTON_PIN 45
@@ -147,7 +149,9 @@ int8_t transport = TRANSPORT_USB;
 #endif
 static bool transportActive = false;
 uint8_t transportWaitCounter = 0;
-uint8_t logoWaitCounter = 0;
+uint8_t logoWaitCounter = 199;
+uint32_t lastUdpPacket = 0;
+bool serverRunning = false;
 
 void DoRestart(int sec) {
   if (wifiActive) {
@@ -156,6 +160,8 @@ void DoRestart(int sec) {
   }
   display->DisplayText("Restart", 0, 0, 255, 0, 0);
   sleep(sec);
+  display->ClearScreen();
+  delay(20);
   ESP.restart();
 }
 
@@ -533,14 +539,14 @@ void RefreshSetupScreen() {
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
   DisplayNumber(debug, 1, 7 * (TOTAL_WIDTH / 128) + (6 * 4),
                 (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
-  display->DisplayText("USB Paket Size:", 7 * (TOTAL_WIDTH / 128),
+  display->DisplayText("USB Packet Size:", 7 * (TOTAL_WIDTH / 128),
                        (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
   DisplayNumber(usbPackageSizeMultiplier * 32, 4,
-                7 * (TOTAL_WIDTH / 128) + (15 * 4), (TOTAL_HEIGHT / 2) + 4, 255,
+                7 * (TOTAL_WIDTH / 128) + (16 * 4), (TOTAL_HEIGHT / 2) + 4, 255,
                 191, 0);
 
 #ifdef ZEDMD_HD_HALF
-  display->DisplayText("Y Offset", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
+  display->DisplayText("Y-Offset", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
 #endif
   display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
@@ -855,12 +861,16 @@ void Task_ReadSerial(void *pvParameters) {
 #if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
   // S3 USB CDC. The actual baud rate doesn't matter.
   Serial.begin(115200);
-  while (!Serial);
+  while (!Serial) {
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
   display->DisplayText("USB CDC", 0, 0, 0, 0, 0, 1);
 #else
   Serial.setTimeout(SERIAL_TIMEOUT);
   Serial.begin(SERIAL_BAUD);
-  while (!Serial);
+  while (!Serial) {
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
   if (1 == debug) {
     DisplayNumber(SERIAL_BAUD, (SERIAL_BAUD >= 1000000 ? 7 : 6), 0, 0, 0, 0, 0,
                   1);
@@ -953,8 +963,16 @@ void Task_ReadSerial(void *pvParameters) {
 }
 
 static void HandleUdpPacket(AsyncUDPPacket packet) {
-  HandleData(packet.data(), packet.length());
-  transportActive = true;
+  static bool isProcessing = false;
+
+  if (!isProcessing) {
+    isProcessing = true;
+    transportActive = true;
+    lastUdpPacket = millis();
+    HandleData(packet.data(), packet.length());
+    yield();
+    isProcessing = false;
+  }
 }
 
 static void HandleTcpData(void *arg, AsyncClient *client, void *data,
@@ -995,64 +1013,7 @@ static void NewTcpClient(void *arg, AsyncClient *client) {
   client->onDisconnect(&HandleTcpDisconnect, NULL);
 }
 
-void StartWiFi() {
-  const char *apSSID = "ZeDMD-WiFi";
-  const char *apPassword = "zedmd1234";
-
-  if (LoadWiFiConfig() && ssid_length > 0) {
-    WiFi.disconnect(true);
-    WiFi.begin(ssid.substring(0, ssid_length).c_str(),
-               pwd.substring(0, pwd_length).c_str());
-
-    if (WiFi.waitForConnectResult() != WL_CONNECTED) {
-      WiFi.softAP(apSSID, apPassword);  // Start AP if WiFi fails to connect
-    }
-  } else {
-    WiFi.softAP(apSSID, apPassword);  // Start AP if config not found
-  }
-
-  WiFi.setSleep(false);  // WiFi speed improvement on ESP32 S3 and others.
-
-  IPAddress ip;
-  if (WiFi.getMode() == WIFI_AP) {
-    ip = WiFi.softAPIP();
-    display->DisplayText("zedmd-wifi.local", 0, TOTAL_HEIGHT - 5, 0, 0, 0, 1);
-  } else if (WiFi.getMode() == WIFI_STA) {
-    ip = WiFi.localIP();
-  }
-
-  for (uint8_t i = 0; i < 4; i++) {
-    if (i > 0) display->DrawPixel(i * 3 * 4 + i * 2 - 2, 4, 0);
-    DisplayNumber(ip[i], 3, i * 3 * 4 + i * 2, 0, 0, 0, 0, 1);
-  }
-
-  if (ip[0] == 0) {
-    display->DisplayText("No WiFi connection, turn off", 10,
-                         TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
-    display->DisplayText("or the credentials will be", 10, TOTAL_HEIGHT / 2 - 3,
-                         255, 0, 0);
-    display->DisplayText("resettet in 60 seconds.", 10, TOTAL_HEIGHT / 2 + 3,
-                         255, 0, 0);
-    for (uint8_t i = 59; i > 0; i--) {
-      sleep(1);
-      DisplayNumber(i, 2, 58, TOTAL_HEIGHT / 2 + 3, 255, 0, 0);
-    }
-    ssid = "\n";
-    pwd = "\n";
-    SaveWiFiConfig();
-    delay(100);
-    Restart();
-  }
-
-  wifiActive = true;
-
-  // Start the MDNS server for easy detection
-  if (!MDNS.begin("zedmd-wifi")) {
-    display->DisplayText("MDNS could not be started", 0, 0,
-                         255, 0, 0);
-    while (1);
-  }
-
+void StartServer() {
   server = new AsyncWebServer(80);
 
   // Serve index.html
@@ -1273,11 +1234,74 @@ void StartWiFi() {
 
   // Start the web server
   server->begin();
+  serverRunning = true;
+}
+
+void StartWiFi() {
+  const char *apSSID = "ZeDMD-WiFi";
+  const char *apPassword = "zedmd1234";
+
+  if (LoadWiFiConfig() && ssid_length > 0) {
+    WiFi.disconnect(true);
+    WiFi.begin(ssid.substring(0, ssid_length).c_str(),
+               pwd.substring(0, pwd_length).c_str());
+
+    if (WiFi.waitForConnectResult() != WL_CONNECTED) {
+      WiFi.softAP(apSSID, apPassword);  // Start AP if WiFi fails to connect
+    }
+  } else {
+    WiFi.softAP(apSSID, apPassword);  // Start AP if config not found
+  }
+
+  WiFi.setSleep(false);  // WiFi speed improvement on ESP32 S3 and others.
+
+  IPAddress ip;
+  if (WiFi.getMode() == WIFI_AP) {
+    ip = WiFi.softAPIP();
+    display->DisplayText("zedmd-wifi.local", 0, TOTAL_HEIGHT - 5, 0, 0, 0, 1);
+  } else if (WiFi.getMode() == WIFI_STA) {
+    ip = WiFi.localIP();
+  }
+
+  for (uint8_t i = 0; i < 4; i++) {
+    if (i > 0) display->DrawPixel(i * 3 * 4 + i * 2 - 2, 4, 0);
+    DisplayNumber(ip[i], 3, i * 3 * 4 + i * 2, 0, 0, 0, 0, 1);
+  }
+
+  if (ip[0] == 0) {
+    display->DisplayText("No WiFi connection, turn off", 10,
+                         TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
+    display->DisplayText("or the credentials will be", 10, TOTAL_HEIGHT / 2 - 3,
+                         255, 0, 0);
+    display->DisplayText("resettet in 60 seconds.", 10, TOTAL_HEIGHT / 2 + 3,
+                         255, 0, 0);
+    for (uint8_t i = 59; i > 0; i--) {
+      sleep(1);
+      DisplayNumber(i, 2, 58, TOTAL_HEIGHT / 2 + 3, 255, 0, 0);
+    }
+    ssid = "\n";
+    pwd = "\n";
+    SaveWiFiConfig();
+    delay(100);
+    Restart();
+  }
+
+  wifiActive = true;
+
+  // Start the MDNS server for easy detection
+  if (!MDNS.begin("zedmd-wifi")) {
+    display->DisplayText("MDNS could not be started", 0, 0, 255, 0, 0);
+    while (1);
+  }
+
+  StartServer();
 
   if (TRANSPORT_WIFI_UDP == transport) {
     udp = new AsyncUDP();
-    if (udp->listen(ip, port)) {
-      udp->onPacket(HandleUdpPacket);  // Start listening to ZeDMD UDP traffic
+    udp->onPacket(HandleUdpPacket);
+    if (!udp->listen(ip, port)) {
+      display->DisplayText("UDP server not be started", 0, 0, 255, 0, 0);
+      while (1);
     }
   } else {
     tcp = new AsyncServer(port);
@@ -1394,7 +1418,7 @@ void setup() {
           }
           case 3: {  // USB Package Size
             RefreshSetupScreen();
-            display->DisplayText("USB Paket Size:", 7 * (TOTAL_WIDTH / 128),
+            display->DisplayText("USB Packet Size:", 7 * (TOTAL_WIDTH / 128),
                                  (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
             break;
           }
@@ -1424,7 +1448,7 @@ void setup() {
 #ifdef ZEDMD_HD_HALF
           case 7: {  // Y Offset
             RefreshSetupScreen();
-            display->DisplayText("Y Offset",
+            display->DisplayText("Y-Offset",
                                  TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
                                  (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
             break;
@@ -1467,7 +1491,7 @@ void setup() {
               usbPackageSizeMultiplier = 60;
 
             DisplayNumber(usbPackageSizeMultiplier * 32, 4,
-                          7 * (TOTAL_WIDTH / 128) + (15 * 4),
+                          7 * (TOTAL_WIDTH / 128) + (16 * 4),
                           (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
             SaveUsbPackageSizeMultiplier();
             break;
@@ -1512,14 +1536,14 @@ void setup() {
             break;
           }
 #ifdef ZEDMD_HD_HALF
-          case 7: {  // Y Offset
+          case 7: {  // Y-Offset
             if (up && ++yOffset > 32)
               yOffset = 0;
             else if (down && --yOffset < 0)
               yOffset = 32;
             ClearScreen();
             RefreshSetupScreen();
-            display->DisplayText("Y Offset",
+            display->DisplayText("Y-Offset",
                                  TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
                                  (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
             SaveYOffset();
@@ -1586,6 +1610,11 @@ void loop() {
   }
 
   if (!transportActive) {
+    if (wifiActive && !serverRunning) {
+      // @see https://github.com/ESP32Async/ESPAsyncWebServer/issues/21
+      // StartServer();
+    }
+
     ++logoWaitCounter;
     if (100 == logoWaitCounter) {
       DisplayUpdate();
@@ -1642,8 +1671,23 @@ void loop() {
 
     transportWaitCounter = (transportWaitCounter + 1) % 8;
 
-    vTaskDelay(pdMS_TO_TICKS(100));
+    vTaskDelay(pdMS_TO_TICKS(200));
   } else {
+    // if (wifiActive && serverRunning) {
+    //  @see https://github.com/ESP32Async/ESPAsyncWebServer/issues/21
+    //  server->end();
+    //  delete server;
+    //  server = nullptr;
+    //  serverRunning = false;
+    //}
+
+    if (TRANSPORT_WIFI_UDP == transport && lastUdpPacket > 0 &&
+        (millis() - lastUdpPacket) > UDP_CONNECTION_TIMEOUT) {
+      transportActive = false;
+      logoWaitCounter = 199;
+      return;
+    }
+
     if (AcquireNextProcessingBuffer()) {
       if (2 == bufferSizes[processingBuffer] &&
           255 == buffers[processingBuffer][0] &&
