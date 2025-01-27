@@ -2,9 +2,9 @@
 
 ## About
 
-ZeDMD is a "real" DMD for pinball emulations and other use cases.
+ZeDMD is a "real" DMD designed for pinball emulations and other use cases. Originally developed by David "Zedrummer" Lafarge, the concept laid the foundation for what ZeDMD has become today. Markus Kalkbrenner, the current maintainer of ZeDMD, was inspired by the original idea and took the initiative to further develop and enhance it into the robust and versatile solution it is now.
 
-It is or will be supported by:
+ZeDMD is or will be supported by:
 * [DMDExtensions](https://github.com/freezy/dmd-extensions)
 * [VPX Standalone](https://github.com/vpinball/vpinball/tree/standalone)
 * [PPUC](https://github.com/PPUC/ppuc)
@@ -13,7 +13,7 @@ It is or will be supported by:
 
 A full tutorial of its installation is available in [English](https://www.pincabpassion.net/t14796-tuto-zedmd-installation-english) and in [French](https://www.pincabpassion.net/t14798-tuto-installation-du-zedmd)
 
-Meanwhile, there're different "flavours" of the ZeDMD firmware. Because it pushes the cheap ESP32 to its limits, we can't provide a unified firmware, so you have to pick the appropriate one:
+Meanwhile, there are different "flavours" of the ZeDMD firmware. Because it pushes the cheap ESP32 to its limits, we can not provide a unified firmware, so you have to pick the appropriate one:
 * ZeDMD 128x32: using two 64x32 panels driven by an ESP32 connected over USB or WiFi
 * ZeDMD HD 256x64: using four 64x64 or two 128x64 panels driven by an ESP32 connected over USB or WiFi
 * ZeDMD 128x64: using one 128x64 panel driven by an ESP32 connected over USB or WiFi, showing 128x32 content with an offset, suitable for mini cabinets
@@ -23,34 +23,32 @@ Meanwhile, there're different "flavours" of the ZeDMD firmware. Because it pushe
 * ZeDMD S3 AMOLED: using a small OLED driven by a LilyGo AMOLED T-Display-S3 V2 connected via USB CDC
 * ZeDMD S3 AMOLED WiFi: using a small OLED driven by a LilyGo AMOLED T-Display-S3 V2 connected via WiFi
 
-Here's are short demo of ZeDMD and ZeDMD HD in parallel:
+Here is are short demo of ZeDMD and ZeDMD HD in parallel:
 
 [![Watch the video](https://img.youtube.com/vi/B6D00oB4Co8/default.jpg)](https://youtu.be/B6D00oB4Co8)
 
 ## Flashing the firmware
 
-There're different ways to flash the firmware on the ESP32.
+There are different ways to flash the firmware on the ESP32.
 
 ### esptool
 
 Download the appropriate zip file from the [latest release](https://github.com/PPUC/ZeDMD/releases/latest)'s assets section and extract it.
 
-Install [esptool](https://github.com/espressif/esptool) and run
-```shell
-esptool --chip esp32 write_flash 0x0 ZeDMD.bin
-```
+Install [esptool](https://github.com/espressif/esptool)
 
 On Windows you should use `esptool.exe` instead of `esptool`.
 If you have different devices attached via USB or if the ESP32 is not detected you could specifiy the concrete port.
-On unix-like systems it might be something like `--port /dev/ttyUSB0`, for Windows something like `--port COM3`:
+For a Windows machine this could be:
+```shell
+esptool.exe --chip esp32 --port COM3 write_flash 0x0 ZeDMD.bin
+```
+On a unix-like system:
 ```shell
 esptool --chip esp32 --port /dev/ttyUSB0 write_flash 0x0 ZeDMD.bin
 ```
 
-There're experimental builds for the ESP32-S3 N16R8. To flash such a device, you need to set a different `chip`:
-```shell
-esptool --chip esp32s3 write_flash 0x0 ZeDMD.bin
-```
+The ESP32-S3 N16R8 is now fully supported too. To flash this device, simply modify the command seen above by appending `s3` to `esp32`, resulting in `esp32s3`.
 
 ### platformio ("from source")
 
@@ -62,6 +60,31 @@ pio run -t upload -e 128x32
 ### ZeDMD Updater (Windows only)
 
 Download and install the [ZeDMD_Updater](https://github.com/zesinger/ZeDMD_Updater) and follow its instructions.
+
+## ZeDMD pinout diagram
+ZeDMD utilizes HUB75 to display full-color content on your panels. To achieve this, the panels must be connected to specific GPIOs on your ESP32.
+| ESP32 Dev Board | ESP32-S3-N16R8 | HUB75 pins |      
+| -------------   | -------------  | ---------- |         
+| GPIO 25         | GPIO 4         | R1         |          
+| GPIO 27         | GPIO 6         | B1         |
+| GPIO 14         | GPIO 7         | R2         |
+| GPIO 13         | GPIO 16        | B2         |
+| GPIO 23         | GPIO 18        | A          |
+| GPIO 5          | GPIO 3         | C          |
+| GPIO 16         | GPIO 41        | CLK        |
+| GPIO 15         | GPIO 2         | OE         |
+| GPIO 26         | GPIO 5         | G1         |
+| GPIO 19         | GPIO 8         | B          |
+| GPIO 17         | GPIO 42        | D          |
+| GPIO 4          | GPIO 40        | LAT        |
+
+To navigate the menu and adjust settings, you'll need to configure a few buttons. However, only two buttons are essential to modify values and exit the menu. These two buttons are `Menu Left` and `Value +`.
+| ESP32 Dev Board | ESP32-S3-N16R8 | Menu Button |      
+| -------------   | -------------  | ------------|         
+| GPIO 0          | GPIO 48        | Menu Left   |          
+| NOT USED        | GPIO 47        | Menu Right  |
+| GPIO 18         | GPIO 0         | Value +     |
+| NOT USED        | GPIO 45        | Value -     |
 
 ## First start
 
