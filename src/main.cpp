@@ -147,6 +147,7 @@ int8_t transport = TRANSPORT_USB;
 #endif
 static bool transportActive = false;
 uint8_t transportWaitCounter = 0;
+uint8_t logoWaitCounter = 0;
 
 void DoRestart(int sec) {
   if (wifiActive) {
@@ -182,7 +183,7 @@ void DisplayVersion(bool logo = false) {
   char version[10];
   snprintf(version, 9, "%d.%d.%d", ZEDMD_VERSION_MAJOR, ZEDMD_VERSION_MINOR,
            ZEDMD_VERSION_PATCH);
-  display->DisplayText(version, TOTAL_WIDTH - (strlen(version) * 4),
+  display->DisplayText(version, TOTAL_WIDTH - (strlen(version) * 4) - 5,
                        TOTAL_HEIGHT - 5, 255 * !logo, 255 * !logo, 255 * !logo,
                        logo);
 }
@@ -1578,56 +1579,61 @@ void loop() {
   }
 
   if (!transportActive) {
-    display->DrawPixel(TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 2,
-                       TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 2, 127, 127,
-                       127);
-
-    for (uint8_t i = 0; i <= 127; i += 127) {
-      switch (transportWaitCounter) {
-        case 0:
-          display->DrawPixel(TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 2,
-                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 3, i, i,
-                             i);
-          break;
-        case 1:
-          display->DrawPixel(TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 1,
-                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 3, i, i,
-                             i);
-          break;
-        case 2:
-          display->DrawPixel(TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 1,
-                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 2, i, i,
-                             i);
-          break;
-        case 3:
-          display->DrawPixel(TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 1,
-                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 1, i, i,
-                             i);
-          break;
-        case 4:
-          display->DrawPixel(TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 2,
-                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 1, i, i,
-                             i);
-          break;
-        case 5:
-          display->DrawPixel(TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 3,
-                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 1, i, i,
-                             i);
-          break;
-        case 6:
-          display->DrawPixel(TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 3,
-                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 2, i, i,
-                             i);
-          break;
-        case 7:
-          display->DrawPixel(TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5) - 3,
-                             TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5) - 3, i, i,
-                             i);
-          break;
-      }
-
-      if (!i) transportWaitCounter = (transportWaitCounter + 1) % 8;
+    ++logoWaitCounter;
+    if (100 == logoWaitCounter) {
+      DisplayUpdate();
     }
+    if (200 <= logoWaitCounter) {
+      DisplayLogo();
+      logoWaitCounter = 0;
+    }
+
+    display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 3, 0, 0, 0);
+
+    switch (transportWaitCounter) {
+      case 0:
+        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 4, 255, 255,
+                           100 <= logoWaitCounter ? 0 : 255);
+        display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 4, 0, 0, 0);
+        break;
+      case 1:
+        display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 4, 255, 255,
+                           100 <= logoWaitCounter ? 0 : 255);
+        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 4, 0, 0, 0);
+        break;
+      case 2:
+        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 4, 255, 255,
+                           100 <= logoWaitCounter ? 0 : 255);
+        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 3, 0, 0, 0);
+        break;
+      case 3:
+        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 3, 255, 255,
+                           100 <= logoWaitCounter ? 0 : 255);
+        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 2, 0, 0, 0);
+        break;
+      case 4:
+        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 2, 255, 255,
+                           100 <= logoWaitCounter ? 0 : 255);
+        display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 2, 0, 0, 0);
+        break;
+      case 5:
+        display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 2, 255, 255,
+                           100 <= logoWaitCounter ? 0 : 255);
+        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 2, 0, 0, 0);
+        break;
+      case 6:
+        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 2, 255, 255,
+                           100 <= logoWaitCounter ? 0 : 255);
+        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 3, 0, 0, 0);
+        break;
+      case 7:
+        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 3, 255, 255,
+                           100 <= logoWaitCounter ? 0 : 255);
+        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 4, 0, 0, 0);
+        break;
+    }
+
+    transportWaitCounter = (transportWaitCounter + 1) % 8;
 
     vTaskDelay(pdMS_TO_TICKS(100));
   } else {
