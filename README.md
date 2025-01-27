@@ -92,21 +92,33 @@ To navigate the menu and adjust settings, you'll need to configure a few buttons
 
 ## First start
 
-After flashing the ZeDMD settings menu will appear. Due to the variety of panels available on the market, you’ll need to adjust the RGB values. On ZeDMD versions prior to v5.0.0, this can be done by pressing the RGB button. From v5.0.0 onwards, you can adjust the RGB values by navigating to the `RGB Order:` option at the top of the settings menu.
+![ZeDMD_menu](docs/images/ZeDMD_menu.jpg)
+After flashing the ZeDMD a settings menu will appear. Due to the variety of panels available on the market you will need to adjust the RGB values. On ZeDMD versions prior to v5.0.0, this can be done by pressing the RGB button. From v5.0.0 onwards, you can adjust the RGB values by navigating to the `RGB Order:` option at the top of the settings menu.
 Then, adjust the RGB order by rotating the colors until the following alignment is achieved:
 * The top-left corner displays `red` as red.
 * `Green` appears as green.
 * `Blue` is shown as blue.
-  
+
+> Unique TO `128x64` builds:
+> There is an option to adjust the `Y offset` of the displayed content.
+
 Versions prior to V5.0.0 let you adjust the brightness using the brightness button. 
 From v5.0.0 onwards, this is done by navigating to the `Brightness:` option in the settings menu.
+
+Starting from version 5.1.0, a configurable `USB packet size:` option has been introduced. While the default value works for most setups, reducing the packet size may help resolve any issues you encounter.
+
+The option above `USB packet size:` allows switching between `USB`, `WiFi UDP` and `WiFi TCP`. The USB option is self-explanatory. 
+When wanting to use WiFi, it is recommended to start with `WiFi UDP`, as it provides seamless frame streaming if your WiFi connection is fast. However, if your connection is average, switching to `WiFi TCP` can eliminate artifacts in the frame stream, though it will slow down the data transmission.
+
+The `Debug:` option can be set to `Debug: 1` if requested by a ZeDMD developer to enable error tracking during testing. For regular use, this setting should always remain at `0`.
+
 > [!IMPORTANT]
 > From version 5.0.0 onwards: once you’ve finished changing values, you must navigate to the 'Exit' button. This step is required to enable the ZeDMD to enter handshake mode.
 
 ## ZeDMD-WiFi
 
-After activating the WiFi mode in the settings menu, connect your mobile device or laptop to the `ZeDMD-WiFi` network using the password `zedmd1234`.
-Then open your web browser and navigate to http://ZeDMD-WiFi.local (IP: 192.168.4.1) to access the configuration settings.
+After activating either `WiFi UDP` or `WiFi TCP` in the settings menu, connect your mobile device or laptop to the `ZeDMD-WiFi` network.
+Then, open your web browser and navigate to http://ZeDMD-WiFi.local (IP: 192.168.4.1) to access the configuration settings.
 
 ## IMPORTANT LEGAL NOTICES:
 
@@ -130,18 +142,18 @@ ZeDMD uses
 
 The intention of ZeDMD is to provide a cheap DIY DMD solution. The maintainers of this project don't run any shop to sell ready-to-use hardware!
 
-Nevertheless, there're are some shops we're aware of who designed their own shields to build a ZeDMD.
-And as this might ease the task to use a ZeDMD for some users, we're fine to add some links here:
+Nevertheless, there are are some shops we are aware of who designed their own shields to build a ZeDMD.
+And as this might ease the task to use a ZeDMD for some users, we agreed to add some links here:
 * https://shop.arnoz.com/en/dmd/87-esp-dmd-shield.html
 * https://benfactory.fr/produit/zedmd-shield/
 * https://www.smallcab.net/shield-zedmd-p-2697.html
 
-There're also ready-to-use devices:
+There are also ready-to-use devices:
 * https://benfactory.fr/produit/zedmd/
 * https://www.smallcab.net/pack-zedmd-p-2698.html
 * https://virtuapin.net/index.php?main_page=product_info&cPath=6&products_id=283
 
-### "The LED pannels aren't working", ghosting, wrong pixels, missing lines
+### My LED panels do not work; ghosting, wrong pixels, missing lines
 
 The ZeDMD firmware supports a wide range of LED panels with different driver chips ... in theory.
 In general, some driver chips require adjustments in the configuration, timings and the clock phase.
@@ -174,7 +186,7 @@ Another potential issue could be outdated USB drivers. For the ESP32-S3-N16R8, r
 And for the older ESP32 Development Board:
 * https://www.silabs.com/developer-tools/usb-to-uart-bridge-vcp-drivers?tab=downloads
 
-### ZeDMD S3 crashed, how can I help fixing the issue
+### ZeDMD S3 crashed, how can I help to fix the issue
 
 If you discover a crash, there's a good chance that a coredump has been written to flash. If you flashed the device using `pio`, you can extract and interpret the coredump:
 ```shell
