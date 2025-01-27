@@ -513,6 +513,13 @@ void DisplayUpdate(void) {
 
 void RefreshSetupScreen() {
   DisplayLogo();
+  for (uint16_t y = (TOTAL_HEIGHT / 32 * 5);
+       y < TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5); y++) {
+    for (uint16_t x = (TOTAL_WIDTH / 128 * 5);
+         x < TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5); x++) {
+      display->DrawPixel(x, y, 0, 0, 0);
+    }
+  }
   DisplayRGB();
   DisplayLum();
   display->DisplayText(
@@ -537,7 +544,7 @@ void RefreshSetupScreen() {
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
 #endif
   display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
-                       (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
+                       (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
 }
 
 static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
@@ -1327,7 +1334,7 @@ void setup() {
   if (settingsMenu) {
     RefreshSetupScreen();
     display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
-                         (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+                         (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
 
     Bounce2::Button *forwardButton = new Bounce2::Button();
     forwardButton->attach(FORWARD_BUTTON_PIN, INPUT_PULLUP);
@@ -1377,7 +1384,7 @@ void setup() {
             RefreshSetupScreen();
             display->DisplayText("Exit",
                                  TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
-                                 (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+                                 (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
             break;
           }
           case 2: {  // Brightness
