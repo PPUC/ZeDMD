@@ -23,7 +23,7 @@ Meanwhile, there are different "flavours" of the ZeDMD firmware. Because it push
 * ZeDMD S3 AMOLED: using a small OLED driven by a LilyGo AMOLED T-Display-S3 V2 connected via USB CDC
 * ZeDMD S3 AMOLED WiFi: using a small OLED driven by a LilyGo AMOLED T-Display-S3 V2 connected via WiFi
 
-Here is are short demo of ZeDMD and ZeDMD HD in parallel:
+Here is a short demo of ZeDMD and ZeDMD HD in parallel:
 
 [![Watch the video](https://img.youtube.com/vi/B6D00oB4Co8/default.jpg)](https://youtu.be/B6D00oB4Co8)
 
@@ -74,6 +74,8 @@ ZeDMD utilizes HUB75 to display full-color content on your panels. To achieve th
 | GPIO 16         | GPIO 41        | CLK        |
 | GPIO 15         | GPIO 2         | OE         |
 | GPIO 26         | GPIO 5         | G1         |
+| GPIO 12         | GPIO 15        | G2         |
+| GPIO 22         | GPIO 1         | E          |
 | GPIO 19         | GPIO 8         | B          |
 | GPIO 17         | GPIO 42        | D          |
 | GPIO 4          | GPIO 40        | LAT        |
