@@ -9,6 +9,9 @@ ZeDMD is or will be supported by:
 * [PPUC](https://github.com/PPUC/ppuc)
 * [batocera](https://batocera.org/)
 * [libdmdutil](https://github.com/vpinball/libdmdutil)
+* [DOF2DMD](https://github.com/DMDTools/DOF2DMD)
+* [VPX Mobile iOS](https://apps.apple.com/mt/app/visual-pinball/id6547859926)
+* VPX Mobile Android
 
 A full tutorial of its installation is available in [English](https://www.pincabpassion.net/t14796-tuto-zedmd-installation-english) and in [French](https://www.pincabpassion.net/t14798-tuto-installation-du-zedmd)
 
@@ -89,7 +92,7 @@ To navigate the menu and adjust settings, you'll need to configure a few buttons
 
 ## First start
 
-After flashing the firmware the ZeDMD logo will appear. Due to the variety of panels available on the market, you’ll need to adjust the RGB values. On ZeDMD versions prior to v5.0.0, this can be done by pressing the RGB button. From v5.0.0 onwards, you can adjust the RGB values by navigating to the `RGB Order:` option at the top of the settings menu.
+After flashing the ZeDMD settings menu will appear. Due to the variety of panels available on the market, you’ll need to adjust the RGB values. On ZeDMD versions prior to v5.0.0, this can be done by pressing the RGB button. From v5.0.0 onwards, you can adjust the RGB values by navigating to the `RGB Order:` option at the top of the settings menu.
 Then, adjust the RGB order by rotating the colors until the following alignment is achieved:
 * The top-left corner displays `red` as red.
 * `Green` appears as green.
@@ -158,16 +161,18 @@ We could also offer firmeware builds for specific panels. But that would require
 
 If you find out what config adjustment gets a specific panel to work, you should open an issue here and provide that information so that we could include it in the README and probably add a specific automated build for the bext releases.
 
-### "I'm running a shop, can I assemble and sell ZeDMDs?"
-
-Yes, you can, as long as you respect the legal notices above. You could also do your own hardware design. But it would be nice if you sent us a ready to-use device for testing because people might ask here or on discord about problems with a specific variation of ZeDMD.
-
 ### ZeDMD S3 crashes when connected via USB to a Windows machine
 
 This is a known issue. ZeDMD S3 works perfectly well with Linux and macOS. But if you're using Windows you should use the WiFi mode.
 
 ### I have installed all of the latest files, but I still get crashes on a Windows machine
 A few users have reported that VPX and ZeDMD consistently crash if the latest Visual C++ Redistributable Runtime packages are not installed. To resolve this issue, ensure you have the most up-to-date runtime packages installed. If the latest version doesn’t resolve the issue, it may be necessary to install all available versions of the Visual C++ Redistributable Runtime packages.
+
+Another potential issue could be outdated USB drivers. For the ESP32-S3-N16R8, refer to the following link for more details:
+* https://www.wch-ic.com/downloads/CH343SER_EXE.html
+
+And for the older ESP32 Development Board:
+* https://www.silabs.com/developer-tools/usb-to-uart-bridge-vcp-drivers?tab=downloads
 
 ### ZeDMD S3 crashed, how can I help fixing the issue
 
