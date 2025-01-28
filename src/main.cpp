@@ -644,8 +644,10 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             numCtrlCharsFound = 0;
             if (wifiActive) break;
 
-            uint8_t *response =
-                (uint8_t *)malloc(N_INTERMEDIATE_CTR_CHARS + 10);
+            // Including the ACK, the response will be 64 bytes long. That
+            // leaves some space for future features.
+            uint8_t *response = (uint8_t *)malloc(64 - N_ACK_CHARS);
+            memset(response, 0, 64 - N_ACK_CHARS);
             memcpy(response, CtrlChars, N_INTERMEDIATE_CTR_CHARS);
             response[N_INTERMEDIATE_CTR_CHARS] = TOTAL_WIDTH & 0xff;
             response[N_INTERMEDIATE_CTR_CHARS + 1] = (TOTAL_WIDTH >> 8) & 0xff;
@@ -658,8 +660,8 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
                 (usbPackageSizeMultiplier * 32) & 0xff;
             response[N_INTERMEDIATE_CTR_CHARS + 8] =
                 ((usbPackageSizeMultiplier * 32) >> 8) & 0xff;
-            response[N_INTERMEDIATE_CTR_CHARS + 9] = 'R';
-            Serial.write(response, N_INTERMEDIATE_CTR_CHARS + 10);
+            response[63 - N_ACK_CHARS] = 'R';
+            Serial.write(response, 64 - N_ACK_CHARS);
             Serial.flush();
             free(response);
             return 1;
