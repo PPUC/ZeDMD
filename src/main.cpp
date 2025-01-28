@@ -54,7 +54,7 @@
 #if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
 // USB CDC
 #define SERIAL_BAUD 115200
-#define USB_PACKAGE_SIZE 64
+#define USB_PACKAGE_SIZE 1920
 #else
 // UART
 #define SERIAL_BAUD 2000000
@@ -62,7 +62,7 @@
 #endif
 #else
 #define SERIAL_BAUD 921600
-#define USB_PACKAGE_SIZE 64
+#define USB_PACKAGE_SIZE 512
 #endif
 #define SERIAL_TIMEOUT \
   8  // Time in milliseconds to wait for the next data chunk.
@@ -150,7 +150,7 @@ int8_t transport = TRANSPORT_USB;
 #endif
 static bool transportActive = false;
 uint8_t transportWaitCounter = 0;
-uint8_t logoWaitCounter = 199;
+uint8_t logoWaitCounter = 0;
 uint32_t lastDataReceived = 0;
 bool serverRunning = false;
 
@@ -1280,6 +1280,8 @@ void StartServer() {
 void StartWiFi() {
   const char *apSSID = "ZeDMD-WiFi";
   const char *apPassword = "zedmd1234";
+  bool softAPFallback = false;
+  IPAddress ip;
 
   if (LoadWiFiConfig() && ssid_length > 0) {
     WiFi.disconnect(true);
@@ -1287,20 +1289,31 @@ void StartWiFi() {
                pwd.substring(0, pwd_length).c_str());
 
     if (WiFi.waitForConnectResult() != WL_CONNECTED) {
-      WiFi.softAP(apSSID, apPassword);  // Start AP if WiFi fails to connect
+      softAPFallback = true;
     }
   } else {
-    WiFi.softAP(apSSID, apPassword);  // Start AP if config not found
+    // Don't use the fallback to skip the countdown.
+    WiFi.softAP(apSSID, apPassword);
+    ip = WiFi.softAPIP();
   }
 
-  WiFi.setSleep(false);  // WiFi speed improvement on ESP32 S3 and others.
-
-  IPAddress ip;
-  if (WiFi.getMode() == WIFI_AP) {
-    ip = WiFi.softAPIP();
-    display->DisplayText("zedmd-wifi.local", 0, TOTAL_HEIGHT - 5, 0, 0, 0, 1);
-  } else if (WiFi.getMode() == WIFI_STA) {
+  if (!softAPFallback && WiFi.getMode() == WIFI_STA) {
     ip = WiFi.localIP();
+  }
+
+  if (ip[0] == 0 || softAPFallback) {
+    display->DisplayText("No WiFi connection, maybe the", 10,
+                         TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
+    display->DisplayText("the credentials are wrong.", 10, TOTAL_HEIGHT / 2 - 3,
+                         255, 0, 0);
+    display->DisplayText("Start AP in 30 seconds ...", 10, TOTAL_HEIGHT / 2 + 3,
+                         255, 0, 0);
+    for (uint8_t i = 29; i > 0; i--) {
+      sleep(1);
+      DisplayNumber(i, 2, 58, TOTAL_HEIGHT / 2 + 3, 255, 0, 0);
+    }
+    WiFi.softAP(apSSID, apPassword);
+    ip = WiFi.softAPIP();
   }
 
   for (uint8_t i = 0; i < 4; i++) {
@@ -1308,23 +1321,7 @@ void StartWiFi() {
     DisplayNumber(ip[i], 3, i * 3 * 4 + i * 2, 0, 0, 0, 0, 1);
   }
 
-  if (ip[0] == 0) {
-    display->DisplayText("No WiFi connection, turn off", 10,
-                         TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
-    display->DisplayText("or the credentials will be", 10, TOTAL_HEIGHT / 2 - 3,
-                         255, 0, 0);
-    display->DisplayText("resetted in 90 seconds.", 10, TOTAL_HEIGHT / 2 + 3,
-                         255, 0, 0);
-    for (uint8_t i = 89; i > 0; i--) {
-      sleep(1);
-      DisplayNumber(i, 2, 58, TOTAL_HEIGHT / 2 + 3, 255, 0, 0);
-    }
-    ssid = "\n";
-    pwd = "\n";
-    SaveWiFiConfig();
-    delay(100);
-    Restart();
-  }
+  WiFi.setSleep(false);  // WiFi speed improvement on ESP32 S3 and others.
 
   wifiActive = true;
 
@@ -1333,6 +1330,8 @@ void StartWiFi() {
     display->DisplayText("MDNS could not be started", 0, 0, 255, 0, 0);
     while (1);
   }
+
+  display->DisplayText("zedmd-wifi.local", 0, TOTAL_HEIGHT - 5, 0, 0, 0, 1);
 
   StartServer();
 
@@ -1357,11 +1356,13 @@ void setup() {
   bool fileSystemOK;
   if (fileSystemOK = LittleFS.begin()) {
     LoadSettingsMenu();
+#ifndef ZEDMD_WIFI
     LoadTransport();
+    LoadUsbPackageSizeMultiplier();
+#endif
     LoadRgbOrder();
     LoadLum();
     LoadDebug();
-    LoadUsbPackageSizeMultiplier();
     LoadUdpDelay();
 #ifdef ZEDMD_HD_HALF
     LoadYOffset();
