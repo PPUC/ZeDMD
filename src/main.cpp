@@ -135,6 +135,7 @@ uint8_t brightness = 2;
 static uint8_t usbPackageSizeMultiplier = USB_PACKAGE_SIZE / 32;
 static uint8_t settingsMenu = 0;
 static uint8_t debug = 0;
+static uint8_t udpDelay = 5;
 
 String ssid;
 String pwd;
@@ -315,6 +316,22 @@ void LoadUsbPackageSizeMultiplier() {
     return;
   }
   usbPackageSizeMultiplier = f.read();
+  f.close();
+}
+
+void SaveUdpDelay() {
+  File f = LittleFS.open("/udp_delay.val", "w");
+  f.write(udpDelay);
+  f.close();
+}
+
+void LoadUdpDelay() {
+  File f = LittleFS.open("/udp_delay.val", "r");
+  if (!f) {
+    SaveUdpDelay();
+    return;
+  }
+  udpDelay = f.read();
   f.close();
 }
 
@@ -544,6 +561,11 @@ void RefreshSetupScreen() {
   DisplayNumber(usbPackageSizeMultiplier * 32, 4,
                 7 * (TOTAL_WIDTH / 128) + (16 * 4), (TOTAL_HEIGHT / 2) + 4, 255,
                 191, 0);
+  display->DisplayText(
+      "UDP Delay:", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - (11 * 4),
+      (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
+  DisplayNumber(udpDelay, 1, TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 4,
+                (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
 
 #ifdef ZEDMD_HD_HALF
   display->DisplayText("Y-Offset", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
@@ -1133,6 +1155,21 @@ void StartServer() {
 #endif
   });
 
+  server->on("/handshake", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(
+        200, "text/plain",
+        String(TOTAL_WIDTH) + "|" + String(TOTAL_HEIGHT) + "|" +
+            String(ZEDMD_VERSION_MAJOR) + "." + String(ZEDMD_VERSION_MINOR) +
+            "." + String(ZEDMD_VERSION_PATCH) + "|" +
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
+            String(1)
+#else
+            String(0)
+#endif
+            + "|" + ((TRANSPORT_WIFI_UDP == transport) ? "UDP" : "TCP") + "|" +
+            String(port) + "|" + String(udpDelay));
+  });
+
   server->on("/ppuc.png", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(LittleFS, "/ppuc.png", "image/png");
   });
@@ -1273,9 +1310,9 @@ void StartWiFi() {
                          TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
     display->DisplayText("or the credentials will be", 10, TOTAL_HEIGHT / 2 - 3,
                          255, 0, 0);
-    display->DisplayText("resettet in 60 seconds.", 10, TOTAL_HEIGHT / 2 + 3,
+    display->DisplayText("resetted in 90 seconds.", 10, TOTAL_HEIGHT / 2 + 3,
                          255, 0, 0);
-    for (uint8_t i = 59; i > 0; i--) {
+    for (uint8_t i = 89; i > 0; i--) {
       sleep(1);
       DisplayNumber(i, 2, 58, TOTAL_HEIGHT / 2 + 3, 255, 0, 0);
     }
@@ -1300,7 +1337,7 @@ void StartWiFi() {
     udp = new AsyncUDP();
     udp->onPacket(HandleUdpPacket);
     if (!udp->listen(ip, port)) {
-      display->DisplayText("UDP server not be started", 0, 0, 255, 0, 0);
+      display->DisplayText("UDP server could not be started", 0, 0, 255, 0, 0);
       while (1);
     }
   } else {
@@ -1322,6 +1359,7 @@ void setup() {
     LoadLum();
     LoadDebug();
     LoadUsbPackageSizeMultiplier();
+    LoadUdpDelay();
 #ifdef ZEDMD_HD_HALF
     LoadYOffset();
 #endif
@@ -1393,15 +1431,15 @@ void setup() {
 #endif
       if (forward || backward) {
 #ifdef ZEDMD_HD_HALF
+        if (forward && ++position > 8)
+          position = 1;
+        else if (backward && --position < 1)
+          position = 8;
+#else
         if (forward && ++position > 7)
           position = 1;
         else if (backward && --position < 1)
           position = 7;
-#else
-        if (forward && ++position > 6)
-          position = 1;
-        else if (backward && --position < 1)
-          position = 6;
 #endif
         switch (position) {
           case 1: {  // Exit
@@ -1445,8 +1483,16 @@ void setup() {
             DisplayRGB(255, 191, 0);
             break;
           }
+          case 7: {  // UDP Delay
+            RefreshSetupScreen();
+            display->DisplayText(
+                "UDP Delay:",
+                TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - (11 * 4),
+                (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+            break;
+          }
 #ifdef ZEDMD_HD_HALF
-          case 7: {  // Y Offset
+          case 8: {  // Y Offset
             RefreshSetupScreen();
             display->DisplayText("Y-Offset",
                                  TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
@@ -1535,8 +1581,22 @@ void setup() {
             SaveRgbOrder();
             break;
           }
+          case 7: {  // UDP Delay
+            if (up && ++udpDelay > 9)
+              udpDelay = 0;
+            else if (down && udpDelay == 0)
+              udpDelay = 9;
+            else if (down)
+              --udpDelay;
+
+            DisplayNumber(udpDelay, 1,
+                          TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 4,
+                          (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+            SaveUdpDelay();
+            break;
+          }
 #ifdef ZEDMD_HD_HALF
-          case 7: {  // Y-Offset
+          case 8: {  // Y-Offset
             if (up && ++yOffset > 32)
               yOffset = 0;
             else if (down && --yOffset < 0)
