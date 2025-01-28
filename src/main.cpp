@@ -67,7 +67,7 @@
 #define SERIAL_TIMEOUT \
   8  // Time in milliseconds to wait for the next data chunk.
 
-#define CONNECTION_TIMEOUT 4000
+#define CONNECTION_TIMEOUT 5000
 
 #ifdef ARDUINO_ESP32_S3_N16R8
 #define UP_BUTTON_PIN 0
@@ -786,6 +786,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
                                    (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
               portEXIT_CRITICAL(&bufferMutex);
             }
+            lastDataReceived = millis();
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (wifiActive) break;
