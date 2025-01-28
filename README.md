@@ -1,4 +1,4 @@
-![ZeDMD_logo](docs/images/ZeDMD_logo.jpg)
+![ZeDMD_logo](docs/images/ZeDMD_logo_pixelated.png)
 ## About
 
 ZeDMD is a "real" DMD designed for pinball emulations and other use cases. Originally developed by David "Zedrummer" Lafarge, the concept laid the foundation for what ZeDMD has become today. Markus Kalkbrenner, the current maintainer of ZeDMD, was inspired by the original idea and took the initiative to further develop and enhance it into the robust and versatile solution it is now.
@@ -99,7 +99,7 @@ Then, adjust the RGB order by rotating the colors until the following alignment 
 * `Green` appears as green.
 * `Blue` is shown as blue.
 
-> Unique TO `128x64` builds:
+> Unique to `128x64` builds:
 > There is an option to adjust the `Y offset` of the displayed content.
 
 Versions prior to V5.0.0 let you adjust the brightness using the brightness button. 
@@ -107,8 +107,9 @@ From v5.0.0 onwards, this is done by navigating to the `Brightness:` option in t
 
 Starting from version 5.1.0, a configurable `USB packet size:` option has been introduced. While the default value works for most setups, reducing the packet size may help resolve any issues you encounter.
 
-The option above `USB packet size:` allows switching between `USB`, `WiFi UDP` and `WiFi TCP`. The USB option is self-explanatory. 
-When wanting to use WiFi, it is recommended to start with `WiFi UDP`, as it provides seamless frame streaming if your WiFi connection is fast. However, if your connection is average, switching to `WiFi TCP` can eliminate artifacts in the frame stream, though it will slow down the data transmission.
+The option above `USB packet size:` allows switching between `USB`, `SPI`, `WiFi UDP` and `WiFi TCP`. The USB option is self-explanatory, and SPI is currently non-functional.
+
+When wanting to use WiFi it is recommended to start with `WiFi UDP` for seamless frame streaming, provided your WiFi connection is fast. If you encounter crashes or unusual behavior, try adjusting the `UDP Delay:` option. For fast connections, a value below `UDP Delay: 5` may work well. Values like `UDP Delay: 4` have been reported to perform effectively. While lowering the UDP delay may work well for some, values above `UDP Delay: 5` should be given a try before making the final decision to switch to `WiFi TCP` for slower streaming but improved reliability.
 
 The `Debug:` option can be set to `Debug: 1` if requested by a ZeDMD developer to enable error tracking during testing. For regular use, this setting should always remain at `0`.
 
@@ -124,7 +125,7 @@ Then, open your web browser and navigate to http://ZeDMD-WiFi.local (IP: 192.168
 
 ZeDMD's firmware is open source and licensed as **GPLv2 or later** and can be ditributed under these terms.
 
-For manufacturers or resellers of any shield, frame, ready-to-use devices or whatever linked to the ZeDMD, our only request is that the device is **called as "ZeDMD something"** or **powered by ZeDMD**. "ZeDMD" should be what you see first when you look at the device. Also, **a link to this project** must be provided with the device.
+For manufacturers or resellers of any shield, frame, ready-to-use devices or whatever linked to ZeDMD, our only request is that the device is **called as "ZeDMD something"** or **powered by ZeDMD**. "ZeDMD" should be what you see first when you look at the device. Also, **a link to this project** must be provided with the device.
 
 ZeDMD uses
 * [ESP32-HUB75-MatrixPanel-DMA](https://github.com/mrfaptastic/ESP32-HUB75-MatrixPanel-DMA)
@@ -144,11 +145,13 @@ The intention of ZeDMD is to provide a cheap DIY DMD solution. The maintainers o
 
 Nevertheless, there are are some shops we are aware of who designed their own shields to build a ZeDMD.
 And as this might ease the task to use a ZeDMD for some users, we agreed to add some links here:
+* https://janspinballmods.com/mods/zedmd/shield-esp32-s3-not-included/
 * https://shop.arnoz.com/en/dmd/87-esp-dmd-shield.html
 * https://benfactory.fr/produit/zedmd-shield/
 * https://www.smallcab.net/shield-zedmd-p-2697.html
 
 There are also ready-to-use devices:
+* https://janspinballmods.com/mods/zedmd/zedmd-s3-128x32-plug-and-play/
 * https://benfactory.fr/produit/zedmd/
 * https://www.smallcab.net/pack-zedmd-p-2698.html
 * https://virtuapin.net/index.php?main_page=product_info&cPath=6&products_id=283
@@ -169,13 +172,9 @@ Obviously we can't provide a menu on the device to adjust these settings as you 
 
 But we consider to add support for these driver settings to libzedmd and the ini file of dmdserver so that these values could be adjusted and sent to ZeDMD before the panels get initialized.
 
-We could also offer firmeware builds for specific panels. But that would require that somone sends such panels to us to find out the correct config.
+We could also offer firmware builds for specific panels. But that would require someone to send over their panels to us so we can find out the correct config.
 
-If you find out what config adjustment gets a specific panel to work, you should open an issue here and provide that information so that we could include it in the README and probably add a specific automated build for the bext releases.
-
-### ZeDMD S3 crashes when connected via USB to a Windows machine
-
-This is a known issue. ZeDMD S3 works perfectly well with Linux and macOS. But if you're using Windows you should use the WiFi mode.
+If you find out what config adjustment gets a specific panel to work, you should open an issue here and provide that information so that we could include it in the README and probably add a specific automated build for the next releases.
 
 ### I have installed all of the latest files, but I still get crashes on a Windows machine
 A few users have reported that VPX and ZeDMD consistently crash if the latest Visual C++ Redistributable Runtime packages are not installed. To resolve this issue, ensure you have the most up-to-date runtime packages installed. If the latest version doesn’t resolve the issue, it may be necessary to install all available versions of the Visual C++ Redistributable Runtime packages.
@@ -192,5 +191,3 @@ If you discover a crash, there's a good chance that a coredump has been written 
 ```shell
 python ~/esp/v5.3.2/esp-idf/components/espcoredump/espcoredump.py info_corefile .pio/build/S3-N16R8_128x32/firmware.elf
 ```
-
-
