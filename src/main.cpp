@@ -1656,8 +1656,22 @@ void setup() {
     }
 
     case TRANSPORT_SPI: {
-      display->DisplayText("SPI is not implemented yet", 0, 0, 255, 0, 0);
-      while (1);
+      display->DisplayText("SPI connection failure ...", 0, 0, 255, 0, 0);
+      delay(5000);
+      display->DisplayText("Is the SPI interface turned on?", 0, 6, 255, 0, 0);
+      delay(5000);
+      display->DisplayText("Your SPI cable might be too long", 0, 12, 255, 0,
+                           0);
+      delay(5000);
+      display->DisplayText("No, your SPI cable is too short!", 0, 18, 255, 0,
+                           0);
+      delay(5000);
+      display->DisplayText("SPI is not implemented yet!", 0, 24, 255, 191, 0);
+      while (digitalRead(FORWARD_BUTTON_PIN));
+      settingsMenu = true;
+      SaveSettingsMenu();
+      delay(20);
+      Restart();
       break;
     }
   }
