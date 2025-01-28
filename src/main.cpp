@@ -67,7 +67,7 @@
 #define SERIAL_TIMEOUT \
   8  // Time in milliseconds to wait for the next data chunk.
 
-#define UDP_CONNECTION_TIMEOUT 4000
+#define CONNECTION_TIMEOUT 4000
 
 #ifdef ARDUINO_ESP32_S3_N16R8
 #define UP_BUTTON_PIN 0
@@ -151,7 +151,7 @@ int8_t transport = TRANSPORT_USB;
 static bool transportActive = false;
 uint8_t transportWaitCounter = 0;
 uint8_t logoWaitCounter = 199;
-uint32_t lastUdpPacket = 0;
+uint32_t lastDataReceived = 0;
 bool serverRunning = false;
 
 void DoRestart(int sec) {
@@ -857,6 +857,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             buffers[currentBuffer][1] = 255;
             MarkCurrentBufferDone();
 #endif
+            lastDataReceived = millis();
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (wifiActive) break;
@@ -992,7 +993,6 @@ static void HandleUdpPacket(AsyncUDPPacket packet) {
   if (!isProcessing) {
     isProcessing = true;
     transportActive = true;
-    lastUdpPacket = millis();
     HandleData(packet.data(), packet.length());
     yield();
     isProcessing = false;
@@ -1757,8 +1757,8 @@ void loop() {
     //  serverRunning = false;
     //}
 
-    if (TRANSPORT_WIFI_UDP == transport && lastUdpPacket > 0 &&
-        (millis() - lastUdpPacket) > UDP_CONNECTION_TIMEOUT) {
+    if (lastDataReceived > 0 &&
+        (millis() - lastDataReceived) > CONNECTION_TIMEOUT) {
       transportActive = false;
       logoWaitCounter = 199;
       return;
