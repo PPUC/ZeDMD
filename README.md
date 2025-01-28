@@ -109,7 +109,9 @@ Starting from version 5.1.0, a configurable `USB packet size:` option has been i
 
 The option above `USB packet size:` allows switching between `USB`, `SPI`, `WiFi UDP` and `WiFi TCP`. The USB option is self-explanatory, and SPI is currently non-functional.
 
-When wanting to use WiFi, it is recommended to start out with `WiFi UDP`, as it provides seamless frame streaming if your WiFi connection is fast. However, if you are experiencing crashes or unusual behaviour, try increasing the `UDP Delay:` option. If `WiFi UDP` gives you a bad experience in general, simply try `WiFi TCP`. 
+When wanting to use WiFi, it is recommended to start with `WiFi UDP` for seamless frame streaming, provided your WiFi connection is fast. If you encounter crashes or unusual behavior, try adjusting the `UDP Delay:` option. For fast connections, a value below `UDP Delay: 5` may work well. Values like `UDP Delay: 4` have been reported to perform effectively. While lowering the UDP delay may work well for some, values above `UDP Delay: 5` should be given a try before switching to `WiFi TCP` for improved reliability.
+
+When wanting to use WiFi, it is recommended to start out with `WiFi UDP`, as it provides seamless frame streaming if your WiFi connection is fast. However, if you are experiencing crashes or unusual behaviour, try adjusting the `UDP Delay:` option. If you have a fast WiFi connection, it is possible that a value below `UDP Delay: 5` will work great. If not  If `WiFi UDP` gives you a bad experience in general, simply try `WiFi TCP`. 
 
 The `Debug:` option can be set to `Debug: 1` if requested by a ZeDMD developer to enable error tracking during testing. For regular use, this setting should always remain at `0`.
 
