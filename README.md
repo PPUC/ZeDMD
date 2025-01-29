@@ -180,11 +180,11 @@ If you find out what config adjustment gets a specific panel to work, you should
 ### I have installed all of the latest files, but I still get crashes on a Windows machine
 A few users have reported that VPX and ZeDMD consistently crash if the latest Visual C++ Redistributable Runtime packages are not installed. To resolve this issue, ensure you have the most up-to-date runtime packages installed. If the latest version doesn’t resolve the issue, it may be necessary to install all available versions of the Visual C++ Redistributable Runtime packages.
 
-Another potential issue could be outdated USB drivers. For the ESP32-S3-N16R8, refer to the following link for more details:
-* https://www.wch-ic.com/downloads/CH343SER_EXE.html
-
-And for the older ESP32 Development Board:
+Another potential issue could be outdated USB drivers. For the original ESP32 Development Board:
 * https://www.silabs.com/developer-tools/usb-to-uart-bridge-vcp-drivers?tab=downloads
+
+For the ESP32-S3-N16R8, we use the USB CDC port, which doesn't require a driver. But if if you use the alterantive UART version of the firmware, refer to the following link for more details:
+* https://www.wch-ic.com/downloads/CH343SER_EXE.html
 
 ### ZeDMD S3 crashed, how can I help to fix the issue
 
