@@ -26,7 +26,7 @@ LedMatrix::LedMatrix() {
   // Without setting clkphase to false, HD panels seem to flicker.
   mxconfig.clkphase = false;
   mxconfig.latch_blanking = 2;
-  mxconfig.min_refresh_rate = 60;
+  mxconfig.min_refresh_rate = 120;
   mxconfig.driver = HUB75_I2S_CFG::shift_driver::SHIFTREG;
 
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
