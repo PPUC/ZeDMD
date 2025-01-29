@@ -148,11 +148,13 @@ int8_t transport = TRANSPORT_WIFI_UDP;
 #else
 int8_t transport = TRANSPORT_USB;
 #endif
+static bool logoActive = true;
 static bool transportActive = false;
-uint8_t transportWaitCounter = 0;
-uint8_t logoWaitCounter = 0;
-uint32_t lastDataReceived = 0;
-bool serverRunning = false;
+static uint8_t transportWaitCounter = 0;
+static uint8_t logoWaitCounter = 0;
+static uint32_t lastDataReceived = 0;
+static bool serverRunning = false;
+static uint8_t throbberColors[6] __attribute__((aligned(4))) = {0};
 
 void DoRestart(int sec) {
   if (wifiActive) {
@@ -510,6 +512,13 @@ void DisplayLogo(void) {
 
   Render();
   DisplayVersion(true);
+
+  throbberColors[0] = 0;
+  throbberColors[1] = 0;
+  throbberColors[2] = 0;
+  throbberColors[3] = 255;
+  throbberColors[4] = 255;
+  throbberColors[5] = 255;
 }
 
 void DisplayUpdate(void) {
@@ -532,6 +541,24 @@ void DisplayUpdate(void) {
   f.close();
 
   Render();
+
+  throbberColors[0] = 0;
+  throbberColors[1] = 0;
+  throbberColors[2] = 0;
+  throbberColors[3] = 255;
+  throbberColors[4] = 255;
+  throbberColors[5] = 0;
+}
+
+void ScreenSaver() {
+  ClearScreen();
+
+  throbberColors[0] = 96;
+  throbberColors[1] = 0;
+  throbberColors[2] = 0;
+  throbberColors[3] = 0;
+  throbberColors[4] = 0;
+  throbberColors[5] = 0;
 }
 
 void RefreshSetupScreen() {
@@ -1693,57 +1720,71 @@ void loop() {
       // StartServer();
     }
 
-    ++logoWaitCounter;
+    if (!logoActive) {
+      logoActive = true;
+      logoWaitCounter = 199;
+    }
+
+    if (logoWaitCounter < 201) ++logoWaitCounter;
+
     if (100 == logoWaitCounter) {
       DisplayUpdate();
     }
-    if (200 <= logoWaitCounter) {
-      DisplayLogo();
-      logoWaitCounter = 0;
+    if (200 == logoWaitCounter) {
+      ScreenSaver();
     }
 
-    display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 3, 0, 0, 0);
+    display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 3, throbberColors[0],
+                       throbberColors[1], throbberColors[2]);
 
     switch (transportWaitCounter) {
       case 0:
-        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 4, 255, 255,
-                           100 <= logoWaitCounter ? 0 : 255);
-        display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 4, 0, 0, 0);
+        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 4, throbberColors[3],
+                           throbberColors[4], throbberColors[5]);
+        display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 4, throbberColors[0],
+                           throbberColors[1], throbberColors[2]);
         break;
       case 1:
-        display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 4, 255, 255,
-                           100 <= logoWaitCounter ? 0 : 255);
-        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 4, 0, 0, 0);
+        display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 4, throbberColors[3],
+                           throbberColors[4], throbberColors[5]);
+        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 4, throbberColors[0],
+                           throbberColors[1], throbberColors[2]);
         break;
       case 2:
-        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 4, 255, 255,
-                           100 <= logoWaitCounter ? 0 : 255);
-        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 3, 0, 0, 0);
+        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 4, throbberColors[3],
+                           throbberColors[4], throbberColors[5]);
+        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 3, throbberColors[0],
+                           throbberColors[1], throbberColors[2]);
         break;
       case 3:
-        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 3, 255, 255,
-                           100 <= logoWaitCounter ? 0 : 255);
-        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 2, 0, 0, 0);
+        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 3, throbberColors[3],
+                           throbberColors[4], throbberColors[5]);
+        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 2, throbberColors[0],
+                           throbberColors[1], throbberColors[2]);
         break;
       case 4:
-        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 2, 255, 255,
-                           100 <= logoWaitCounter ? 0 : 255);
-        display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 2, 0, 0, 0);
+        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 2, throbberColors[3],
+                           throbberColors[4], throbberColors[5]);
+        display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 2, throbberColors[0],
+                           throbberColors[1], throbberColors[2]);
         break;
       case 5:
-        display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 2, 255, 255,
-                           100 <= logoWaitCounter ? 0 : 255);
-        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 2, 0, 0, 0);
+        display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 2, throbberColors[3],
+                           throbberColors[4], throbberColors[5]);
+        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 2, throbberColors[0],
+                           throbberColors[1], throbberColors[2]);
         break;
       case 6:
-        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 2, 255, 255,
-                           100 <= logoWaitCounter ? 0 : 255);
-        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 3, 0, 0, 0);
+        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 2, throbberColors[3],
+                           throbberColors[4], throbberColors[5]);
+        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 3, throbberColors[0],
+                           throbberColors[1], throbberColors[2]);
         break;
       case 7:
-        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 3, 255, 255,
-                           100 <= logoWaitCounter ? 0 : 255);
-        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 4, 0, 0, 0);
+        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 3, throbberColors[3],
+                           throbberColors[4], throbberColors[5]);
+        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 4, throbberColors[0],
+                           throbberColors[1], throbberColors[2]);
         break;
     }
 
@@ -1762,8 +1803,12 @@ void loop() {
     if (lastDataReceived > 0 &&
         (millis() - lastDataReceived) > CONNECTION_TIMEOUT) {
       transportActive = false;
-      logoWaitCounter = 199;
       return;
+    }
+
+    if (logoActive) {
+      ClearScreen();
+      logoActive = false;
     }
 
     if (AcquireNextProcessingBuffer()) {
