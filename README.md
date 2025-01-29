@@ -85,9 +85,9 @@ ZeDMD utilizes HUB75 to display full-color content on your panels. To achieve th
 To navigate the menu and adjust settings, you'll need to configure a few buttons. However, only two buttons are essential to modify values and exit the menu. These two buttons are `Menu Left` and `Value +`.
 | ESP32 Dev Board | ESP32-S3-N16R8 | Menu Button |      
 | -------------   | -------------  | ------------|         
-| GPIO 0          | GPIO 48        | Menu Left   |          
+| GPIO 33         | GPIO 48        | Menu Left   |          
 | NOT USED        | GPIO 47        | Menu Right  |
-| GPIO 18         | GPIO 0         | Value +     |
+| GPIO 21         | GPIO 0         | Value +     |
 | NOT USED        | GPIO 45        | Value -     |
 
 ## First start
