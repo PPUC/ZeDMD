@@ -85,9 +85,9 @@ ZeDMD utilizes HUB75 to display full-color content on your panels. To achieve th
 To navigate the menu and adjust settings, you'll need to configure a few buttons. However, only two buttons are essential to modify values and exit the menu. These two buttons are `Menu Left` and `Value +`.
 | ESP32 Dev Board | ESP32-S3-N16R8 | Menu Button |      
 | -------------   | -------------  | ------------|         
-| GPIO 0          | GPIO 48        | Menu Left   |          
+| GPIO 33         | GPIO 48        | Menu Left   |          
 | NOT USED        | GPIO 47        | Menu Right  |
-| GPIO 18         | GPIO 0         | Value +     |
+| GPIO 21         | GPIO 0         | Value +     |
 | NOT USED        | GPIO 45        | Value -     |
 
 ## First start
@@ -107,7 +107,9 @@ From v5.0.0 onwards, this is done by navigating to the `Brightness:` option in t
 
 Starting from version 5.1.0, a configurable `USB packet size:` option has been introduced. While the default value works for most setups, reducing the packet size may help resolve any issues you encounter.
 
-The option above `USB packet size:` allows switching between `USB`, `SPI`, `WiFi UDP` and `WiFi TCP`. The USB option is self-explanatory, and SPI is currently non-functional.
+The option above `USB packet size:` allows switching between `USB`, `SPI`, `WiFi UDP` and `WiFi TCP`. The USB option for the older ESP32 Dev board is self-explanatory. However, with the ESP32-S3-N16R8 you must use the left `USB` port, as shown in the picture.
+![S3USB](docs/images/S3USB.png)
+>`SPI` is currently non-functional and serves only as a placeholder for future real pinball integration.
 
 When wanting to use WiFi it is recommended to start with `WiFi UDP` for seamless frame streaming, provided your WiFi connection is fast. If you encounter crashes or unusual behavior, try adjusting the `UDP Delay:` option. For fast connections, a value below `UDP Delay: 5` may work well. Values like `UDP Delay: 4` have been reported to perform effectively. While lowering the UDP delay may work well for some, values above `UDP Delay: 5` should be given a try before making the final decision to switch to `WiFi TCP` for slower streaming but improved reliability.
 
