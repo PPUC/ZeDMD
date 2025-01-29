@@ -55,10 +55,17 @@ The ESP32-S3 N16R8 is now fully supported too. To flash this device, simply modi
 ### platformio ("from source")
 
 ```shell
-rm -rf .pio
 pio run -t uploadfs -e 128x32
 pio run -t upload -e 128x32
 ```
+
+> **WARNING**
+>
+> Starting with ZeDMD 5.1.0, we switched from platform-espressif32 to [pioarduino](https://github.com/pioarduino).
+> If you did use `pio` with older ZeDMD versions already, you must remove the `.pio` folder once or you'll get compile / upload / runtime errors:
+> ```shell
+> rm -rf .pio
+> ```
 
 ### ZeDMD Updater (Windows only)
 
@@ -109,6 +116,7 @@ From v5.0.0 onwards, this is done by navigating to the `Brightness:` option in t
 Starting from version 5.1.0, a configurable `USB packet size:` option has been introduced. While the default value works for most setups, reducing the packet size may help resolve any issues you encounter.
 
 The option above `USB packet size:` allows switching between `USB`, `SPI`, `WiFi UDP` and `WiFi TCP`. The USB option for the older ESP32 Dev board is self-explanatory. However, with the ESP32-S3-N16R8 you must use the left `USB` port, as shown in the picture.
+
 ![S3USB](docs/images/S3USB.png)
 >`SPI` is currently non-functional and serves only as a placeholder for future real pinball integration.
 
@@ -116,7 +124,8 @@ When wanting to use WiFi it is recommended to start with `WiFi UDP` for seamless
 
 The `Debug:` option can be set to `Debug: 1` if requested by a ZeDMD developer to enable error tracking during testing. For regular use, this setting should always remain at `0`.
 
-> [!IMPORTANT]
+> **WARNING**
+>
 > From version 5.0.0 onwards: once you’ve finished changing values, you must navigate to the 'Exit' button. This step is required to enable the ZeDMD to enter handshake mode.
 
 ## ZeDMD-WiFi
