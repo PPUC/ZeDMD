@@ -118,7 +118,7 @@ The `Debug:` option can be set to `Debug: 1` if requested by a ZeDMD developer t
 
 ## ZeDMD-WiFi
 
-After activating either `WiFi UDP` or `WiFi TCP` in the settings menu, connect your mobile device or laptop to the `ZeDMD-WiFi` network.
+After activating either `WiFi UDP` or `WiFi TCP` in the settings menu, connect your mobile device or laptop to the `ZeDMD-WiFi` network using password `zedmd1234`.
 Then, open your web browser and navigate to http://ZeDMD-WiFi.local (IP: 192.168.4.1) to access the configuration settings.
 
 ## IMPORTANT LEGAL NOTICES:
@@ -132,10 +132,11 @@ ZeDMD uses
 * [Bounce2](https://github.com/thomasfredericks/Bounce2)
 * [miniz](https://github.com/richgel999/miniz)
 * [Tiny 4x6 Pixel Font](https://hackaday.io/project/6309-vga-graphics-over-spi-and-serial-vgatonic/log/20759-a-tiny-4x6-pixel-font-that-will-fit-on-almost-any-microcontroller-license-mit)
-* [ESPAsyncWebServer](https://github.com/me-no-dev/ESPAsyncWebServer)
-* [JPEGDEC](https://github.com/bitbank2/JPEGDEC)
+* [ESPAsyncWebServer]([https://github.com/me-no-dev/ESPAsyncWebServer](https://github.com/ESP32Async/ESPAsyncWebServer))
+* ~~[JPEGDEC](https://github.com/bitbank2/JPEGDEC)~~
 * [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI)
 * [RM67162 with fixes from Nikthefix](https://github.com/Xinyuan-LilyGO/T-Display-S3-AMOLED/issues/2)
+* [pioarduino](https://github.com/pioarduino)
 
 ## FAQ
 
@@ -179,15 +180,15 @@ If you find out what config adjustment gets a specific panel to work, you should
 ### I have installed all of the latest files, but I still get crashes on a Windows machine
 A few users have reported that VPX and ZeDMD consistently crash if the latest Visual C++ Redistributable Runtime packages are not installed. To resolve this issue, ensure you have the most up-to-date runtime packages installed. If the latest version doesn’t resolve the issue, it may be necessary to install all available versions of the Visual C++ Redistributable Runtime packages.
 
-Another potential issue could be outdated USB drivers. For the ESP32-S3-N16R8, refer to the following link for more details:
-* https://www.wch-ic.com/downloads/CH343SER_EXE.html
-
-And for the older ESP32 Development Board:
+Another potential issue could be outdated USB drivers. For the original ESP32 Development Board:
 * https://www.silabs.com/developer-tools/usb-to-uart-bridge-vcp-drivers?tab=downloads
+
+For the ESP32-S3-N16R8, we use the USB CDC port, which doesn't require a driver. But if if you use the alterantive UART version of the firmware, refer to the following link for more details:
+* https://www.wch-ic.com/downloads/CH343SER_EXE.html
 
 ### ZeDMD S3 crashed, how can I help to fix the issue
 
-If you discover a crash, there's a good chance that a coredump has been written to flash. If you flashed the device using `pio`, you can extract and interpret the coredump:
+If you discover a crash, there's a good chance that a coredump has been written to flash. If you install the entire esp-idf, you can extract and interpret the coredump. `firmware.elf` is included in the release downloads since v5.1.2. If you used pio to build and flash the firmware, the command line on Linux or macOS will be like this:
 ```shell
 python ~/esp/v5.3.2/esp-idf/components/espcoredump/espcoredump.py info_corefile .pio/build/S3-N16R8_128x32/firmware.elf
 ```
