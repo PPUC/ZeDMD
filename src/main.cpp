@@ -54,7 +54,7 @@
 #if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
 // USB CDC
 #define SERIAL_BAUD 115200
-#define USB_PACKAGE_SIZE 64
+#define USB_PACKAGE_SIZE 1920
 #else
 // UART
 #define SERIAL_BAUD 2000000
@@ -62,12 +62,12 @@
 #endif
 #else
 #define SERIAL_BAUD 921600
-#define USB_PACKAGE_SIZE 64
+#define USB_PACKAGE_SIZE 512
 #endif
 #define SERIAL_TIMEOUT \
   8  // Time in milliseconds to wait for the next data chunk.
 
-#define CONNECTION_TIMEOUT 4000
+#define CONNECTION_TIMEOUT 5000
 
 #ifdef ARDUINO_ESP32_S3_N16R8
 #define UP_BUTTON_PIN 0
@@ -148,11 +148,13 @@ int8_t transport = TRANSPORT_WIFI_UDP;
 #else
 int8_t transport = TRANSPORT_USB;
 #endif
+static bool logoActive = true;
 static bool transportActive = false;
-uint8_t transportWaitCounter = 0;
-uint8_t logoWaitCounter = 199;
-uint32_t lastDataReceived = 0;
-bool serverRunning = false;
+static uint8_t transportWaitCounter = 0;
+static uint8_t logoWaitCounter = 0;
+static uint32_t lastDataReceived = 0;
+static bool serverRunning = false;
+static uint8_t throbberColors[6] __attribute__((aligned(4))) = {0};
 
 void DoRestart(int sec) {
   if (wifiActive) {
@@ -510,6 +512,13 @@ void DisplayLogo(void) {
 
   Render();
   DisplayVersion(true);
+
+  throbberColors[0] = 0;
+  throbberColors[1] = 0;
+  throbberColors[2] = 0;
+  throbberColors[3] = 255;
+  throbberColors[4] = 255;
+  throbberColors[5] = 255;
 }
 
 void DisplayUpdate(void) {
@@ -532,6 +541,24 @@ void DisplayUpdate(void) {
   f.close();
 
   Render();
+
+  throbberColors[0] = 0;
+  throbberColors[1] = 0;
+  throbberColors[2] = 0;
+  throbberColors[3] = 255;
+  throbberColors[4] = 255;
+  throbberColors[5] = 0;
+}
+
+void ScreenSaver() {
+  ClearScreen();
+
+  throbberColors[0] = 96;
+  throbberColors[1] = 0;
+  throbberColors[2] = 0;
+  throbberColors[3] = 0;
+  throbberColors[4] = 0;
+  throbberColors[5] = 0;
 }
 
 void RefreshSetupScreen() {
@@ -786,6 +813,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
                                    (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
               portEXIT_CRITICAL(&bufferMutex);
             }
+            lastDataReceived = millis();
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (wifiActive) break;
@@ -1279,6 +1307,8 @@ void StartServer() {
 void StartWiFi() {
   const char *apSSID = "ZeDMD-WiFi";
   const char *apPassword = "zedmd1234";
+  bool softAPFallback = false;
+  IPAddress ip;
 
   if (LoadWiFiConfig() && ssid_length > 0) {
     WiFi.disconnect(true);
@@ -1286,20 +1316,31 @@ void StartWiFi() {
                pwd.substring(0, pwd_length).c_str());
 
     if (WiFi.waitForConnectResult() != WL_CONNECTED) {
-      WiFi.softAP(apSSID, apPassword);  // Start AP if WiFi fails to connect
+      softAPFallback = true;
     }
   } else {
-    WiFi.softAP(apSSID, apPassword);  // Start AP if config not found
+    // Don't use the fallback to skip the countdown.
+    WiFi.softAP(apSSID, apPassword);
+    ip = WiFi.softAPIP();
   }
 
-  WiFi.setSleep(false);  // WiFi speed improvement on ESP32 S3 and others.
-
-  IPAddress ip;
-  if (WiFi.getMode() == WIFI_AP) {
-    ip = WiFi.softAPIP();
-    display->DisplayText("zedmd-wifi.local", 0, TOTAL_HEIGHT - 5, 0, 0, 0, 1);
-  } else if (WiFi.getMode() == WIFI_STA) {
+  if (!softAPFallback && WiFi.getMode() == WIFI_STA) {
     ip = WiFi.localIP();
+  }
+
+  if (ip[0] == 0 || softAPFallback) {
+    display->DisplayText("No WiFi connection, maybe the", 10,
+                         TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
+    display->DisplayText("the credentials are wrong.", 10, TOTAL_HEIGHT / 2 - 3,
+                         255, 0, 0);
+    display->DisplayText("Start AP in 30 seconds ...", 10, TOTAL_HEIGHT / 2 + 3,
+                         255, 0, 0);
+    for (uint8_t i = 29; i > 0; i--) {
+      sleep(1);
+      DisplayNumber(i, 2, 58, TOTAL_HEIGHT / 2 + 3, 255, 0, 0);
+    }
+    WiFi.softAP(apSSID, apPassword);
+    ip = WiFi.softAPIP();
   }
 
   for (uint8_t i = 0; i < 4; i++) {
@@ -1307,23 +1348,7 @@ void StartWiFi() {
     DisplayNumber(ip[i], 3, i * 3 * 4 + i * 2, 0, 0, 0, 0, 1);
   }
 
-  if (ip[0] == 0) {
-    display->DisplayText("No WiFi connection, turn off", 10,
-                         TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
-    display->DisplayText("or the credentials will be", 10, TOTAL_HEIGHT / 2 - 3,
-                         255, 0, 0);
-    display->DisplayText("resetted in 90 seconds.", 10, TOTAL_HEIGHT / 2 + 3,
-                         255, 0, 0);
-    for (uint8_t i = 89; i > 0; i--) {
-      sleep(1);
-      DisplayNumber(i, 2, 58, TOTAL_HEIGHT / 2 + 3, 255, 0, 0);
-    }
-    ssid = "\n";
-    pwd = "\n";
-    SaveWiFiConfig();
-    delay(100);
-    Restart();
-  }
+  WiFi.setSleep(false);  // WiFi speed improvement on ESP32 S3 and others.
 
   wifiActive = true;
 
@@ -1332,6 +1357,8 @@ void StartWiFi() {
     display->DisplayText("MDNS could not be started", 0, 0, 255, 0, 0);
     while (1);
   }
+
+  display->DisplayText("zedmd-wifi.local", 0, TOTAL_HEIGHT - 5, 0, 0, 0, 1);
 
   StartServer();
 
@@ -1356,11 +1383,13 @@ void setup() {
   bool fileSystemOK;
   if (fileSystemOK = LittleFS.begin()) {
     LoadSettingsMenu();
+#ifndef ZEDMD_WIFI
     LoadTransport();
+    LoadUsbPackageSizeMultiplier();
+#endif
     LoadRgbOrder();
     LoadLum();
     LoadDebug();
-    LoadUsbPackageSizeMultiplier();
     LoadUdpDelay();
 #ifdef ZEDMD_HD_HALF
     LoadYOffset();
@@ -1691,57 +1720,71 @@ void loop() {
       // StartServer();
     }
 
-    ++logoWaitCounter;
+    if (!logoActive) {
+      logoActive = true;
+      logoWaitCounter = 199;
+    }
+
+    if (logoWaitCounter < 201) ++logoWaitCounter;
+
     if (100 == logoWaitCounter) {
       DisplayUpdate();
     }
-    if (200 <= logoWaitCounter) {
-      DisplayLogo();
-      logoWaitCounter = 0;
+    if (200 == logoWaitCounter) {
+      ScreenSaver();
     }
 
-    display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 3, 0, 0, 0);
+    display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 3, throbberColors[0],
+                       throbberColors[1], throbberColors[2]);
 
     switch (transportWaitCounter) {
       case 0:
-        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 4, 255, 255,
-                           100 <= logoWaitCounter ? 0 : 255);
-        display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 4, 0, 0, 0);
+        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 4, throbberColors[3],
+                           throbberColors[4], throbberColors[5]);
+        display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 4, throbberColors[0],
+                           throbberColors[1], throbberColors[2]);
         break;
       case 1:
-        display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 4, 255, 255,
-                           100 <= logoWaitCounter ? 0 : 255);
-        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 4, 0, 0, 0);
+        display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 4, throbberColors[3],
+                           throbberColors[4], throbberColors[5]);
+        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 4, throbberColors[0],
+                           throbberColors[1], throbberColors[2]);
         break;
       case 2:
-        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 4, 255, 255,
-                           100 <= logoWaitCounter ? 0 : 255);
-        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 3, 0, 0, 0);
+        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 4, throbberColors[3],
+                           throbberColors[4], throbberColors[5]);
+        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 3, throbberColors[0],
+                           throbberColors[1], throbberColors[2]);
         break;
       case 3:
-        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 3, 255, 255,
-                           100 <= logoWaitCounter ? 0 : 255);
-        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 2, 0, 0, 0);
+        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 3, throbberColors[3],
+                           throbberColors[4], throbberColors[5]);
+        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 2, throbberColors[0],
+                           throbberColors[1], throbberColors[2]);
         break;
       case 4:
-        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 2, 255, 255,
-                           100 <= logoWaitCounter ? 0 : 255);
-        display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 2, 0, 0, 0);
+        display->DrawPixel(TOTAL_WIDTH - 2, TOTAL_HEIGHT - 2, throbberColors[3],
+                           throbberColors[4], throbberColors[5]);
+        display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 2, throbberColors[0],
+                           throbberColors[1], throbberColors[2]);
         break;
       case 5:
-        display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 2, 255, 255,
-                           100 <= logoWaitCounter ? 0 : 255);
-        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 2, 0, 0, 0);
+        display->DrawPixel(TOTAL_WIDTH - 3, TOTAL_HEIGHT - 2, throbberColors[3],
+                           throbberColors[4], throbberColors[5]);
+        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 2, throbberColors[0],
+                           throbberColors[1], throbberColors[2]);
         break;
       case 6:
-        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 2, 255, 255,
-                           100 <= logoWaitCounter ? 0 : 255);
-        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 3, 0, 0, 0);
+        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 2, throbberColors[3],
+                           throbberColors[4], throbberColors[5]);
+        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 3, throbberColors[0],
+                           throbberColors[1], throbberColors[2]);
         break;
       case 7:
-        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 3, 255, 255,
-                           100 <= logoWaitCounter ? 0 : 255);
-        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 4, 0, 0, 0);
+        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 3, throbberColors[3],
+                           throbberColors[4], throbberColors[5]);
+        display->DrawPixel(TOTAL_WIDTH - 4, TOTAL_HEIGHT - 4, throbberColors[0],
+                           throbberColors[1], throbberColors[2]);
         break;
     }
 
@@ -1760,8 +1803,12 @@ void loop() {
     if (lastDataReceived > 0 &&
         (millis() - lastDataReceived) > CONNECTION_TIMEOUT) {
       transportActive = false;
-      logoWaitCounter = 199;
       return;
+    }
+
+    if (logoActive) {
+      ClearScreen();
+      logoActive = false;
     }
 
     if (AcquireNextProcessingBuffer()) {
