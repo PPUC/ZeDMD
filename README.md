@@ -55,6 +55,7 @@ The ESP32-S3 N16R8 is now fully supported too. To flash this device, simply modi
 ### platformio ("from source")
 
 ```shell
+rm -rf .pio
 pio run -t uploadfs -e 128x32
 pio run -t upload -e 128x32
 ```
