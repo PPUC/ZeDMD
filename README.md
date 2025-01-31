@@ -198,9 +198,20 @@ Another potential issue could be outdated USB drivers. For the original ESP32 De
 For the ESP32-S3-N16R8, we use the USB CDC port, which doesn't require a driver. But if if you use the alterantive UART version of the firmware, refer to the following link for more details:
 * https://www.wch-ic.com/downloads/CH343SER_EXE.html
 
-### ZeDMD S3 crashed, how can I help to fix the issue
+### ZeDMD crashed, how can I help to fix the issue
 
-If you discover a crash, there's a good chance that a coredump has been written to flash. If you install the entire esp-idf, you can extract and interpret the coredump. `firmware.elf` is included in the release downloads since v5.1.2. If you used pio to build and flash the firmware, the command line on Linux or macOS will be like this:
+If you discover a crash, there's a good chance that a coredump has been written to the internal flash memory.
+If you install the entire esp-idf, you can extract and interpret the coredump. `firmware.elf` is included in the release downloads since v5.1.2.
+To get the coredump, has to be something like this:
+```shell
+python PATH_TO_ESP_IDF/esp-idf/components/espcoredump/espcoredump.py info_corefile PATH_TO_FIRMWARE_ELF/firmware.elf
+```
+Or on Windows:
+```shell
+PATH_TO_PYTHON\python.exe PATH_TO_ESP_IDF\esp-idf\components\espcoredump\espcoredump.py info_corefile PATH_TO_FIRMWARE_ELF\firmware.elf
+```
+
+If you used pio to build and flash the firmware, the command line on Linux or macOS could be like this:
 ```shell
 python ~/esp/v5.3.2/esp-idf/components/espcoredump/espcoredump.py info_corefile .pio/build/S3-N16R8_128x32/firmware.elf
 ```
