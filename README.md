@@ -59,7 +59,7 @@ pio run -t uploadfs -e 128x32
 pio run -t upload -e 128x32
 ```
 
-> **WARNING**
+> [!WARNING]
 >
 > Starting with ZeDMD 5.1.0, we switched from platform-espressif32 to [pioarduino](https://github.com/pioarduino).
 > If you did use `pio` with older ZeDMD versions already, you must remove the `.pio` folder once or you'll get compile / upload / runtime errors:
@@ -124,7 +124,7 @@ When wanting to use WiFi it is recommended to start with `WiFi UDP` for seamless
 
 The `Debug:` option can be set to `Debug: 1` if requested by a ZeDMD developer to enable error tracking during testing. For regular use, this setting should always remain at `0`.
 
-> **WARNING**
+> [!WARNING]
 >
 > From version 5.0.0 onwards: once you’ve finished changing values, you must navigate to the 'Exit' button. This step is required to enable the ZeDMD to enter handshake mode.
 
