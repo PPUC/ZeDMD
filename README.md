@@ -59,6 +59,14 @@ pio run -t uploadfs -e 128x32
 pio run -t upload -e 128x32
 ```
 
+> [!WARNING]
+>
+> Starting with ZeDMD 5.1.0, we switched from platform-espressif32 to [pioarduino](https://github.com/pioarduino).
+> If you did use `pio` with older ZeDMD versions already, you must remove the `.pio` folder once or you'll get compile / upload / runtime errors:
+> ```shell
+> rm -rf .pio
+> ```
+
 ### ZeDMD Updater (Windows only)
 
 Download and install the [ZeDMD_Updater](https://github.com/zesinger/ZeDMD_Updater) and follow its instructions.
@@ -85,9 +93,9 @@ ZeDMD utilizes HUB75 to display full-color content on your panels. To achieve th
 To navigate the menu and adjust settings, you'll need to configure a few buttons. However, only two buttons are essential to modify values and exit the menu. These two buttons are `Menu Left` and `Value +`.
 | ESP32 Dev Board | ESP32-S3-N16R8 | Menu Button |      
 | -------------   | -------------  | ------------|         
-| GPIO 0          | GPIO 48        | Menu Left   |          
+| GPIO 33         | GPIO 48        | Menu Left   |          
 | NOT USED        | GPIO 47        | Menu Right  |
-| GPIO 18         | GPIO 0         | Value +     |
+| GPIO 21         | GPIO 0         | Value +     |
 | NOT USED        | GPIO 45        | Value -     |
 
 ## First start
@@ -107,13 +115,17 @@ From v5.0.0 onwards, this is done by navigating to the `Brightness:` option in t
 
 Starting from version 5.1.0, a configurable `USB packet size:` option has been introduced. While the default value works for most setups, reducing the packet size may help resolve any issues you encounter.
 
-The option above `USB packet size:` allows switching between `USB`, `SPI`, `WiFi UDP` and `WiFi TCP`. The USB option is self-explanatory, and SPI is currently non-functional.
+The option above `USB packet size:` allows switching between `USB`, `SPI`, `WiFi UDP` and `WiFi TCP`. The USB option for the older ESP32 Dev board is self-explanatory. However, with the ESP32-S3-N16R8 you must use the left `USB` port, as shown in the picture.
+
+![S3USB](docs/images/S3USB.png)
+>`SPI` is currently non-functional and serves only as a placeholder for future real pinball integration.
 
 When wanting to use WiFi it is recommended to start with `WiFi UDP` for seamless frame streaming, provided your WiFi connection is fast. If you encounter crashes or unusual behavior, try adjusting the `UDP Delay:` option. For fast connections, a value below `UDP Delay: 5` may work well. Values like `UDP Delay: 4` have been reported to perform effectively. While lowering the UDP delay may work well for some, values above `UDP Delay: 5` should be given a try before making the final decision to switch to `WiFi TCP` for slower streaming but improved reliability.
 
 The `Debug:` option can be set to `Debug: 1` if requested by a ZeDMD developer to enable error tracking during testing. For regular use, this setting should always remain at `0`.
 
-> [!IMPORTANT]
+> [!WARNING]
+>
 > From version 5.0.0 onwards: once you’ve finished changing values, you must navigate to the 'Exit' button. This step is required to enable the ZeDMD to enter handshake mode.
 
 ## ZeDMD-WiFi
@@ -186,9 +198,20 @@ Another potential issue could be outdated USB drivers. For the original ESP32 De
 For the ESP32-S3-N16R8, we use the USB CDC port, which doesn't require a driver. But if if you use the alterantive UART version of the firmware, refer to the following link for more details:
 * https://www.wch-ic.com/downloads/CH343SER_EXE.html
 
-### ZeDMD S3 crashed, how can I help to fix the issue
+### ZeDMD crashed, how can I help to fix the issue
 
-If you discover a crash, there's a good chance that a coredump has been written to flash. If you install the entire esp-idf, you can extract and interpret the coredump. `firmware.elf` is included in the release downloads since v5.1.2. If you used pio to build and flash the firmware, the command line on Linux or macOS will be like this:
+If you discover a crash, there's a good chance that a coredump has been written to the internal flash memory.
+If you install the entire esp-idf, you can extract and interpret the coredump. `firmware.elf` is included in the release downloads since v5.1.2.
+To get the coredump, has to be something like this:
+```shell
+python PATH_TO_ESP_IDF/esp-idf/components/espcoredump/espcoredump.py info_corefile PATH_TO_FIRMWARE_ELF/firmware.elf
+```
+Or on Windows:
+```shell
+PATH_TO_PYTHON\python.exe PATH_TO_ESP_IDF\esp-idf\components\espcoredump\espcoredump.py info_corefile PATH_TO_FIRMWARE_ELF\firmware.elf
+```
+
+If you used pio to build and flash the firmware, the command line on Linux or macOS could be like this:
 ```shell
 python ~/esp/v5.3.2/esp-idf/components/espcoredump/espcoredump.py info_corefile .pio/build/S3-N16R8_128x32/firmware.elf
 ```
