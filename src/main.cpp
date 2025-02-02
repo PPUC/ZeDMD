@@ -1647,7 +1647,7 @@ void StartWiFi() {
     WiFi.begin(ssid.substring(0, ssid_length).c_str(),
                pwd.substring(0, pwd_length).c_str());
 
-    if (WiFi.waitForConnectResult() != WL_CONNECTED) {
+    if (WiFi.waitForConnectResult(120000UL) != WL_CONNECTED) {
       softAPFallback = true;
     }
   } else {
