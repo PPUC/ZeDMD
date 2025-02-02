@@ -185,13 +185,13 @@ void DoRestart(int sec) {
     WiFi.disconnect(true);
   }
   display->DisplayText("Restart", 0, 0, 255, 0, 0);
-  sleep(sec);
+  vTaskDelay(pdMS_TO_TICKS(sec * 1000));
   display->ClearScreen();
   delay(20);
   ESP.restart();
 }
 
-void Restart() { DoRestart(1); }
+void Restart() { DoRestart(2); }
 
 void RestartAfterError() { DoRestart(30); }
 
@@ -966,8 +966,13 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             return 1;
           }
 
-          case 30:  // save settings
+          case 30:  // save settings 0x1e
           {
+            if (!wifiActive) {
+              Serial.write(CtrlChars, N_ACK_CHARS);
+              Serial.flush();
+            }
+            display->DisplayText("Saving settings ...", 0, 0, 255, 0, 0);
             SaveLum();
             SaveDebug();
             SaveTransport();
@@ -980,13 +985,11 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
 #ifdef ZEDMD_HD_HALF
             SaveYOffset();
 #endif
-            headerBytesReceived = 0;
-            numCtrlCharsFound = 0;
             if (wifiActive) break;
-            return 1;
+            return 3;
           }
 
-          case 31:  // reset
+          case 31:  // reset 0x1f
           {
             if (!wifiActive) {
               Serial.write(CtrlChars, N_ACK_CHARS);
@@ -1337,11 +1340,12 @@ void Task_ReadSerial(void *pvParameters) {
           while (!Serial);
           break;
         }
+        if (3 == result) break;  // fast ack has been sent
         Serial.write(CtrlChars, N_ACK_CHARS);
         Serial.flush();
+        if (1 == result) break;  // Wait for the next FRAME header
         noDataMs = 0;
       } else {
-        if (1 == result) break;  // Wait for the next FRAME header
         if (++noDataMs > 5000) {
           transportActive = false;
           noDataMs = 0;

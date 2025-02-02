@@ -23,7 +23,7 @@ LedMatrix::LedMatrix() {
 
   HUB75_I2S_CFG mxconfig(PANEL_WIDTH, PANEL_HEIGHT, PANELS_NUMBER, pins);
   // Without setting clkphase to false, HD panels seem to flicker.
-  mxconfig.clkphase = panelClkphase;
+  mxconfig.clkphase = (panelClkphase == 1);
   mxconfig.i2sspeed =
       panelI2sspeed == 20
           ? HUB75_I2S_CFG::clk_speed::HZ_20M
