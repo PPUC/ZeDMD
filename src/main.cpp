@@ -1647,8 +1647,16 @@ void StartWiFi() {
     WiFi.begin(ssid.substring(0, ssid_length).c_str(),
                pwd.substring(0, pwd_length).c_str());
 
-    if (WiFi.waitForConnectResult(120000UL) != WL_CONNECTED) {
-      softAPFallback = true;
+    uint8_t error = WiFi.waitForConnectResult();
+    if (error != WL_CONNECTED) {
+      display->DisplayText("No WiFi connection, error ", 10,
+                           TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
+      DisplayNumber(error, 3, 26, TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
+      // second try
+      error = WiFi.waitForConnectResult();
+      if (error != WL_CONNECTED) {
+        softAPFallback = true;
+      }
     }
   } else {
     // Don't use the fallback to skip the countdown.
