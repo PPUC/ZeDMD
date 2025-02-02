@@ -1,7 +1,6 @@
 #ifdef DISPLAY_RM67162_AMOLED
 #include "Rm67162Amoled.h"
 
-#include "displayConfig.h"
 #include "fonts/tiny4x6.h"
 
 ///// LILYGO S3 AMOLED DRIVER

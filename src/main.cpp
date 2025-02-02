@@ -13,7 +13,6 @@
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
 #include "S3Specific.h"
 #endif
-#include "displayConfig.h"  // Variables shared by main and displayDrivers
 #include "displayDriver.h"  // Base class for all display drivers
 #include "esp_log.h"
 #include "esp_task_wdt.h"
@@ -84,6 +83,10 @@
 
 #define LED_CHECK_DELAY 1000  // ms per color
 
+#define RC 0
+#define GC 1
+#define BC 2
+
 enum {
   TRANSPORT_USB = 0,
   TRANSPORT_WIFI_UDP = 1,
@@ -115,7 +118,7 @@ static uint8_t *renderBuffer[NUM_RENDER_BUFFERS];
 static uint8_t currentRenderBuffer __attribute__((aligned(4))) = 0;
 static uint8_t lastRenderBuffer __attribute__((aligned(4))) =
     NUM_RENDER_BUFFERS - 1;
-
+static char tmpStringBuffer[33] __attribute__((aligned(4))) = {0};
 static bool payloadCompressed __attribute__((aligned(4))) = 0;
 static uint16_t payloadSize __attribute__((aligned(4))) = 0;
 static uint16_t payloadMissing __attribute__((aligned(4))) = 0;
@@ -131,6 +134,26 @@ static uint8_t processingBuffer __attribute__((aligned(4))) = NUM_BUFFERS - 1;
 uint8_t brightness = 5;
 #else
 uint8_t brightness = 2;
+int8_t rgbMode = 0;
+uint8_t rgbModeLoaded = 0;
+int8_t yOffset = 0;
+uint8_t panelClkphase = 1;
+uint8_t panelDriver = 0;
+uint8_t panelI2sspeed = 8;
+uint8_t panelLatchBlanking = 2;
+uint8_t panelMinRefreshRate = 30;
+
+// I needed to change these from RGB to RC (Red Color), BC, GC to prevent
+// conflicting with the TFT_SPI Library.
+const uint8_t rgbOrder[3 * 6] = {
+    RC, GC, BC,  // rgbMode 0
+    BC, RC, GC,  // rgbMode 1
+    GC, BC, RC,  // rgbMode 2
+    RC, BC, GC,  // rgbMode 3
+    GC, RC, BC,  // rgbMode 4
+    BC, GC, RC   // rgbMode 5
+};
+
 #endif
 static uint8_t usbPackageSizeMultiplier = USB_PACKAGE_SIZE / 32;
 static uint8_t settingsMenu = 0;
@@ -257,6 +280,7 @@ void LoadTransport() {
   f.close();
 }
 
+#ifdef DISPLAY_LED_MATRIX
 void SaveRgbOrder() {
   File f = LittleFS.open("/rgb_order.val", "w");
   f.write(rgbMode);
@@ -272,6 +296,59 @@ void LoadRgbOrder() {
   rgbMode = rgbModeLoaded = f.read();
   f.close();
 }
+
+void SavePanelSettings() {
+  File f = LittleFS.open("/panel_clkphase.val", "w");
+  f.write(panelClkphase);
+  f.close();
+  f = LittleFS.open("/panel_driver.val", "w");
+  f.write(panelDriver);
+  f.close();
+  f = LittleFS.open("/panel_i2sspeed.val", "w");
+  f.write(panelI2sspeed);
+  f.close();
+  f = LittleFS.open("/panel_latch_blanking.val", "w");
+  f.write(panelLatchBlanking);
+  f.close();
+  f = LittleFS.open("/panel_min_refresh_rate.val", "w");
+  f.write(panelMinRefreshRate);
+  f.close();
+}
+
+void LoadPanelSettings() {
+  File f = LittleFS.open("/panel_clkphase.val", "r");
+  if (!f) {
+    SavePanelSettings();
+  }
+  panelClkphase = f.read();
+  f.close();
+  f = LittleFS.open("/panel_driver.val", "r");
+  if (!f) {
+    SavePanelSettings();
+  }
+  panelDriver = f.read();
+  f.close();
+  f = LittleFS.open("/panel_i2sspeed.val", "r");
+  if (!f) {
+    SavePanelSettings();
+  }
+  panelI2sspeed = f.read();
+  f.close();
+  f = LittleFS.open("/panel_latch_blanking.val", "r");
+  if (!f) {
+    SavePanelSettings();
+  }
+  panelLatchBlanking = f.read();
+  f.close();
+  f = LittleFS.open("/panel_min_refresh_rate.val", "r");
+  if (!f) {
+    SavePanelSettings();
+  }
+  panelMinRefreshRate = f.read();
+  f.close();
+}
+
+#endif
 
 void SaveLum() {
   File f = LittleFS.open("/lum.val", "w");
@@ -553,7 +630,7 @@ void DisplayUpdate(void) {
 void ScreenSaver() {
   ClearScreen();
 
-  throbberColors[0] = 96;
+  throbberColors[0] = 48;
   throbberColors[1] = 0;
   throbberColors[2] = 0;
   throbberColors[3] = 0;
@@ -606,7 +683,11 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
   uint16_t pos = 0;
   bool headerCompleted = false;
 
-  while (pos < len || (headerCompleted && command != 5)) {
+  while (pos < len ||
+         (headerCompleted && command != 5 && command != 22 && command != 23 &&
+          command != 27 && command != 28 && command != 29 && command != 40 &&
+          command != 41 && command != 42 && command != 43 && command != 44 &&
+          command != 45 && command != 46 && command != 47 && command != 48)) {
     headerCompleted = false;
     if (numCtrlCharsFound < N_CTRL_CHARS) {
       // Detect 5 consecutive start bits
@@ -762,11 +843,136 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             return 1;
           }
 
+          case 27:  // set SSID
+          {
+            if (payloadMissing == payloadSize) {
+              memset(tmpStringBuffer, 0, 33);
+              if (payloadMissing > (len - pos)) {
+                memcpy(tmpStringBuffer, &pData[pos], len - pos);
+                payloadMissing -= len - pos;
+                pos += len - pos;
+                break;
+              } else {
+                memcpy(tmpStringBuffer, &pData[pos], payloadSize);
+                ssid = String(tmpStringBuffer);
+                pos += payloadSize;
+                payloadMissing = 0;
+                headerBytesReceived = 0;
+                numCtrlCharsFound = 0;
+              }
+            } else {
+              if (payloadMissing > (len - pos)) {
+                memcpy(&tmpStringBuffer[payloadSize - payloadMissing],
+                       &pData[pos], len - pos);
+                payloadMissing -= len - pos;
+                pos += len - pos;
+                break;
+              } else {
+                memcpy(&tmpStringBuffer[payloadSize - payloadMissing],
+                       &pData[pos], payloadMissing);
+                ssid = String(tmpStringBuffer);
+                pos += payloadMissing;
+                payloadMissing = 0;
+                headerBytesReceived = 0;
+                numCtrlCharsFound = 0;
+              }
+            }
+            if (wifiActive) break;
+            return 1;
+          }
+
+          case 28:  // set password
+          {
+            if (payloadMissing == payloadSize) {
+              memset(tmpStringBuffer, 0, 33);
+              if (payloadMissing > (len - pos)) {
+                memcpy(tmpStringBuffer, &pData[pos], len - pos);
+                payloadMissing -= len - pos;
+                pos += len - pos;
+                break;
+              } else {
+                memcpy(tmpStringBuffer, &pData[pos], payloadSize);
+                pwd = String(tmpStringBuffer);
+                pos += payloadSize;
+                payloadMissing = 0;
+                headerBytesReceived = 0;
+                numCtrlCharsFound = 0;
+              }
+            } else {
+              if (payloadMissing > (len - pos)) {
+                memcpy(&tmpStringBuffer[payloadSize - payloadMissing],
+                       &pData[pos], len - pos);
+                payloadMissing -= len - pos;
+                pos += len - pos;
+                break;
+              } else {
+                memcpy(&tmpStringBuffer[payloadSize - payloadMissing],
+                       &pData[pos], payloadMissing);
+                pwd = String(tmpStringBuffer);
+                pos += payloadMissing;
+                payloadMissing = 0;
+                headerBytesReceived = 0;
+                numCtrlCharsFound = 0;
+              }
+            }
+            if (wifiActive) break;
+            return 1;
+          }
+
+          case 29:  // set port
+          {
+            if (payloadMissing == payloadSize) {
+              memset(tmpStringBuffer, 0, 33);
+              if (payloadMissing > (len - pos)) {
+                memcpy(tmpStringBuffer, &pData[pos], len - pos);
+                payloadMissing -= len - pos;
+                pos += len - pos;
+                break;
+              } else {
+                memcpy(tmpStringBuffer, &pData[pos], payloadSize);
+                port = tmpStringBuffer[0] << 8;
+                port |= tmpStringBuffer[1];
+                pos += payloadSize;
+                payloadMissing = 0;
+                headerBytesReceived = 0;
+                numCtrlCharsFound = 0;
+              }
+            } else {
+              if (payloadMissing > (len - pos)) {
+                memcpy(&tmpStringBuffer[payloadSize - payloadMissing],
+                       &pData[pos], len - pos);
+                payloadMissing -= len - pos;
+                pos += len - pos;
+                break;
+              } else {
+                memcpy(&tmpStringBuffer[payloadSize - payloadMissing],
+                       &pData[pos], payloadMissing);
+                port = tmpStringBuffer[0] << 8;
+                port |= tmpStringBuffer[1];
+                pos += payloadMissing;
+                payloadMissing = 0;
+                headerBytesReceived = 0;
+                numCtrlCharsFound = 0;
+              }
+            }
+            if (wifiActive) break;
+            return 1;
+          }
+
           case 30:  // save settings
           {
             SaveLum();
-            SaveRgbOrder();
             SaveDebug();
+            SaveTransport();
+            SaveUsbPackageSizeMultiplier();
+            SaveUdpDelay();
+#ifdef DISPLAY_LED_MATRIX
+            SaveRgbOrder();
+            SavePanelSettings();
+#endif
+#ifdef ZEDMD_HD_HALF
+            SaveYOffset();
+#endif
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (wifiActive) break;
@@ -780,6 +986,132 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
               Serial.flush();
             }
             Restart();
+          }
+
+          case 40:  // set settings
+          {
+            if ((len - pos) > 1) {
+              panelClkphase = pData[pos++];
+              payloadMissing = 0;
+              headerBytesReceived = 0;
+              numCtrlCharsFound = 0;
+              if (wifiActive) break;
+              return 1;
+            }
+            payloadMissing = 1;
+            break;
+          }
+
+          case 41:  // set settings
+          {
+            if ((len - pos) > 1) {
+              panelI2sspeed = pData[pos++];
+              payloadMissing = 0;
+              headerBytesReceived = 0;
+              numCtrlCharsFound = 0;
+              if (wifiActive) break;
+              return 1;
+            }
+            payloadMissing = 1;
+            break;
+          }
+
+          case 42:  // set settings
+          {
+            if ((len - pos) > 1) {
+              panelLatchBlanking = pData[pos++];
+              payloadMissing = 0;
+              headerBytesReceived = 0;
+              numCtrlCharsFound = 0;
+              if (wifiActive) break;
+              return 1;
+            }
+            payloadMissing = 1;
+            break;
+          }
+
+          case 43:  // set settings
+          {
+            if ((len - pos) > 1) {
+              panelMinRefreshRate = pData[pos++];
+              payloadMissing = 0;
+              headerBytesReceived = 0;
+              numCtrlCharsFound = 0;
+              if (wifiActive) break;
+              return 1;
+            }
+            payloadMissing = 1;
+            break;
+          }
+
+          case 44:  // set settings
+          {
+            if ((len - pos) > 1) {
+              panelDriver = pData[pos++];
+              payloadMissing = 0;
+              headerBytesReceived = 0;
+              numCtrlCharsFound = 0;
+              if (wifiActive) break;
+              return 1;
+            }
+            payloadMissing = 1;
+            break;
+          }
+
+          case 45:  // set settings
+          {
+            if ((len - pos) > 1) {
+              transport = pData[pos++];
+              payloadMissing = 0;
+              headerBytesReceived = 0;
+              numCtrlCharsFound = 0;
+              if (wifiActive) break;
+              return 1;
+            }
+            payloadMissing = 1;
+            break;
+          }
+
+          case 46:  // set settings
+          {
+            if ((len - pos) > 1) {
+              udpDelay = pData[pos++];
+              payloadMissing = 0;
+              headerBytesReceived = 0;
+              numCtrlCharsFound = 0;
+              if (wifiActive) break;
+              return 1;
+            }
+            payloadMissing = 1;
+            break;
+          }
+
+          case 47:  // set settings
+          {
+            if ((len - pos) > 1) {
+              usbPackageSizeMultiplier = pData[pos++];
+              payloadMissing = 0;
+              headerBytesReceived = 0;
+              numCtrlCharsFound = 0;
+              if (wifiActive) break;
+              return 1;
+            }
+            payloadMissing = 1;
+            break;
+          }
+
+          case 48:  // set settings
+          {
+            if ((len - pos) > 1) {
+              yOffset = pData[pos++];
+              payloadMissing = 0;
+              headerBytesReceived = 0;
+              numCtrlCharsFound = 0;
+              if (wifiActive) break;
+              return 1;
+            }
+            payloadMissing = 1;
+            break;
           }
 
           case 16: {
@@ -1385,9 +1717,12 @@ void setup() {
     LoadSettingsMenu();
 #ifndef ZEDMD_WIFI
     LoadTransport();
-    LoadUsbPackageSizeMultiplier();
 #endif
+    LoadUsbPackageSizeMultiplier();
+#ifdef DISPLAY_LED_MATRIX
     LoadRgbOrder();
+    LoadPanelSettings();
+#endif
     LoadLum();
     LoadDebug();
     LoadUdpDelay();
@@ -1424,6 +1759,7 @@ void setup() {
     memset(renderBuffer[i], 0, TOTAL_BYTES);
   }
 
+#ifndef DISPLAY_RM67162_AMOLED
   if (settingsMenu) {
     RefreshSetupScreen();
     display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
@@ -1647,6 +1983,7 @@ void setup() {
       delay(1);
     }
   }
+#endif
 
   pinMode(FORWARD_BUTTON_PIN, INPUT_PULLUP);
 
@@ -1707,12 +2044,14 @@ void setup() {
 }
 
 void loop() {
+#ifndef DISPLAY_RM67162_AMOLED
   if (!digitalRead(FORWARD_BUTTON_PIN)) {
     settingsMenu = true;
     SaveSettingsMenu();
     delay(20);
     Restart();
   }
+#endif
 
   if (!transportActive) {
     if (wifiActive && !serverRunning) {

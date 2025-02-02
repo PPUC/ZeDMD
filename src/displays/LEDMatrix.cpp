@@ -1,7 +1,6 @@
 #ifdef DISPLAY_LED_MATRIX
 #include "LEDMatrix.h"
 
-#include "displayConfig.h"
 #include "fonts/tiny4x6.h"
 
 LedMatrix::LedMatrix() {
@@ -24,10 +23,15 @@ LedMatrix::LedMatrix() {
 
   HUB75_I2S_CFG mxconfig(PANEL_WIDTH, PANEL_HEIGHT, PANELS_NUMBER, pins);
   // Without setting clkphase to false, HD panels seem to flicker.
-  mxconfig.clkphase = false;
-  mxconfig.latch_blanking = 2;
-  mxconfig.min_refresh_rate = 30;
-  mxconfig.driver = HUB75_I2S_CFG::shift_driver::SHIFTREG;
+  mxconfig.clkphase = panelClkphase;
+  mxconfig.i2sspeed =
+      panelI2sspeed == 20
+          ? HUB75_I2S_CFG::clk_speed::HZ_20M
+          : (panelI2sspeed == 16 ? HUB75_I2S_CFG::clk_speed::HZ_16M
+                                 : HUB75_I2S_CFG::clk_speed::HZ_8M);
+  mxconfig.latch_blanking = panelLatchBlanking;
+  mxconfig.min_refresh_rate = panelMinRefreshRate;
+  mxconfig.driver = (HUB75_I2S_CFG::shift_driver)panelDriver;
 
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   dma_display->begin();
@@ -78,8 +82,8 @@ void LedMatrix::DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t r,
         if (transparent && !p) {
           continue;
         }
-        dma_display->drawPixelRGB888(x + pixel + (ti * 4), y + yOffset + tj, r * p, g * p,
-                                     b * p);
+        dma_display->drawPixelRGB888(x + pixel + (ti * 4), y + yOffset + tj,
+                                     r * p, g * p, b * p);
       }
     }
   }
@@ -93,8 +97,9 @@ void IRAM_ATTR LedMatrix::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
     for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
       uint16_t pos = (y * ZONE_WIDTH + x) * 3;
 
-      dma_display->drawPixelRGB888(x + zoneXOffset, y + zoneYOffset + yOffset, pBuffer[pos],
-                                   pBuffer[pos + 1], pBuffer[pos + 2]);
+      dma_display->drawPixelRGB888(x + zoneXOffset, y + zoneYOffset + yOffset,
+                                   pBuffer[pos], pBuffer[pos + 1],
+                                   pBuffer[pos + 2]);
     }
   }
 }
@@ -119,7 +124,8 @@ void IRAM_ATTR LedMatrix::ClearZone(uint8_t idx) {
 
   for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
     for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
-      dma_display->drawPixelRGB888(x + zoneXOffset, y + zoneYOffset + yOffset, 0, 0, 0);
+      dma_display->drawPixelRGB888(x + zoneXOffset, y + zoneYOffset + yOffset,
+                                   0, 0, 0);
     }
   }
 }
@@ -131,8 +137,8 @@ void IRAM_ATTR LedMatrix::FillPanelRaw(uint8_t *pBuffer) {
     for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
       pos = (y * TOTAL_WIDTH + x) * 3;
 
-      dma_display->drawPixelRGB888(x, y + yOffset, pBuffer[pos], pBuffer[pos + 1],
-                                   pBuffer[pos + 2]);
+      dma_display->drawPixelRGB888(x, y + yOffset, pBuffer[pos],
+                                   pBuffer[pos + 1], pBuffer[pos + 2]);
     }
   }
 }
