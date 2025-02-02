@@ -1669,7 +1669,7 @@ void StartWiFi() {
   }
 
   if (ip[0] == 0 || softAPFallback) {
-    display->DisplayText("No WiFi connection, maybe the", 10,
+    display->DisplayText("No WiFi connection, maybe the   ", 10,
                          TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
     display->DisplayText("the credentials are wrong.", 10, TOTAL_HEIGHT / 2 - 3,
                          255, 0, 0);
