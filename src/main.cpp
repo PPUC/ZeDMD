@@ -230,6 +230,7 @@ void DisplayLum(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
 }
 
 void DisplayRGB(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
+#ifndef DISPLAY_RM67162_AMOLED
   display->DisplayText("red", 0, 0, 0, 0, 0, true, true);
   for (uint8_t i = 0; i < 6; i++) {
     display->DrawPixel(TOTAL_WIDTH - (4 * 4) - 1, i, 0, 0, 0);
@@ -239,6 +240,7 @@ void DisplayRGB(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
   display->DisplayText("green", 0, TOTAL_HEIGHT - 6, 0, 0, 0, true, true);
   display->DisplayText("RGB Order:", (TOTAL_WIDTH / 2) - (6 * 4), 0, r, g, b);
   DisplayNumber(rgbMode, 2, (TOTAL_WIDTH / 2) + (4 * 4), 0, 255, 191, 0);
+#endif
 }
 
 /// @brief Get DisplayDriver object, required for webserver
@@ -570,7 +572,7 @@ void DisplayLogo(void) {
     display->DisplayText("Logo is missing", 0, 0, 255, 0, 0);
     return;
   }
-
+#ifndef DISPLAY_RM67162_AMOLED
   for (uint16_t tj = 0; tj < TOTAL_BYTES; tj += 3) {
     if (rgbMode == rgbModeLoaded) {
       renderBuffer[currentRenderBuffer][tj] = f.read();
@@ -584,7 +586,11 @@ void DisplayLogo(void) {
           f.read();
     }
   }
-
+#else
+  for (uint16_t tj = 0; tj < TOTAL_BYTES; tj++) {
+    renderBuffer[currentRenderBuffer][tj] = f.read();
+  }
+#endif
   f.close();
 
   Render();
@@ -811,7 +817,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             if (wifiActive) break;
             return 1;
           }
-
+#ifndef DISPLAY_RM67162_AMOLED
           case 23:  // set RGB order
           {
             rgbMode = pData[pos++];
@@ -820,7 +826,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             if (wifiActive) break;
             return 1;
           }
-
+#endif
           case 24:  // get brightness
           {
             headerBytesReceived = 0;
@@ -832,6 +838,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             return 1;
           }
 
+#ifndef DISPLAY_RM67162_AMOLED
           case 25:  // get RGB order
           {
             headerBytesReceived = 0;
@@ -842,7 +849,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             Serial.flush();
             return 1;
           }
-
+#endif
           case 27:  // set SSID
           {
             if (payloadMissing == payloadSize) {
@@ -987,7 +994,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             }
             Restart();
           }
-
+#ifndef DISPLAY_RM67162_AMOLED
           case 40:  // set settings
           {
             if ((len - pos) > 1) {
@@ -1057,7 +1064,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             payloadMissing = 1;
             break;
           }
-
+#endif
           case 45:  // set settings
           {
             if ((len - pos) > 1) {
@@ -1099,7 +1106,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             payloadMissing = 1;
             break;
           }
-
+#ifndef DISPLAY_RM67162_AMOLED
           case 48:  // set settings
           {
             if ((len - pos) > 1) {
@@ -1113,7 +1120,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             payloadMissing = 1;
             break;
           }
-
+#endif
           case 16: {
             if (!wifiActive) {
               Serial.write(CtrlChars, N_ACK_CHARS);
@@ -1444,6 +1451,7 @@ void StartServer() {
     request->send(200, "application/json", jsonResponse);
   });
 
+#ifndef DISPLAY_RM67162_AMOLED
   // Route to save RGB order
   server->on("/save_rgb_order", HTTP_POST, [](AsyncWebServerRequest *request) {
     if (request->hasParam("rgbOrder", true)) {
@@ -1467,6 +1475,7 @@ void StartServer() {
       request->send(400, "text/plain", "Missing RGB order parameter");
     }
   });
+#endif
 
   // Route to save brightness
   server->on("/save_brightness", HTTP_POST, [](AsyncWebServerRequest *request) {
@@ -1566,7 +1575,9 @@ void StartServer() {
     String json = "{";
     json += "\"ssid\":\"" + trimmedSsid + "\",";
     json += "\"port\":" + String(port) + ",";
+#ifndef DISPLAY_RM67162_AMOLED
     json += "\"rgbOrder\":" + String(rgbMode) + ",";
+#endif
     json += "\"brightness\":" + String(brightness) + ",";
     json += "\"scaleMode\":" + String(display->GetCurrentScalingMode());
     json += "}";
