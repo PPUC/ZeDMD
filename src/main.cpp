@@ -184,7 +184,8 @@ void DoRestart(int sec) {
     MDNS.end();
     WiFi.disconnect(true);
   }
-  display->DisplayText("Restart", 0, 0, 255, 0, 0);
+  display->ClearScreen();
+  display->DisplayText("Restarting ...", 0, 0, 255, 0, 0);
   vTaskDelay(pdMS_TO_TICKS(sec * 1000));
   display->ClearScreen();
   delay(20);
@@ -194,7 +195,7 @@ void DoRestart(int sec) {
   esp_deep_sleep_start();  // Enter deep sleep (ESP32 reboots on wake)
 }
 
-void Restart() { DoRestart(2); }
+void Restart() { DoRestart(1); }
 
 void RestartAfterError() { DoRestart(30); }
 
@@ -782,7 +783,6 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
                 ((usbPackageSizeMultiplier * 32) >> 8) & 0xff;
             response[63 - N_ACK_CHARS] = 'R';
             Serial.write(response, 64 - N_ACK_CHARS);
-            Serial.flush();
             free(response);
             return 1;
           }
@@ -796,7 +796,6 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             Serial.write(ZEDMD_VERSION_MAJOR);
             Serial.write(ZEDMD_VERSION_MINOR);
             Serial.write(ZEDMD_VERSION_PATCH);
-            Serial.flush();
             return 1;
           }
 
@@ -810,7 +809,6 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             Serial.write((TOTAL_WIDTH >> 8) & 0xff);
             Serial.write(TOTAL_HEIGHT & 0xff);
             Serial.write((TOTAL_HEIGHT >> 8) & 0xff);
-            Serial.flush();
             return 1;
           }
 
@@ -840,7 +838,6 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             if (wifiActive) break;
 
             Serial.write(brightness);
-            Serial.flush();
             return 1;
           }
 
@@ -852,7 +849,6 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             if (wifiActive) break;
 
             Serial.write(rgbMode);
-            Serial.flush();
             return 1;
           }
 #endif
@@ -868,6 +864,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
               } else {
                 memcpy(tmpStringBuffer, &pData[pos], payloadSize);
                 ssid = String(tmpStringBuffer);
+                ssid_length = payloadSize;
                 pos += payloadSize;
                 payloadMissing = 0;
                 headerBytesReceived = 0;
@@ -884,6 +881,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
                 memcpy(&tmpStringBuffer[payloadSize - payloadMissing],
                        &pData[pos], payloadMissing);
                 ssid = String(tmpStringBuffer);
+                ssid_length = payloadSize;
                 pos += payloadMissing;
                 payloadMissing = 0;
                 headerBytesReceived = 0;
@@ -906,6 +904,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
               } else {
                 memcpy(tmpStringBuffer, &pData[pos], payloadSize);
                 pwd = String(tmpStringBuffer);
+                pwd_length = payloadSize;
                 pos += payloadSize;
                 payloadMissing = 0;
                 headerBytesReceived = 0;
@@ -922,6 +921,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
                 memcpy(&tmpStringBuffer[payloadSize - payloadMissing],
                        &pData[pos], payloadMissing);
                 pwd = String(tmpStringBuffer);
+                pwd_length = payloadSize;
                 pos += payloadMissing;
                 payloadMissing = 0;
                 headerBytesReceived = 0;
@@ -975,6 +975,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
           case 30:  // save settings 0x1e
           {
             if (!wifiActive) {
+              // send fast ack
               Serial.write(CtrlChars, N_ACK_CHARS);
               Serial.flush();
             }
@@ -984,6 +985,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             SaveTransport();
             SaveUsbPackageSizeMultiplier();
             SaveUdpDelay();
+            SaveWiFiConfig();
 #ifdef DISPLAY_LED_MATRIX
             SaveRgbOrder();
             SavePanelSettings();
@@ -991,6 +993,9 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
 #ifdef ZEDMD_HD_HALF
             SaveYOffset();
 #endif
+            display->DisplayText("Saving settings ... done", 0, 0, 255, 0, 0);
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
             if (wifiActive) break;
             return 3;
           }
@@ -1004,130 +1009,85 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             Restart();
           }
 #ifndef DISPLAY_RM67162_AMOLED
-          case 40:  // set settings
+          case 40:  // set panelClkphase
           {
-            if ((len - pos) > 1) {
-              panelClkphase = pData[pos++];
-              payloadMissing = 0;
-              headerBytesReceived = 0;
-              numCtrlCharsFound = 0;
-              if (wifiActive) break;
-              return 1;
-            }
-            payloadMissing = 1;
-            break;
+            panelClkphase = pData[pos++];
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            if (wifiActive) break;
+            return 1;
           }
 
-          case 41:  // set settings
+          case 41:  // set panelI2sspeed
           {
-            if ((len - pos) > 1) {
-              panelI2sspeed = pData[pos++];
-              payloadMissing = 0;
-              headerBytesReceived = 0;
-              numCtrlCharsFound = 0;
-              if (wifiActive) break;
-              return 1;
-            }
-            payloadMissing = 1;
-            break;
+            panelI2sspeed = pData[pos++];
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            if (wifiActive) break;
+            return 1;
           }
 
-          case 42:  // set settings
+          case 42:  // set panelLatchBlanking
           {
-            if ((len - pos) > 1) {
-              panelLatchBlanking = pData[pos++];
-              payloadMissing = 0;
-              headerBytesReceived = 0;
-              numCtrlCharsFound = 0;
-              if (wifiActive) break;
-              return 1;
-            }
-            payloadMissing = 1;
-            break;
+            panelLatchBlanking = pData[pos++];
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            if (wifiActive) break;
+            return 1;
           }
 
-          case 43:  // set settings
+          case 43:  // set panelMinRefreshRate
           {
-            if ((len - pos) > 1) {
-              panelMinRefreshRate = pData[pos++];
-              payloadMissing = 0;
-              headerBytesReceived = 0;
-              numCtrlCharsFound = 0;
-              if (wifiActive) break;
-              return 1;
-            }
-            payloadMissing = 1;
-            break;
+            panelMinRefreshRate = pData[pos++];
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            if (wifiActive) break;
+            return 1;
           }
 
-          case 44:  // set settings
+          case 44:  // set panelDriver
           {
-            if ((len - pos) > 1) {
-              panelDriver = pData[pos++];
-              payloadMissing = 0;
-              headerBytesReceived = 0;
-              numCtrlCharsFound = 0;
-              if (wifiActive) break;
-              return 1;
-            }
-            payloadMissing = 1;
-            break;
+            panelDriver = pData[pos++];
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            if (wifiActive) break;
+            return 1;
           }
 #endif
-          case 45:  // set settings
+          case 45:  // set transport
           {
-            if ((len - pos) > 1) {
-              transport = pData[pos++];
-              payloadMissing = 0;
-              headerBytesReceived = 0;
-              numCtrlCharsFound = 0;
-              if (wifiActive) break;
-              return 1;
-            }
-            payloadMissing = 1;
-            break;
+            transport = pData[pos++];
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            if (wifiActive) break;
+            return 1;
           }
 
-          case 46:  // set settings
+          case 46:  // set udpDelay
           {
-            if ((len - pos) > 1) {
-              udpDelay = pData[pos++];
-              payloadMissing = 0;
-              headerBytesReceived = 0;
-              numCtrlCharsFound = 0;
-              if (wifiActive) break;
-              return 1;
-            }
-            payloadMissing = 1;
-            break;
+            udpDelay = pData[pos++];
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            if (wifiActive) break;
+            return 1;
           }
 
-          case 47:  // set settings
+          case 47:  // set usbPackageSizeMultiplier
           {
-            if ((len - pos) > 1) {
-              usbPackageSizeMultiplier = pData[pos++];
-              payloadMissing = 0;
-              headerBytesReceived = 0;
-              numCtrlCharsFound = 0;
-              if (wifiActive) break;
-              return 1;
-            }
-            payloadMissing = 1;
-            break;
+            usbPackageSizeMultiplier = pData[pos++];
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            if (wifiActive) break;
+            return 1;
           }
 #ifndef DISPLAY_RM67162_AMOLED
-          case 48:  // set settings
+          case 48:  // set yOffset
           {
-            if ((len - pos) > 1) {
-              yOffset = pData[pos++];
-              payloadMissing = 0;
-              headerBytesReceived = 0;
-              numCtrlCharsFound = 0;
-              if (wifiActive) break;
-              return 1;
-            }
-            payloadMissing = 1;
-            break;
+            yOffset = pData[pos++];
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            if (wifiActive) break;
+            return 1;
           }
 #endif
           case 16: {
@@ -1343,10 +1303,14 @@ void Task_ReadSerial(void *pvParameters) {
           Serial.end();
           vTaskDelay(pdMS_TO_TICKS(10));
           Serial.begin(SERIAL_BAUD);
-          while (!Serial);
-          break;
+          while (!Serial) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+          }
+          break;  // Wait for the next FRAME header
         }
-        if (3 == result) break;  // fast ack has been sent
+        if (3 == result) {
+          break;  // fast ack has been sent, wait for the next FRAME header
+        }
         Serial.write(CtrlChars, N_ACK_CHARS);
         Serial.flush();
         if (1 == result) break;  // Wait for the next FRAME header
@@ -1663,7 +1627,7 @@ void StartWiFi() {
   bool softAPFallback = false;
   IPAddress ip;
 
-  if (LoadWiFiConfig() && ssid_length > 0) {
+  if (ssid_length > 0) {
     WiFi.disconnect(true);
     WiFi.begin(ssid.substring(0, ssid_length).c_str(),
                pwd.substring(0, pwd_length).c_str());
@@ -1747,6 +1711,7 @@ void setup() {
 #ifndef ZEDMD_WIFI
     LoadTransport();
 #endif
+    LoadWiFiConfig();
     LoadUsbPackageSizeMultiplier();
 #ifdef DISPLAY_LED_MATRIX
     LoadRgbOrder();
@@ -1790,6 +1755,13 @@ void setup() {
 
 #ifndef DISPLAY_RM67162_AMOLED
   if (settingsMenu) {
+    // Turn off settings menu after restart here.
+    // Previously, the value has been set when selecting exit.
+    // But this way, people who can't access the buttons in their cab
+    // can leave the menu with a power cycle.
+    settingsMenu = false;
+    SaveSettingsMenu();
+
     RefreshSetupScreen();
     display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
                          (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
@@ -1909,9 +1881,6 @@ void setup() {
       if (up || down) {
         switch (position) {
           case 1: {  // Exit
-            settingsMenu = false;
-            SaveSettingsMenu();
-            delay(10);
             Restart();
             break;
           }
