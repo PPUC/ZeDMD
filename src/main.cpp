@@ -188,7 +188,10 @@ void DoRestart(int sec) {
   vTaskDelay(pdMS_TO_TICKS(sec * 1000));
   display->ClearScreen();
   delay(20);
-  ESP.restart();
+  // Don't use ESP.restart() or esp_restart() because these will keep the state
+  // of global and static variables.
+  esp_sleep_enable_timer_wakeup(1000);  // Wake up after 1ms
+  esp_deep_sleep_start();  // Enter deep sleep (ESP32 reboots on wake)
 }
 
 void Restart() { DoRestart(2); }
@@ -602,6 +605,9 @@ void DisplayLogo(void) {
   throbberColors[3] = 255;
   throbberColors[4] = 255;
   throbberColors[5] = 255;
+
+  logoActive = true;
+  logoWaitCounter = 0;
 }
 
 void DisplayUpdate(void) {
