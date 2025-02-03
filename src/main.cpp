@@ -783,6 +783,8 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
                 ((usbPackageSizeMultiplier * 32) >> 8) & 0xff;
             response[63 - N_ACK_CHARS] = 'R';
             Serial.write(response, 64 - N_ACK_CHARS);
+            // This flush is required for USB CDC on Windows.
+            Serial.flush();
             free(response);
             return 1;
           }
