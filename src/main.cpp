@@ -781,8 +781,8 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
                 (usbPackageSizeMultiplier * 32) & 0xff;
             response[N_INTERMEDIATE_CTR_CHARS + 8] =
                 ((usbPackageSizeMultiplier * 32) >> 8) & 0xff;
-
             response[N_INTERMEDIATE_CTR_CHARS + 9] = brightness;
+#ifndef DISPLAY_RM67162_AMOLED
             response[N_INTERMEDIATE_CTR_CHARS + 10] = rgbMode;
             response[N_INTERMEDIATE_CTR_CHARS + 11] = yOffset;
             response[N_INTERMEDIATE_CTR_CHARS + 12] = panelClkphase;
@@ -790,6 +790,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             response[N_INTERMEDIATE_CTR_CHARS + 14] = panelI2sspeed;
             response[N_INTERMEDIATE_CTR_CHARS + 15] = panelLatchBlanking;
             response[N_INTERMEDIATE_CTR_CHARS + 16] = panelMinRefreshRate;
+#endif
             response[N_INTERMEDIATE_CTR_CHARS + 17] = udpDelay;
 
             response[63 - N_ACK_CHARS] = 'R';
