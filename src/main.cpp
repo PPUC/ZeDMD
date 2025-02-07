@@ -1531,10 +1531,16 @@ void StartServer() {
             + "|" + ((TRANSPORT_WIFI_UDP == transport) ? "UDP" : "TCP") + "|" +
             String(port) + "|" + String(udpDelay) + "|" +
             String(usbPackageSizeMultiplier * 32) + "|" + String(brightness) +
-            "|" + String(rgbMode) + "|" + String(panelClkphase) + "|" +
+            "|" +
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
+            String(rgbMode) + "|" + String(panelClkphase) + "|" +
             String(panelDriver) + "|" + String(panelI2sspeed) + "|" +
             String(panelLatchBlanking) + "|" + String(panelMinRefreshRate) +
-            "|" + String(yOffset) + "|" + ssid);
+            "|" + String(yOffset)
+#else
+            "0|0|0|0|0|0|0"
+#endif
+            + "|" + ssid);
   });
 
   server->on("/ppuc.png", HTTP_GET, [](AsyncWebServerRequest *request) {
