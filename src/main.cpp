@@ -1448,6 +1448,46 @@ void StartServer() {
     request->send(200, "text/plain", String(TOTAL_WIDTH));
   });
 
+  server->on("/get_rgb_order", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", String(rgbMode));
+  });
+
+  server->on("/get_panel_clkphase", HTTP_GET,
+             [](AsyncWebServerRequest *request) {
+               request->send(200, "text/plain", String(panelClkphase));
+             });
+
+  server->on("/get_panel_driver", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", String(panelDriver));
+  });
+
+  server->on("/get_panel_i2sspeed", HTTP_GET,
+             [](AsyncWebServerRequest *request) {
+               request->send(200, "text/plain", String(panelI2sspeed));
+             });
+
+  server->on("/get_panel_latchblanking", HTTP_GET,
+             [](AsyncWebServerRequest *request) {
+               request->send(200, "text/plain", String(panelLatchBlanking));
+             });
+
+  server->on("/get_panel_minrefreshrate", HTTP_GET,
+             [](AsyncWebServerRequest *request) {
+               request->send(200, "text/plain", String(panelMinRefreshRate));
+             });
+
+  server->on("/get_y_offset", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", String(yOffset));
+  });
+
+  server->on("/get_udp_delay", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", String(udpDelay));
+  });
+
+  server->on("/get_brightness", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", String(brightness));
+  });
+
   server->on("/get_protocol", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (TRANSPORT_WIFI_UDP == transport) {
       request->send(200, "text/plain", "UDP");
@@ -1489,8 +1529,12 @@ void StartServer() {
             String(0)
 #endif
             + "|" + ((TRANSPORT_WIFI_UDP == transport) ? "UDP" : "TCP") + "|" +
-            String(port) + "|" + String(udpDelay) + "|" + ssid + "|" +
-            String(usbPackageSizeMultiplier * 32));
+            String(port) + "|" + String(udpDelay) + "|" +
+            String(usbPackageSizeMultiplier * 32) + "|" + String(brightness) +
+            "|" + String(rgbMode) + "|" + String(panelClkphase) + "|" +
+            String(panelDriver) + "|" + String(panelI2sspeed) + "|" +
+            String(panelLatchBlanking) + "|" + String(panelMinRefreshRate) +
+            "|" + String(yOffset) + "|" + ssid);
   });
 
   server->on("/ppuc.png", HTTP_GET, [](AsyncWebServerRequest *request) {
