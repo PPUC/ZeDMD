@@ -61,7 +61,7 @@
 #endif
 #else
 #define SERIAL_BAUD 921600
-#define USB_PACKAGE_SIZE 512
+#define USB_PACKAGE_SIZE 64
 #endif
 #define SERIAL_TIMEOUT \
   8  // Time in milliseconds to wait for the next data chunk.
@@ -781,36 +781,22 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
                 (usbPackageSizeMultiplier * 32) & 0xff;
             response[N_INTERMEDIATE_CTR_CHARS + 8] =
                 ((usbPackageSizeMultiplier * 32) >> 8) & 0xff;
+
+            response[N_INTERMEDIATE_CTR_CHARS + 9] = brightness;
+            response[N_INTERMEDIATE_CTR_CHARS + 10] = rgbMode;
+            response[N_INTERMEDIATE_CTR_CHARS + 11] = yOffset;
+            response[N_INTERMEDIATE_CTR_CHARS + 12] = panelClkphase;
+            response[N_INTERMEDIATE_CTR_CHARS + 13] = panelDriver;
+            response[N_INTERMEDIATE_CTR_CHARS + 14] = panelI2sspeed;
+            response[N_INTERMEDIATE_CTR_CHARS + 15] = panelLatchBlanking;
+            response[N_INTERMEDIATE_CTR_CHARS + 16] = panelMinRefreshRate;
+            response[N_INTERMEDIATE_CTR_CHARS + 17] = udpDelay;
+
             response[63 - N_ACK_CHARS] = 'R';
             Serial.write(response, 64 - N_ACK_CHARS);
             // This flush is required for USB CDC on Windows.
             Serial.flush();
             free(response);
-            return 1;
-          }
-
-          case 32:  // get version
-          {
-            headerBytesReceived = 0;
-            numCtrlCharsFound = 0;
-            if (wifiActive) break;
-
-            Serial.write(ZEDMD_VERSION_MAJOR);
-            Serial.write(ZEDMD_VERSION_MINOR);
-            Serial.write(ZEDMD_VERSION_PATCH);
-            return 1;
-          }
-
-          case 33:  // get panel resolution
-          {
-            headerBytesReceived = 0;
-            numCtrlCharsFound = 0;
-            if (wifiActive) break;
-
-            Serial.write(TOTAL_WIDTH & 0xff);
-            Serial.write((TOTAL_WIDTH >> 8) & 0xff);
-            Serial.write(TOTAL_HEIGHT & 0xff);
-            Serial.write((TOTAL_HEIGHT >> 8) & 0xff);
             return 1;
           }
 
@@ -830,27 +816,6 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (wifiActive) break;
-            return 1;
-          }
-#endif
-          case 24:  // get brightness
-          {
-            headerBytesReceived = 0;
-            numCtrlCharsFound = 0;
-            if (wifiActive) break;
-
-            Serial.write(brightness);
-            return 1;
-          }
-
-#ifndef DISPLAY_RM67162_AMOLED
-          case 25:  // get RGB order
-          {
-            headerBytesReceived = 0;
-            numCtrlCharsFound = 0;
-            if (wifiActive) break;
-
-            Serial.write(rgbMode);
             return 1;
           }
 #endif
