@@ -1460,6 +1460,15 @@ void StartServer() {
     request->send(200, "text/plain", String(port));
   });
 
+  server->on(
+      "/get_usb_package_size", HTTP_GET, [](AsyncWebServerRequest *request) {
+        request->send(200, "text/plain", String(usbPackageSizeMultiplier * 32));
+      });
+
+  server->on("/get_ssid", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", ssid);
+  });
+
   server->on("/get_s3", HTTP_GET, [](AsyncWebServerRequest *request) {
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
     request->send(200, "text/plain", String(1));
@@ -1480,7 +1489,8 @@ void StartServer() {
             String(0)
 #endif
             + "|" + ((TRANSPORT_WIFI_UDP == transport) ? "UDP" : "TCP") + "|" +
-            String(port) + "|" + String(udpDelay));
+            String(port) + "|" + String(udpDelay) + "|" + ssid + "|" +
+            String(usbPackageSizeMultiplier * 32));
   });
 
   server->on("/ppuc.png", HTTP_GET, [](AsyncWebServerRequest *request) {
