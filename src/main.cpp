@@ -1532,7 +1532,7 @@ void StartServer() {
             String(port) + "|" + String(udpDelay) + "|" +
             String(usbPackageSizeMultiplier * 32) + "|" + String(brightness) +
             "|" +
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
+#ifndef DISPLAY_RM67162_AMOLED
             String(rgbMode) + "|" + String(panelClkphase) + "|" +
             String(panelDriver) + "|" + String(panelI2sspeed) + "|" +
             String(panelLatchBlanking) + "|" + String(panelMinRefreshRate) +
