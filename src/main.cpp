@@ -1447,7 +1447,7 @@ void StartServer() {
   server->on("/get_width", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(200, "text/plain", String(TOTAL_WIDTH));
   });
-
+#ifndef DISPLAY_RM67162_AMOLED
   server->on("/get_rgb_order", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(200, "text/plain", String(rgbMode));
   });
@@ -1479,7 +1479,7 @@ void StartServer() {
   server->on("/get_y_offset", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(200, "text/plain", String(yOffset));
   });
-
+#endif
   server->on("/get_udp_delay", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(200, "text/plain", String(udpDelay));
   });
