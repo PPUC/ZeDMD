@@ -120,6 +120,9 @@ The option above `USB packet size:` allows switching between `USB`, `SPI`, `WiFi
 ![S3USB](docs/images/S3USB.png)
 >`SPI` is currently non-functional and serves only as a placeholder for future real pinball integration.
 
+To increase the compatibility with some USB ports or hubs, the USB package size became configurable. The default value of 64 bytes is very low. If you notice stuttering of the DMD frames, try to increase this value.
+Good values are 512 bytes for the original EPS32 and 1024 for the ESP32 S3. If ZeDMD doesn't work with these values, try a different USB port of your computer. In most cases not all of them and their driver chips are of the same quality.
+
 When wanting to use WiFi it is recommended to start with `WiFi UDP` for seamless frame streaming, provided your WiFi connection is fast. If you encounter crashes or unusual behavior, try adjusting the `UDP Delay:` option. For fast connections, a value below `UDP Delay: 5` may work well. Values like `UDP Delay: 4` have been reported to perform effectively. While lowering the UDP delay may work well for some, values above `UDP Delay: 5` should be given a try before making the final decision to switch to `WiFi TCP` for slower streaming but improved reliability.
 
 The `Debug:` option can be set to `Debug: 1` if requested by a ZeDMD developer to enable error tracking during testing. For regular use, this setting should always remain at `0`.
