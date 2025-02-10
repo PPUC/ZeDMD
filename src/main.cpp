@@ -792,7 +792,11 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             response[N_INTERMEDIATE_CTR_CHARS + 16] = panelMinRefreshRate;
 #endif
             response[N_INTERMEDIATE_CTR_CHARS + 17] = udpDelay;
-
+#ifdef ZEDMD_HD_HALF
+            response[N_INTERMEDIATE_CTR_CHARS + 18] = 1;
+#else
+            response[N_INTERMEDIATE_CTR_CHARS + 18] = 0;
+#endif
             response[63 - N_ACK_CHARS] = 'R';
             Serial.write(response, 64 - N_ACK_CHARS);
             // This flush is required for USB CDC on Windows.
