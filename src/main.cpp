@@ -1544,7 +1544,13 @@ void StartServer() {
 #else
             "0|0|0|0|0|0|0"
 #endif
-            + "|" + ssid);
+            + "|" + ssid + "|" +
+#ifdef ZEDMD_HD_HALF
+            "1"
+#else
+            "0"
+#endif
+    );
   });
 
   server->on("/ppuc.png", HTTP_GET, [](AsyncWebServerRequest *request) {
