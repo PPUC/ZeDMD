@@ -108,25 +108,24 @@ DisplayDriver *display;
 static portMUX_TYPE bufferMutex = portMUX_INITIALIZER_UNLOCKED;
 
 // Buffers for storing data
-static uint8_t *buffers[NUM_BUFFERS];
-static uint16_t bufferSizes[NUM_BUFFERS] __attribute__((aligned(4))) = {0};
-static bool bufferCompressed[NUM_BUFFERS] __attribute__((aligned(4))) = {0};
+uint8_t *buffers[NUM_BUFFERS];
+uint16_t bufferSizes[NUM_BUFFERS] __attribute__((aligned(4))) = {0};
+bool bufferCompressed[NUM_BUFFERS] __attribute__((aligned(4))) = {0};
 
 // The uncompress buffer should be bug enough
-static uint8_t uncompressBuffer[2048] __attribute__((aligned(4)));
-static uint8_t *renderBuffer[NUM_RENDER_BUFFERS];
-static uint8_t currentRenderBuffer __attribute__((aligned(4))) = 0;
-static uint8_t lastRenderBuffer __attribute__((aligned(4))) =
-    NUM_RENDER_BUFFERS - 1;
-static char tmpStringBuffer[33] __attribute__((aligned(4))) = {0};
-static bool payloadCompressed __attribute__((aligned(4))) = 0;
-static uint16_t payloadSize __attribute__((aligned(4))) = 0;
-static uint16_t payloadMissing __attribute__((aligned(4))) = 0;
-static uint8_t headerBytesReceived __attribute__((aligned(4))) = 0;
-static uint8_t command __attribute__((aligned(4))) = 0;
-static uint8_t currentBuffer __attribute__((aligned(4))) = NUM_BUFFERS - 1;
-static uint8_t lastBuffer __attribute__((aligned(4))) = currentBuffer;
-static uint8_t processingBuffer __attribute__((aligned(4))) = NUM_BUFFERS - 1;
+uint8_t uncompressBuffer[2048] __attribute__((aligned(4)));
+uint8_t *renderBuffer[NUM_RENDER_BUFFERS];
+uint8_t currentRenderBuffer __attribute__((aligned(4)));
+uint8_t lastRenderBuffer __attribute__((aligned(4)));
+char tmpStringBuffer[33] __attribute__((aligned(4))) = {0};
+bool payloadCompressed __attribute__((aligned(4)));
+uint16_t payloadSize __attribute__((aligned(4)));
+uint16_t payloadMissing __attribute__((aligned(4)));
+uint8_t headerBytesReceived __attribute__((aligned(4)));
+uint8_t command __attribute__((aligned(4)));
+uint8_t currentBuffer __attribute__((aligned(4)));
+uint8_t lastBuffer __attribute__((aligned(4)));
+uint8_t processingBuffer __attribute__((aligned(4)));
 
 // Init display on a low brightness to avoid power issues, but bright enough to
 // see something.
@@ -155,29 +154,29 @@ const uint8_t rgbOrder[3 * 6] = {
 };
 
 #endif
-static uint8_t usbPackageSizeMultiplier = USB_PACKAGE_SIZE / 32;
-static uint8_t settingsMenu = 0;
-static uint8_t debug = 0;
-static uint8_t udpDelay = 5;
+uint8_t usbPackageSizeMultiplier = USB_PACKAGE_SIZE / 32;
+uint8_t settingsMenu = 0;
+uint8_t debug = 0;
+uint8_t udpDelay = 5;
 
 String ssid;
 String pwd;
 uint16_t port = 3333;
 uint8_t ssid_length;
 uint8_t pwd_length;
-bool wifiActive = false;
+bool wifiActive;
 #ifdef ZEDMD_WIFI
 int8_t transport = TRANSPORT_WIFI_UDP;
 #else
 int8_t transport = TRANSPORT_USB;
 #endif
-static bool logoActive = true;
-static bool transportActive = false;
-static uint8_t transportWaitCounter = 0;
-static uint8_t logoWaitCounter = 0;
-static uint32_t lastDataReceived = 0;
-static bool serverRunning = false;
-static uint8_t throbberColors[6] __attribute__((aligned(4))) = {0};
+bool logoActive;
+bool transportActive;
+uint8_t transportWaitCounter;
+uint8_t logoWaitCounter;
+uint32_t lastDataReceived;
+bool serverRunning;
+uint8_t throbberColors[6] __attribute__((aligned(4))) = {0};
 
 void DoRestart(int sec) {
   if (wifiActive) {
@@ -189,10 +188,15 @@ void DoRestart(int sec) {
   vTaskDelay(pdMS_TO_TICKS(sec * 1000));
   display->ClearScreen();
   delay(20);
-  // Don't use ESP.restart() or esp_restart() because these will keep the state
-  // of global and static variables.
+
+  // Note: ESP.restart() or esp_restart() will keep the state of global and
+  // static variables. And not all sub-systems get resetted.
+#if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
   esp_sleep_enable_timer_wakeup(1000);  // Wake up after 1ms
   esp_deep_sleep_start();  // Enter deep sleep (ESP32 reboots on wake)
+#else
+  esp_restart();
+#endif
 }
 
 void Restart() { DoRestart(1); }
@@ -1188,6 +1192,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
 
 void Task_ReadSerial(void *pvParameters) {
   const uint16_t usbPackageSize = usbPackageSizeMultiplier * 32;
+  bool connected = false;
 
   Serial.setRxBufferSize(usbPackageSize + 128);
   Serial.setTxBufferSize(64);
@@ -1262,7 +1267,8 @@ void Task_ReadSerial(void *pvParameters) {
 
     while (1) {
       // Wait for data to be ready
-      if (Serial.available() >= expected) {
+      if (Serial.available() >= expected ||
+          (!connected && Serial.available() >= (N_CTRL_CHARS + 4))) {
         memset(pUsbBuffer, 0, usbPackageSize);
         received = Serial.readBytes(pUsbBuffer, expected);
         result = HandleData(pUsbBuffer, received);
@@ -1280,6 +1286,7 @@ void Task_ReadSerial(void *pvParameters) {
           }
           break;  // Wait for the next FRAME header
         }
+        connected = true;
         if (3 == result) {
           break;  // fast ack has been sent, wait for the next FRAME header
         }
@@ -1743,6 +1750,26 @@ void StartWiFi() {
 void setup() {
   esp_log_level_set("*", ESP_LOG_NONE);
 
+  // (Re-)Initialize global state variables that might have survived a restart
+  // and that don't get set by Load() functions below.
+  currentRenderBuffer = 0;
+  lastRenderBuffer = NUM_RENDER_BUFFERS - 1;
+  payloadCompressed = false;
+  payloadSize = 0;
+  payloadMissing = 0;
+  headerBytesReceived = 0;
+  command = 0;
+  currentBuffer = NUM_BUFFERS - 1;
+  lastBuffer = currentBuffer;
+  processingBuffer = NUM_BUFFERS - 1;
+  wifiActive = false;
+  logoActive = true;
+  transportActive = false;
+  transportWaitCounter = 0;
+  logoWaitCounter = 0;
+  lastDataReceived = 0;
+  serverRunning = false;
+
   bool fileSystemOK;
   if (fileSystemOK = LittleFS.begin()) {
     LoadSettingsMenu();
@@ -1772,9 +1799,44 @@ void setup() {
 
   if (!fileSystemOK) {
     display->DisplayText("Error reading file system!", 0, 0, 255, 0, 0);
-    display->DisplayText("Try to flash the firmware again.", 0, 6, 255, 255,
-                         255);
+    display->DisplayText("Try to flash the firmware again.", 0, 6, 255, 0, 0);
     while (true);
+  }
+
+  switch (esp_reset_reason()) {
+    case ESP_RST_PANIC:
+    case ESP_RST_INT_WDT:
+    case ESP_RST_TASK_WDT:
+    case ESP_RST_WDT:
+    case ESP_RST_CPU_LOCKUP: {
+      display->DisplayText("An unrecoverable error happend!", 0, 0, 255, 0, 0);
+      display->DisplayText("Coredump has been writen. See", 0, 6, 255, 0, 0);
+      display->DisplayText("ppuc.org/ZeDMD how to download", 0, 12, 255, 0, 0);
+      display->DisplayText("it.", 0, 18, 255, 0, 0);
+      display->DisplayText("Reboot in 30 seconds ...", 0, 24, 255, 0, 0);
+      for (uint8_t i = 29; i > 0; i--) {
+        sleep(1);
+        DisplayNumber(i, 2, 40, 24, 255, 0, 0);
+      }
+      Restart();
+      break;
+    }
+
+    case ESP_RST_PWR_GLITCH: {
+      display->DisplayText("A power glitch caused a restart!", 0, 0, 255, 0, 0);
+      display->DisplayText("Check your power supply and", 0, 6, 255, 0, 0);
+      display->DisplayText("hardware.", 0, 12, 255, 0, 0);
+      display->DisplayText("Reboot in 30 seconds ...", 0, 24, 255, 0, 0);
+      for (uint8_t i = 29; i > 0; i--) {
+        sleep(1);
+        DisplayNumber(i, 2, 40, 24, 255, 0, 0);
+      }
+      Restart();
+      break;
+    }
+
+    default:
+      break;
   }
 
   for (uint8_t i = 0; i < NUM_RENDER_BUFFERS; i++) {
