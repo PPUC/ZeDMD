@@ -73,9 +73,9 @@ Download and install the [ZeDMD_Updater](https://github.com/zesinger/ZeDMD_Updat
 
 ## ZeDMD pinout diagram
 ZeDMD utilizes HUB75 to display full-color content on your panels. To achieve this, the panels must be connected to specific GPIOs on your ESP32.
-| ESP32 Dev Board | ESP32-S3-N16R8 | HUB75 pins |      
-| -------------   | -------------  | ---------- |         
-| GPIO 25         | GPIO 4         | R1         |          
+| ESP32 Dev Board | ESP32-S3-N16R8 | HUB75 pins |
+| -------------   | -------------  | ---------- |
+| GPIO 25         | GPIO 4         | R1         |
 | GPIO 27         | GPIO 6         | B1         |
 | GPIO 14         | GPIO 7         | R2         |
 | GPIO 13         | GPIO 16        | B2         |
@@ -91,9 +91,9 @@ ZeDMD utilizes HUB75 to display full-color content on your panels. To achieve th
 | GPIO 4          | GPIO 40        | LAT        |
 
 To navigate the menu and adjust settings, you'll need to configure a few buttons. However, only two buttons are essential to modify values and exit the menu. These two buttons are `Menu Left` and `Value +`.
-| ESP32 Dev Board | ESP32-S3-N16R8 | Menu Button |      
-| -------------   | -------------  | ------------|         
-| GPIO 33         | GPIO 48        | Menu Left   |          
+| ESP32 Dev Board | ESP32-S3-N16R8 | Menu Button |
+| -------------   | -------------  | ------------|
+| GPIO 33         | GPIO 48        | Menu Left   |
 | NOT USED        | GPIO 47        | Menu Right  |
 | GPIO 21         | GPIO 0         | Value +     |
 | NOT USED        | GPIO 45        | Value -     |
@@ -110,7 +110,7 @@ Then, adjust the RGB order by rotating the colors until the following alignment 
 > Unique to `128x64` builds:
 > There is an option to adjust the `Y offset` of the displayed content.
 
-Versions prior to V5.0.0 let you adjust the brightness using the brightness button. 
+Versions prior to V5.0.0 let you adjust the brightness using the brightness button.
 From v5.0.0 onwards, this is done by navigating to the `Brightness:` option in the settings menu.
 
 Starting from version 5.1.0, a configurable `USB packet size:` option has been introduced. While the default value works for most setups, reducing the packet size may help resolve any issues you encounter.
@@ -120,7 +120,7 @@ The option above `USB packet size:` allows switching between `USB`, `SPI`, `WiFi
 ![S3USB](docs/images/S3USB.png)
 >`SPI` is currently non-functional and serves only as a placeholder for future real pinball integration.
 
-To increase the compatibility with some USB ports or hubs, the USB package size became configurable. The default value of 64 bytes is very low. If you notice stuttering of the DMD frames, try to increase this value.
+To increase the compatibility with some USB ports or hubs, the USB package size became configurable. The default value of 32 bytes for the original ESP32 is very low. If you notice stuttering of the DMD frames, try to increase this value.
 Good values are 512 bytes for the original EPS32 and 1024 for the ESP32 S3. If ZeDMD doesn't work with these values, try a different USB port of your computer. In most cases not all of them and their driver chips are of the same quality.
 
 When wanting to use WiFi it is recommended to start with `WiFi UDP` for seamless frame streaming, provided your WiFi connection is fast. If you encounter crashes or unusual behavior, try adjusting the `UDP Delay:` option. For fast connections, a value below `UDP Delay: 5` may work well. Values like `UDP Delay: 4` have been reported to perform effectively. While lowering the UDP delay may work well for some, values above `UDP Delay: 5` should be given a try before making the final decision to switch to `WiFi TCP` for slower streaming but improved reliability.
@@ -157,6 +157,12 @@ ZeDMD uses
 
 ### "Where can I buy a ZeDMD?"
 
+
+> [!WARNING]
+> Neither @Zedrummer - David Lfg, nor myself are earning any money from ZeDMD and we don't get money from the sellers listed on https://ppuc.org/ZeDMD
+I just listed these shops to make it easier for you to get started with ZeDMD.
+ZeDMD is and will remain a free open source DIY project!
+
 The intention of ZeDMD is to provide a cheap DIY DMD solution. The maintainers of this project don't run any shop to sell ready-to-use hardware!
 
 Nevertheless, there are are some shops we are aware of who designed their own shields to build a ZeDMD.
@@ -176,7 +182,10 @@ There are also ready-to-use devices:
 
 The ZeDMD firmware supports a wide range of LED panels with different driver chips ... in theory.
 In general, some driver chips require adjustments in the configuration, timings and the clock phase.
-That can't be done with ZeDMD updater, but within the source code of the firmware. Here os some background information:
+That can be done with ZeDMD updater for Windows, or the `zedmd-client` which is abailable for every operating system as part of the libzedmd download:
+https://github.com/PPUC/libzedmd/releases
+
+Here is some background information:
 * https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA?tab=readme-ov-file#supported-panel-can-types
 * https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA?tab=readme-ov-file#latch-blanking
 
@@ -186,11 +195,9 @@ https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA/blob/54ef6071663325e
 The pre-built firmware uses the default config which is suitable for the most common LED panels.
 Obviously we can't provide a menu on the device to adjust these settings as you won't see them ;-)
 
-But we consider to add support for these driver settings to libzedmd and the ini file of dmdserver so that these values could be adjusted and sent to ZeDMD before the panels get initialized.
+We would love to list the required settings for specific panels here. But that would require someone to send over their panels to us so we can find out the correct config.
 
-We could also offer firmware builds for specific panels. But that would require someone to send over their panels to us so we can find out the correct config.
-
-If you find out what config adjustment gets a specific panel to work, you should open an issue here and provide that information so that we could include it in the README and probably add a specific automated build for the next releases.
+If you find out what config adjustment gets a specific panel to work, you should open an issue here and provide that information so that we could include it in the README.
 
 ### I have installed all of the latest files, but I still get crashes on a Windows machine
 A few users have reported that VPX and ZeDMD consistently crash if the latest Visual C++ Redistributable Runtime packages are not installed. To resolve this issue, ensure you have the most up-to-date runtime packages installed. If the latest version doesn’t resolve the issue, it may be necessary to install all available versions of the Visual C++ Redistributable Runtime packages.
@@ -198,14 +205,14 @@ A few users have reported that VPX and ZeDMD consistently crash if the latest Vi
 Another potential issue could be outdated USB drivers. For the original ESP32 Development Board:
 * https://www.silabs.com/developer-tools/usb-to-uart-bridge-vcp-drivers?tab=downloads
 
-For the ESP32-S3-N16R8, we use the USB CDC port, which doesn't require a driver. But if if you use the alterantive UART version of the firmware, refer to the following link for more details:
-* https://www.wch-ic.com/downloads/CH343SER_EXE.html
+For the ESP32-S3-N16R8, we use the USB CDC port, which doesn't require a driver.
 
 ### ZeDMD crashed, how can I help to fix the issue
 
 If you discover a crash, there's a good chance that a coredump has been written to the internal flash memory.
+Especially if ZeDMD actively tells you to do so!
 If you install the entire esp-idf, you can extract and interpret the coredump. `firmware.elf` is included in the release downloads since v5.1.2.
-To get the coredump, has to be something like this:
+To get the coredump, the command has to be something like this on Linux or macOS:
 ```shell
 python PATH_TO_ESP_IDF/esp-idf/components/espcoredump/espcoredump.py info_corefile PATH_TO_FIRMWARE_ELF/firmware.elf
 ```

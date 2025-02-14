@@ -53,15 +53,15 @@
 #if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
 // USB CDC
 #define SERIAL_BAUD 115200
-#define USB_PACKAGE_SIZE 1024
+#define USB_PACKAGE_SIZE 512
 #else
 // UART
 #define SERIAL_BAUD 2000000
-#define USB_PACKAGE_SIZE 64
+#define USB_PACKAGE_SIZE 32
 #endif
 #else
 #define SERIAL_BAUD 921600
-#define USB_PACKAGE_SIZE 64
+#define USB_PACKAGE_SIZE 32
 #endif
 #define SERIAL_TIMEOUT \
   8  // Time in milliseconds to wait for the next data chunk.
