@@ -50,15 +50,9 @@
 #define BUFFER_SIZE 1152
 #endif
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
-#if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
 // USB CDC
 #define SERIAL_BAUD 115200
 #define USB_PACKAGE_SIZE 512
-#else
-// UART
-#define SERIAL_BAUD 2000000
-#define USB_PACKAGE_SIZE 32
-#endif
 #else
 #define SERIAL_BAUD 921600
 #define USB_PACKAGE_SIZE 32
@@ -800,6 +794,9 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             response[N_INTERMEDIATE_CTR_CHARS + 18] = 1;
 #else
             response[N_INTERMEDIATE_CTR_CHARS + 18] = 0;
+#endif
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
+            response[N_INTERMEDIATE_CTR_CHARS + 18] += 0b00000010;
 #endif
             response[63 - N_ACK_CHARS] = 'R';
             Serial.write(response, 64 - N_ACK_CHARS);
