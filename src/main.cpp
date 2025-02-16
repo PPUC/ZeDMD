@@ -1807,7 +1807,7 @@ void setup() {
     case ESP_RST_WDT:
     case ESP_RST_CPU_LOCKUP: {
       display->DisplayText("An unrecoverable error happend!", 0, 0, 255, 0, 0);
-      display->DisplayText("Coredump has been writen. See", 0, 6, 255, 0, 0);
+      display->DisplayText("Coredump has been written. See", 0, 6, 255, 0, 0);
       display->DisplayText("ppuc.org/ZeDMD how to download", 0, 12, 255, 0, 0);
       display->DisplayText("it.", 0, 18, 255, 0, 0);
       display->DisplayText("Reboot in 30 seconds ...", 0, 24, 255, 0, 0);
