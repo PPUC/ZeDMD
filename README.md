@@ -1,4 +1,5 @@
 ![ZeDMD_logo](docs/images/ZeDMD_logo_pixelated.png)
+
 ## About
 
 ZeDMD is a "real" DMD designed for pinball emulations and other use cases. Originally developed by David "Zedrummer" Lafarge, the concept laid the foundation for what ZeDMD has become today. Markus Kalkbrenner, the current maintainer of ZeDMD, was inspired by the original idea and took the initiative to further develop and enhance it into the robust and versatile solution it is now.
@@ -15,7 +16,34 @@ ZeDMD is or will be supported by:
 
 A full tutorial of its installation is available in [English](https://www.pincabpassion.net/t14796-tuto-zedmd-installation-english) and in [French](https://www.pincabpassion.net/t14798-tuto-installation-du-zedmd)
 
-Meanwhile, there are different "flavours" of the ZeDMD firmware. Because it pushes the cheap ESP32 to its limits, we can not provide a unified firmware, so you have to pick the appropriate one:
+### Which variations of the ESP32 are supported?
+
+* ESP32-S3-DevKitC-1-N16R8
+* original ESP32 with CP2102 USB-to-serial converter
+* original ESP32 with CH340 USB-to-serial converter
+
+For a new build, the ESP32 S3 is recommended. It provides more memory which is used for smoother rendering and higher color depth. And it provides a native USB interface which allows higher data transfer rates.
+
+### Which LED panels are LCD screens are supported?
+
+There are different LED panels on the market. But basically, ZeDMD only supports panels that could be combined to a total resolution of 128x32 (SD) or 256x64 (HD) pixels.
+This is the typical aspect ratio of a pinball DMD and works well as an arcade marquee.
+For the special need of small virtual pinball cabs, a single 128x64 panel is also supported but will display content in 128x32.
+
+There're different panels on the market using different driver chips. The supported ones are described at
+[ESP32-HUB75-MatrixPanel-DMA supported panel types](https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA?tab=readme-ov-file#supported-panel-can-types).
+
+Here is a short demo of ZeDMD and ZeDMD HD in parallel:
+
+[![Watch the video](https://img.youtube.com/vi/B6D00oB4Co8/default.jpg)](https://youtu.be/B6D00oB4Co8)
+
+For the special need of ultra small virtual pinball cabs, the LilyGo AMOLED T-Display-S3 V2 is also supported and displays content in 128x32.
+One use-case is [PinPal](https://github.com/bartdesign/PinPal).
+
+## Flashing the firmware
+
+Due to the different supported hardware configurations, there are different "flavours" of the ZeDMD firmware.
+Because the firmware pushes the cheap ESP32 to its limits, we can not provide a unified firmware, so you have to pick the appropriate one:
 * ZeDMD 128x32: using two 64x32 panels driven by an ESP32 connected over USB or WiFi
 * ZeDMD HD 256x64: using four 64x64 or two 128x64 panels driven by an ESP32 connected over USB or WiFi
 * ZeDMD 128x64: using one 128x64 panel driven by an ESP32 connected over USB or WiFi, showing 128x32 content with an offset, suitable for mini cabinets
@@ -24,12 +52,6 @@ Meanwhile, there are different "flavours" of the ZeDMD firmware. Because it push
 * ZeDMD S3 128x64: using one 128x64 panel driven by an ESP32 S3 N16R8 connected over USB CDC or WiFi, showing 128x32 content with an offset, suitable for mini cabinets
 * ZeDMD S3 AMOLED: using a small OLED driven by a LilyGo AMOLED T-Display-S3 V2 connected via USB CDC
 * ZeDMD S3 AMOLED WiFi: using a small OLED driven by a LilyGo AMOLED T-Display-S3 V2 connected via WiFi
-
-Here is a short demo of ZeDMD and ZeDMD HD in parallel:
-
-[![Watch the video](https://img.youtube.com/vi/B6D00oB4Co8/default.jpg)](https://youtu.be/B6D00oB4Co8)
-
-## Flashing the firmware
 
 There are different ways to flash the firmware on the ESP32.
 
@@ -69,7 +91,7 @@ pio run -t upload -e 128x32
 
 ### ZeDMD Updater (Windows only)
 
-Download and install the [ZeDMD_Updater](https://github.com/zesinger/ZeDMD_Updater) and follow its instructions.
+Download and install the [ZeDMD_Updater](https://github.com/zesinger/ZeDMD_Updater_2) and follow its instructions.
 
 ## ZeDMD pinout diagram
 ZeDMD utilizes HUB75 to display full-color content on your panels. To achieve this, the panels must be connected to specific GPIOs on your ESP32.
