@@ -69,7 +69,7 @@ pio run -t upload -e 128x32
 
 ### ZeDMD Updater (Windows only)
 
-Download and install the [ZeDMD_Updater](https://github.com/zesinger/ZeDMD_Updater) and follow its instructions.
+Download and install the [ZeDMD_Updater](https://github.com/zesinger/ZeDMD_Updater_2) and follow its instructions.
 
 ## ZeDMD pinout diagram
 ZeDMD utilizes HUB75 to display full-color content on your panels. To achieve this, the panels must be connected to specific GPIOs on your ESP32.
