@@ -99,11 +99,9 @@ AsyncServer *tcp;
 AsyncUDP *udp;
 DisplayDriver *display;
 
-static portMUX_TYPE bufferMutex = portMUX_INITIALIZER_UNLOCKED;
-
 // Buffers for storing data
 uint8_t *buffers[NUM_BUFFERS];
-uint16_t bufferSizes[NUM_BUFFERS] __attribute__((aligned(4))) = {0};
+mz_ulong bufferSizes[NUM_BUFFERS] __attribute__((aligned(4))) = {0};
 bool bufferCompressed[NUM_BUFFERS] __attribute__((aligned(4))) = {0};
 
 // The uncompress buffer should be bug enough
@@ -171,6 +169,7 @@ uint8_t logoWaitCounter;
 uint32_t lastDataReceived;
 bool serverRunning;
 uint8_t throbberColors[6] __attribute__((aligned(4))) = {0};
+mz_ulong uncompressedBufferSize = 2048;
 
 void DoRestart(int sec) {
   if (wifiActive) {
@@ -497,35 +496,25 @@ void AcquireNextBuffer() {
   // currentBuffer = (currentBuffer + 1) % NUM_BUFFERS;
   // return;
   while (1) {
-    portENTER_CRITICAL(&bufferMutex);
     if (currentBuffer == lastBuffer &&
         ((currentBuffer + 1) % NUM_BUFFERS) != processingBuffer) {
       currentBuffer = (currentBuffer + 1) % NUM_BUFFERS;
-      portEXIT_CRITICAL(&bufferMutex);
       return;
     }
-    portEXIT_CRITICAL(&bufferMutex);
     // Avoid busy-waiting
     vTaskDelay(pdMS_TO_TICKS(1));
   }
 }
 
-void MarkCurrentBufferDone() {
-  portENTER_CRITICAL(&bufferMutex);
-  lastBuffer = currentBuffer;
-  portEXIT_CRITICAL(&bufferMutex);
-}
+void MarkCurrentBufferDone() { lastBuffer = currentBuffer; }
 
 bool AcquireNextProcessingBuffer() {
-  portENTER_CRITICAL(&bufferMutex);
   if (processingBuffer != currentBuffer &&
       (((processingBuffer + 1) % NUM_BUFFERS) != currentBuffer ||
        currentBuffer == lastBuffer)) {
     processingBuffer = (processingBuffer + 1) % NUM_BUFFERS;
-    portEXIT_CRITICAL(&bufferMutex);
     return true;
   }
-  portEXIT_CRITICAL(&bufferMutex);
   return false;
 }
 
@@ -733,12 +722,10 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
         esp_task_wdt_reset();
         if (payloadSize > BUFFER_SIZE) {
           if (debug) {
-            portENTER_CRITICAL(&bufferMutex);
             display->DisplayText("Error, payloadSize > BUFFER_SIZE", 0, 0, 255,
                                  0, 0);
             DisplayNumber(payloadSize, 5, 0, 19, 255, 0, 0);
             DisplayNumber(BUFFER_SIZE, 5, 0, 25, 255, 0, 0);
-            portEXIT_CRITICAL(&bufferMutex);
             while (1);
           }
           headerBytesReceived = 0;
@@ -747,7 +734,6 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
         }
 
         if (debug) {
-          portENTER_CRITICAL(&bufferMutex);
           display->DisplayText("Command:", 7 * (TOTAL_WIDTH / 128),
                                (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
           DisplayNumber(command, 2, 7 * (TOTAL_WIDTH / 128) + (8 * 4),
@@ -756,7 +742,6 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
                                (TOTAL_HEIGHT / 2) - 4, 128, 128, 128);
           DisplayNumber(payloadSize, 2, 7 * (TOTAL_WIDTH / 128) + (8 * 4),
                         (TOTAL_HEIGHT / 2) - 4, 255, 191, 0);
-          portEXIT_CRITICAL(&bufferMutex);
         }
 
         switch (command) {
@@ -1091,11 +1076,9 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
           case 11:  // KeepAlive
           {
             if (debug) {
-              portENTER_CRITICAL(&bufferMutex);
               display->DisplayText("KEEP ALIVE RECEIVED",
                                    7 * (TOTAL_WIDTH / 128),
                                    (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
-              portEXIT_CRITICAL(&bufferMutex);
             }
             lastDataReceived = millis();
             headerBytesReceived = 0;
@@ -1279,10 +1262,10 @@ void Task_ReadSerial(void *pvParameters) {
           Serial.flush();
           vTaskDelay(pdMS_TO_TICKS(2));
           Serial.end();
-          vTaskDelay(pdMS_TO_TICKS(10));
+          vTaskDelay(pdMS_TO_TICKS(2));
           Serial.begin(SERIAL_BAUD);
           while (!Serial) {
-            vTaskDelay(pdMS_TO_TICKS(10));
+            vTaskDelay(pdMS_TO_TICKS(1));
           }
           break;  // Wait for the next FRAME header
         }
@@ -2263,17 +2246,12 @@ void loop() {
                  0 == buffers[processingBuffer][1]) {
         ClearScreen();
       } else {
-        mz_ulong uncompressedBufferSize = (mz_ulong)TOTAL_BYTES;
         if (bufferCompressed[processingBuffer]) {
-          mz_ulong compressedBufferSize =
-              (mz_ulong)bufferSizes[processingBuffer];
           memset(uncompressBuffer, 0, 2048);
-
-          portENTER_CRITICAL(&bufferMutex);
-          int minizStatus =
-              mz_uncompress2(uncompressBuffer, &uncompressedBufferSize,
-                             buffers[processingBuffer], &compressedBufferSize);
-          portEXIT_CRITICAL(&bufferMutex);
+          uncompressedBufferSize = 2048;
+          int minizStatus = mz_uncompress2(
+              uncompressBuffer, &uncompressedBufferSize,
+              buffers[processingBuffer], &bufferSizes[processingBuffer]);
 
           if (MZ_OK != minizStatus) {
             if (1 == debug) {
