@@ -29,6 +29,14 @@ Here is a short demo of ZeDMD and ZeDMD HD in parallel:
 
 [![Watch the video](https://img.youtube.com/vi/B6D00oB4Co8/default.jpg)](https://youtu.be/B6D00oB4Co8)
 
+### Which variations of the ESP32 are supported?
+
+* ESP32-S3-DevKitC-1-N16R8
+* original ESP32 with CP2102 USB-to-serial converter
+* original ESP32 with CH340 USB-to-serial converter
+
+For a new build, the ESP32 S3 is recommended. It provides more memory which is used for smoother rendering and higher color depth. And it provides a native USB interface which allows higher data transfer rates.
+
 ## Flashing the firmware
 
 There are different ways to flash the firmware on the ESP32.
