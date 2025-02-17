@@ -517,12 +517,15 @@ void MarkCurrentBufferDone() {
 }
 
 bool AcquireNextProcessingBuffer() {
+  portENTER_CRITICAL(&bufferMutex);
   if (processingBuffer != currentBuffer &&
       (((processingBuffer + 1) % NUM_BUFFERS) != currentBuffer ||
        currentBuffer == lastBuffer)) {
     processingBuffer = (processingBuffer + 1) % NUM_BUFFERS;
+    portEXIT_CRITICAL(&bufferMutex);
     return true;
   }
+  portEXIT_CRITICAL(&bufferMutex);
   return false;
 }
 
@@ -1809,13 +1812,16 @@ void setup() {
       display->DisplayText("An unrecoverable error happend!", 0, 0, 255, 0, 0);
       display->DisplayText("Coredump has been written. See", 0, 6, 255, 0, 0);
       display->DisplayText("ppuc.org/ZeDMD how to download", 0, 12, 255, 0, 0);
-      display->DisplayText("it.", 0, 18, 255, 0, 0);
-      display->DisplayText("Reboot in 30 seconds ...", 0, 24, 255, 0, 0);
-      for (uint8_t i = 29; i > 0; i--) {
-        sleep(1);
-        DisplayNumber(i, 2, 40, 24, 255, 0, 0);
+      display->DisplayText("it. Error code: ", 0, 18, 255, 0, 0);
+      DisplayNumber(esp_reset_reason(), 2, 16 * 4, 18, 255, 0, 0);
+      if (debug) {
+        display->DisplayText("Reboot in 30 seconds ...", 0, 24, 255, 0, 0);
+        for (uint8_t i = 29; i > 0; i--) {
+          sleep(1);
+          DisplayNumber(i, 2, 40, 24, 255, 0, 0);
+        }
+        Restart();
       }
-      Restart();
       break;
     }
 
