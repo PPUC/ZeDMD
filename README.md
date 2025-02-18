@@ -13,6 +13,7 @@ ZeDMD is or will be supported by:
 * [DOF2DMD](https://github.com/DMDTools/DOF2DMD)
 * [VPX Mobile iOS](https://apps.apple.com/mt/app/visual-pinball/id6547859926)
 * VPX Mobile Android
+* [MPF](https://missionpinball.org/)
 
 A full tutorial of its installation is available in [English](https://www.pincabpassion.net/t14796-tuto-zedmd-installation-english) and in [French](https://www.pincabpassion.net/t14798-tuto-installation-du-zedmd)
 
@@ -91,7 +92,9 @@ pio run -t upload -e 128x32
 
 ### ZeDMD Updater (Windows only)
 
-Download and install the [ZeDMD_Updater](https://github.com/zesinger/ZeDMD_Updater_2) and follow its instructions.
+Download and install the [ZeDMD_Updater2](https://github.com/zesinger/ZeDMD_Updater2) and follow its instructions.
+
+![ZeDMD_Updater2](docs/images/ZeDMD_Updater2.png)
 
 ## ZeDMD pinout diagram
 ZeDMD utilizes HUB75 to display full-color content on your panels. To achieve this, the panels must be connected to specific GPIOs on your ESP32.
@@ -179,7 +182,6 @@ ZeDMD uses
 
 ### "Where can I buy a ZeDMD?"
 
-
 > [!WARNING]
 > Neither @Zedrummer - David Lfg, nor myself are earning any money from ZeDMD and we don't get money from the sellers listed on https://ppuc.org/ZeDMD
 I just listed these shops to make it easier for you to get started with ZeDMD.
@@ -204,7 +206,8 @@ There are also ready-to-use devices:
 
 The ZeDMD firmware supports a wide range of LED panels with different driver chips ... in theory.
 In general, some driver chips require adjustments in the configuration, timings and the clock phase.
-That can be done with ZeDMD updater for Windows, or the `zedmd-client` which is abailable for every operating system as part of the libzedmd download:
+That can be done with [ZeDMD_Updater2](https://github.com/zesinger/ZeDMD_Updater2) for Windows,
+or the `zedmd-client` which is available for every operating system as part of the libzedmd download:
 https://github.com/PPUC/libzedmd/releases
 
 Here is some background information:
@@ -222,6 +225,7 @@ We would love to list the required settings for specific panels here. But that w
 If you find out what config adjustment gets a specific panel to work, you should open an issue here and provide that information so that we could include it in the README.
 
 ### I have installed all of the latest files, but I still get crashes on a Windows machine
+
 A few users have reported that VPX and ZeDMD consistently crash if the latest Visual C++ Redistributable Runtime packages are not installed. To resolve this issue, ensure you have the most up-to-date runtime packages installed. If the latest version doesn’t resolve the issue, it may be necessary to install all available versions of the Visual C++ Redistributable Runtime packages.
 
 Another potential issue could be outdated USB drivers. For the original ESP32 Development Board:
@@ -247,3 +251,7 @@ If you used pio to build and flash the firmware, the command line on Linux or ma
 ```shell
 python ~/esp/v5.3.2/esp-idf/components/espcoredump/espcoredump.py info_corefile .pio/build/S3-N16R8_128x32/firmware.elf
 ```
+
+### Can I use ZeDMD with MPF
+
+Yes! A native MPF driver is under development.
