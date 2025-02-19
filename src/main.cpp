@@ -1660,13 +1660,13 @@ void StartWiFi() {
     WiFi.begin(ssid.substring(0, ssid_length).c_str(),
                pwd.substring(0, pwd_length).c_str());
 
-    uint8_t error = WiFi.waitForConnectResult();
+    uint8_t error = WiFi.waitForConnectResult(10000);
     if (error != WL_CONNECTED) {
       display->DisplayText("No WiFi connection, error ", 10,
                            TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
-      DisplayNumber(error, 3, 26, TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
+      DisplayNumber(error, 3, 26 * 4 + 10, TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
       // second try
-      error = WiFi.waitForConnectResult();
+      error = WiFi.waitForConnectResult(10000);
       if (error != WL_CONNECTED) {
         softAPFallback = true;
       }
@@ -1682,7 +1682,7 @@ void StartWiFi() {
   }
 
   if (ip[0] == 0 || softAPFallback) {
-    display->DisplayText("No WiFi connection, maybe", 10,
+    display->DisplayText("No WiFi connection, maybe     ", 10,
                          TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
     display->DisplayText("the credentials are wrong.", 10, TOTAL_HEIGHT / 2 - 3,
                          255, 0, 0);
@@ -1752,6 +1752,8 @@ void setup() {
   logoWaitCounter = 0;
   lastDataReceived = 0;
   serverRunning = false;
+  ssid_length = 0;
+  pwd_length = 0;
 
   bool fileSystemOK;
   if (fileSystemOK = LittleFS.begin()) {
