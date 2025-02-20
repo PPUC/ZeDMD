@@ -506,6 +506,17 @@ void AcquireNextBuffer() {
   }
 }
 
+void CheckMenuButton() {
+#ifndef DISPLAY_RM67162_AMOLED
+  if (!digitalRead(FORWARD_BUTTON_PIN)) {
+    settingsMenu = true;
+    SaveSettingsMenu();
+    delay(20);
+    Restart();
+  }
+#endif
+}
+
 void MarkCurrentBufferDone() { lastBuffer = currentBuffer; }
 
 bool AcquireNextProcessingBuffer() {
@@ -1660,14 +1671,28 @@ void StartWiFi() {
     WiFi.begin(ssid.substring(0, ssid_length).c_str(),
                pwd.substring(0, pwd_length).c_str());
 
-    uint8_t error = WiFi.waitForConnectResult(10000);
-    if (error != WL_CONNECTED) {
+    // Don't use WiFi.waitForConnectResult(10000) here, it blocks the menu
+    // button.
+    unsigned long startTime = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - startTime < 10000) {
+      CheckMenuButton();
+      vTaskDelay(pdMS_TO_TICKS(100));  // FreeRTOS delay, avoids blocking
+    }
+
+    if (WiFi.status() != WL_CONNECTED) {
       display->DisplayText("No WiFi connection, error ", 10,
                            TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
-      DisplayNumber(error, 3, 26 * 4 + 10, TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
+      DisplayNumber(WiFi.status(), 2, 26 * 4 + 10, TOTAL_HEIGHT / 2 - 9, 255, 0,
+                    0);
+      display->DisplayText("Trying again ...", 10, TOTAL_HEIGHT / 2 - 3, 255, 0,
+                           0);
       // second try
-      error = WiFi.waitForConnectResult(10000);
-      if (error != WL_CONNECTED) {
+      startTime = millis();
+      while (WiFi.status() != WL_CONNECTED && millis() - startTime < 10000) {
+        CheckMenuButton();
+        vTaskDelay(pdMS_TO_TICKS(100));  // FreeRTOS delay, avoids blocking
+      }
+      if (WiFi.status() != WL_CONNECTED) {
         softAPFallback = true;
       }
     }
@@ -1686,15 +1711,19 @@ void StartWiFi() {
                          TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
     display->DisplayText("the credentials are wrong.", 10, TOTAL_HEIGHT / 2 - 3,
                          255, 0, 0);
-    display->DisplayText("Start AP in 30 seconds ...", 10, TOTAL_HEIGHT / 2 + 3,
+    display->DisplayText("Start AP in 20 seconds ...", 10, TOTAL_HEIGHT / 2 + 3,
                          255, 0, 0);
-    for (uint8_t i = 29; i > 0; i--) {
-      sleep(1);
+    for (uint8_t i = 19; i > 0; i--) {
+      CheckMenuButton();
+      vTaskDelay(pdMS_TO_TICKS(1000));
       DisplayNumber(i, 2, 58, TOTAL_HEIGHT / 2 + 3, 255, 0, 0);
     }
     WiFi.softAP(apSSID, apPassword);
     ip = WiFi.softAPIP();
   }
+
+  ClearScreen();
+  DisplayLogo();
 
   for (uint8_t i = 0; i < 4; i++) {
     if (i > 0) display->DrawPixel(i * 3 * 4 + i * 2 - 2, 4, 0);
@@ -2130,14 +2159,7 @@ void setup() {
 }
 
 void loop() {
-#ifndef DISPLAY_RM67162_AMOLED
-  if (!digitalRead(FORWARD_BUTTON_PIN)) {
-    settingsMenu = true;
-    SaveSettingsMenu();
-    delay(20);
-    Restart();
-  }
-#endif
+  CheckMenuButton();
 
   if (!transportActive) {
     if (wifiActive && !serverRunning) {
