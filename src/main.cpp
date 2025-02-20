@@ -1785,6 +1785,7 @@ void setup() {
   pwd_length = 0;
   ssid = "";
   pwd = "";
+  port = 3333;
 
   bool fileSystemOK;
   if (fileSystemOK = LittleFS.begin()) {
