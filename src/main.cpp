@@ -1783,6 +1783,8 @@ void setup() {
   serverRunning = false;
   ssid_length = 0;
   pwd_length = 0;
+  ssid = "";
+  pwd = "";
 
   bool fileSystemOK;
   if (fileSystemOK = LittleFS.begin()) {
