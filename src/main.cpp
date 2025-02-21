@@ -602,10 +602,6 @@ void DisplayLogo(void) {
   Render();
   DisplayVersion(true);
 
-  char id[4];
-  sprintf(id, "%04X", shortId);
-  display->DisplayText(id, TOTAL_WIDTH - 16, 0, 0, 0, 0, 1);
-
   throbberColors[0] = 0;
   throbberColors[1] = 0;
   throbberColors[2] = 0;
@@ -617,7 +613,13 @@ void DisplayLogo(void) {
   logoWaitCounter = 0;
 }
 
-void DisplayUpdate(void) {
+void DisplayId() {
+  char id[4];
+  sprintf(id, "%04X", shortId);
+  display->DisplayText(id, TOTAL_WIDTH - 16, 0, 0, 0, 0, 1);
+}
+
+void DisplayUpdate() {
   File f;
 
   if (TOTAL_HEIGHT == 64) {
@@ -638,9 +640,7 @@ void DisplayUpdate(void) {
 
   Render();
 
-  char id[4];
-  sprintf(id, "%04X", shortId);
-  display->DisplayText(id, TOTAL_WIDTH - 16, 0, 0, 0, 0, 1);
+  DisplayId();
 
   throbberColors[0] = 0;
   throbberColors[1] = 0;
@@ -1741,6 +1741,7 @@ void StartWiFi() {
 
   ClearScreen();
   DisplayLogo();
+  DisplayId();
 
   for (uint8_t i = 0; i < 4; i++) {
     if (i > 0) display->DrawPixel(i * 3 * 4 + i * 2 - 2, 4, 0);
@@ -2127,6 +2128,7 @@ void setup() {
   pinMode(FORWARD_BUTTON_PIN, INPUT_PULLUP);
 
   DisplayLogo();
+  DisplayId();
 
   // Create synchronization primitives
   for (uint8_t i = 0; i < NUM_BUFFERS; i++) {
