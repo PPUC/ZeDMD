@@ -170,6 +170,7 @@ uint32_t lastDataReceived;
 bool serverRunning;
 uint8_t throbberColors[6] __attribute__((aligned(4))) = {0};
 mz_ulong uncompressedBufferSize = 2048;
+uint16_t shortId;
 
 void DoRestart(int sec) {
   if (wifiActive) {
@@ -601,6 +602,10 @@ void DisplayLogo(void) {
   Render();
   DisplayVersion(true);
 
+  char id[4];
+  sprintf(id, "%04X", shortId);
+  display->DisplayText(id, TOTAL_WIDTH - 16, 0, 0, 0, 0, 1);
+
   throbberColors[0] = 0;
   throbberColors[1] = 0;
   throbberColors[2] = 0;
@@ -632,6 +637,10 @@ void DisplayUpdate(void) {
   f.close();
 
   Render();
+
+  char id[4];
+  sprintf(id, "%04X", shortId);
+  display->DisplayText(id, TOTAL_WIDTH - 16, 0, 0, 0, 0, 1);
 
   throbberColors[0] = 0;
   throbberColors[1] = 0;
@@ -797,6 +806,8 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
             response[N_INTERMEDIATE_CTR_CHARS + 18] += 0b00000010;
 #endif
+            response[N_INTERMEDIATE_CTR_CHARS + 19] = shortId & 0xff;
+            response[N_INTERMEDIATE_CTR_CHARS + 20] = (shortId >> 8) & 0xff;
             response[63 - N_ACK_CHARS] = 'R';
             Serial.write(response, 64 - N_ACK_CHARS);
             // This flush is required for USB CDC on Windows.
@@ -1522,6 +1533,10 @@ void StartServer() {
 #endif
   });
 
+  server->on("/get_short_id", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", String(shortId));
+  });
+
   server->on("/handshake", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(
         200, "text/plain",
@@ -1551,7 +1566,7 @@ void StartServer() {
 #else
             "0"
 #endif
-    );
+            + "|" + String(shortId));
   });
 
   server->on("/ppuc.png", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -1661,7 +1676,8 @@ void StartServer() {
 }
 
 void StartWiFi() {
-  const char *apSSID = "ZeDMD-WiFi";
+  char apSSID[15];
+  sprintf(apSSID, "ZeDMD-WiFi-%04X", shortId);
   const char *apPassword = "zedmd1234";
   bool softAPFallback = false;
   IPAddress ip;
@@ -1720,6 +1736,7 @@ void StartWiFi() {
     }
     WiFi.softAP(apSSID, apPassword);
     ip = WiFi.softAPIP();
+    softAPFallback = true;
   }
 
   ClearScreen();
@@ -1786,6 +1803,10 @@ void setup() {
   ssid = "";
   pwd = "";
   port = 3333;
+
+  uint64_t chipId = ESP.getEfuseMac();
+  shortId =
+      (uint16_t)(chipId ^ (chipId >> 16) ^ (chipId >> 32) ^ (chipId >> 48));
 
   bool fileSystemOK;
   if (fileSystemOK = LittleFS.begin()) {
