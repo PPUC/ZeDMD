@@ -255,3 +255,4 @@ python ~/esp/v5.3.2/esp-idf/components/espcoredump/espcoredump.py info_corefile 
 ### Can I use ZeDMD with MPF
 
 Yes! A native MPF driver is under development.
+See [libzedmd-python-pybind11-extension](https://github.com/PPUC/libzedmd-python-pybind11-extension).
