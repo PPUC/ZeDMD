@@ -9,6 +9,10 @@
 
 #include <cstring>
 
+#ifdef ARDUINO_ESP32_S3_N16R8
+#include <FastLED.h>
+#endif
+
 // Specific improvements and #define for the ESP32 S3 series
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
 #include "S3Specific.h"
@@ -67,6 +71,8 @@
 #define DOWN_BUTTON_PIN 45
 #define FORWARD_BUTTON_PIN 48
 #define BACKWARD_BUTTON_PIN 47
+#define SPEAKER_LIGHTS_LEFT_PIN 9    // Left speaker LED strip
+#define SPEAKER_LIGHTS_RIGHT_PIN 10  // Right speaker LED strip
 #elif defined(DISPLAY_RM67162_AMOLED)
 #define UP_BUTTON_PIN 0
 #define FORWARD_BUTTON_PIN 21
@@ -80,6 +86,16 @@
 #define RC 0
 #define GC 1
 #define BC 2
+
+#ifdef SPEAKER_LIGHTS
+uint8_t speakerLightsLeftNumLeds;
+uint8_t speakerLightsRightNumLeds;
+CRGB *speakerLightsLeft;
+CRGB *speakerLightsRight;
+uint8_t speakerLightsBlackThreshold;  // Ignore pixels below this brightness
+uint8_t speakerLightsGammaFactor;     // Scaling factor (0-256), higher = less
+                                      // black impact
+#endif
 
 enum {
   TRANSPORT_USB = 0,
@@ -351,7 +367,6 @@ void LoadPanelSettings() {
   panelMinRefreshRate = f.read();
   f.close();
 }
-
 #endif
 
 void SaveLum() {
@@ -480,6 +495,52 @@ bool SaveWiFiConfig() {
   return true;
 }
 
+#ifdef SPEAKER_LIGHTS
+void SaveSpeakerLightsSettings() {
+  File f = LittleFS.open("/speaker_lights_left_num.val", "w");
+  f.write(speakerLightsLeftNumLeds);
+  f.close();
+  f = LittleFS.open("/speaker_lights_right_num.val", "w");
+  f.write(speakerLightsRightNumLeds);
+  f.close();
+  f = LittleFS.open("/speaker_lights_black_threshold.val", "w");
+  f.write(speakerLightsBlackThreshold);
+  f.close();
+  f = LittleFS.open("/speaker_lights_gamma_factor.val", "w");
+  f.write(speakerLightsGammaFactor);
+  f.close();
+  // @todo LED Type and RGB order
+}
+
+void LoadSpeakerLightsSettings() {
+  File f = LittleFS.open("/speaker_lights_left_num.val", "r");
+  if (!f) {
+    SavePanelSettings();
+  }
+  speakerLightsLeftNumLeds = f.read();
+  f.close();
+  f = LittleFS.open("/speaker_lights_right_num.val", "r");
+  if (!f) {
+    SavePanelSettings();
+  }
+  speakerLightsRightNumLeds = f.read();
+  f.close();
+  f = LittleFS.open("/speaker_lights_black_threshold.val", "r");
+  if (!f) {
+    SavePanelSettings();
+  }
+  speakerLightsBlackThreshold = f.read();
+  f.close();
+  f = LittleFS.open("/speaker_lights_gamma_factor.val", "r");
+  if (!f) {
+    SavePanelSettings();
+  }
+  speakerLightsGammaFactor = f.read();
+  f.close();
+  // @todo LED Type and RGB order
+}
+#endif
+
 void LedTester(void) {
   display->FillScreen(255, 0, 0);
   delay(LED_CHECK_DELAY);
@@ -530,10 +591,20 @@ bool AcquireNextProcessingBuffer() {
   return false;
 }
 
+uint8_t GetPixelBrightness(uint8_t r, uint8_t g, uint8_t b) {
+  return (r * 77 + g * 150 + b * 29) >> 8;  // Optimized luminance calculation
+}
+
 void Render() {
   if (NUM_RENDER_BUFFERS == 1) {
     display->FillPanelRaw(renderBuffer[currentRenderBuffer]);
   } else if (currentRenderBuffer != lastRenderBuffer) {
+#ifdef SPEAKER_LIGHTS
+    uint32_t sumRLeft = 0, sumGLeft = 0, sumBLeft = 0, sumRRight = 0,
+             sumGRight = 0, sumBRight = 0;
+    uint16_t colorCountLeft = 0, blackCountLeft = 0, colorCountRight = 0,
+             blackCountRight = 0;
+#endif
     uint16_t pos;
 
     for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
@@ -545,9 +616,73 @@ void Render() {
                              renderBuffer[currentRenderBuffer][pos + 1],
                              renderBuffer[currentRenderBuffer][pos + 2]);
         }
+#ifdef SPEAKER_LIGHTS
+        if (x <= TOTAL_WIDTH / 4) {
+          if (GetPixelBrightness(renderBuffer[currentRenderBuffer][pos],
+                                 renderBuffer[currentRenderBuffer][pos + 1],
+                                 renderBuffer[currentRenderBuffer][pos + 2]) >
+              speakerLightsBlackThreshold) {
+            sumRLeft += renderBuffer[currentRenderBuffer][pos];
+            sumGLeft += renderBuffer[currentRenderBuffer][pos + 1];
+            sumBLeft += renderBuffer[currentRenderBuffer][pos + 2];
+            colorCountLeft++;
+          } else {
+            blackCountLeft++;
+          }
+        } else if (x >= (TOTAL_WIDTH - (TOTAL_WIDTH / 4))) {
+          if (GetPixelBrightness(renderBuffer[currentRenderBuffer][pos],
+                                 renderBuffer[currentRenderBuffer][pos + 1],
+                                 renderBuffer[currentRenderBuffer][pos + 2]) >
+              speakerLightsBlackThreshold) {
+            sumRRight += renderBuffer[currentRenderBuffer][pos];
+            sumGRight += renderBuffer[currentRenderBuffer][pos + 1];
+            sumBRight += renderBuffer[currentRenderBuffer][pos + 2];
+            colorCountRight++;
+          } else {
+            blackCountRight++;
+          }
+        }
+#endif
       }
     }
+#ifdef SPEAKER_LIGHTS
+    if (colorCountLeft == 0) {
+      fill_solid(speakerLightsLeft, speakerLightsLeftNumLeds,
+                 CRGB(0, 0, 0));  // All black → Turn off LEDs
+    } else {
+      // Integer-based black influence calculation
+      uint16_t totalPixelsLeft = blackCountLeft + colorCountLeft;
+      uint16_t blackRatio256 =
+          (blackCountLeft * 256) / colorCountLeft;  // Scale to 0-256
+      // brightnessFactor = 256 if all color, lower if black is present
+      uint16_t brightnessFactor =
+          (256 - ((blackRatio256 * (256 - speakerLightsGammaFactor)) >> 8));
 
+      fill_solid(speakerLightsLeft, speakerLightsLeftNumLeds,
+                 CRGB((sumRLeft / colorCountLeft * brightnessFactor) >> 8,
+                      (sumGLeft / colorCountLeft * brightnessFactor) >> 8,
+                      (sumBLeft / colorCountLeft * brightnessFactor) >> 8));
+    }
+
+    if (colorCountRight == 0) {
+      fill_solid(speakerLightsRight, speakerLightsRightNumLeds,
+                 CRGB(0, 0, 0));  // All black → Turn off LEDs
+    } else {
+      // Integer-based black influence calculation
+      uint16_t totalPixelsRight = blackCountRight + colorCountRight;
+      uint16_t blackRatio256 =
+          (blackCountRight * 256) / colorCountRight;  // Scale to 0-256
+      // brightnessFactor = 256 if all color, lower if black is present
+      uint16_t brightnessFactor =
+          (256 - ((blackRatio256 * (256 - speakerLightsGammaFactor)) >> 8));
+
+      fill_solid(speakerLightsRight, speakerLightsRightNumLeds,
+                 CRGB((sumRRight / colorCountRight * brightnessFactor) >> 8,
+                      (sumGRight / colorCountRight * brightnessFactor) >> 8,
+                      (sumBRight / colorCountRight * brightnessFactor) >> 8));
+    }
+    FastLED.show();
+#endif
     lastRenderBuffer = currentRenderBuffer;
     currentRenderBuffer = (currentRenderBuffer + 1) % NUM_RENDER_BUFFERS;
     memcpy(renderBuffer[currentRenderBuffer], renderBuffer[lastRenderBuffer],
@@ -1809,6 +1944,13 @@ void setup() {
   shortId =
       (uint16_t)(chipId ^ (chipId >> 16) ^ (chipId >> 32) ^ (chipId >> 48));
 
+#ifdef SPEAKER_LIGHTS
+  speakerLightsLeftNumLeds = 0;
+  speakerLightsRightNumLeds = 0;
+  speakerLightsBlackThreshold = 30;
+  speakerLightsGammaFactor = 180;
+#endif
+
   bool fileSystemOK;
   if (fileSystemOK = LittleFS.begin()) {
     LoadSettingsMenu();
@@ -1826,6 +1968,9 @@ void setup() {
     LoadUdpDelay();
 #ifdef ZEDMD_HD_HALF
     LoadYOffset();
+#endif
+#ifdef SPEAKER_LIGHTS
+    LoadSpeakerLightsSettings();
 #endif
   }
 
@@ -2182,6 +2327,16 @@ void setup() {
       break;
     }
   }
+
+#ifdef SPEAKER_LIGHTS
+  speakerLightsLeft = new CRGB[speakerLightsLeftNumLeds];
+  speakerLightsRight = new CRGB[speakerLightsRightNumLeds];
+  FastLED.addLeds<WS2812B, SPEAKER_LIGHTS_LEFT_PIN, GRB>(
+      speakerLightsLeft, speakerLightsLeftNumLeds);
+  FastLED.addLeds<WS2812B, SPEAKER_LIGHTS_RIGHT_PIN, GRB>(
+      speakerLightsRight, speakerLightsRightNumLeds);
+  FastLED.clear();
+#endif
 }
 
 void loop() {
