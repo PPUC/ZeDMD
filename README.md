@@ -156,6 +156,56 @@ The `Debug:` option can be set to `Debug: 1` if requested by a ZeDMD developer t
 >
 > From version 5.0.0 onwards: once you’ve finished changing values, you must navigate to the 'Exit' button. This step is required to enable the ZeDMD to enter handshake mode.
 
+### Advanced Settings
+
+ZeDMD has more configurations options than these accessible via the setting menu described above.
+To set these you need to use the `zedmd-client`command line tool, which is part of [libzedmd](https://github.com/PPUC/libzedmd), or the [ZeDMD_Updater2](https://github.com/zesinger/ZeDMD_Updater2).
+
+`zedmd-client -i` lists the available settings and their current values:
+```
+ZeDMD Info
+=============================================================
+ID:                         799F
+firmware version:           5.1.7
+CPU:                        ESP32 S3
+libzedmd version:           0.9.6
+transport:                  1 (UDP)
+IP address:                 192.168.178.61
+USB package size:           512
+WiFi SSID:                  xxxxxxxxxxxxxxx
+WiFi port:                  3333
+WiFi UDP delay:             5
+panel width:                256
+panel height:               64
+panel RGB order:            5
+panel brightness:           10
+panel clock phase:          0
+panel i2s speed:            8
+panel latch blanking:       2
+panel minimal refresh rate: 30
+panel driver:               0
+Y-offset:                   0
+
+```
+
+Some of these values could be adjusted, run `zedmd-client -h` to see a list of all adjustable settings and how to do it. Here are explanations for some of the advanced options:
+
+| Setting                | Values                                                                                    | Explanation                                                                                                                                                                                                                                                                                                                                                                          |
+| ---------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| debug                  | 0,1                                                                                       | Display some debug information on the DMD while it is un use.                                                                                                                                                                                                                                                                                                                        |
+| panel clock phase      | 0,1                                                                                       | Default is 1 (on), see [Clock Phase](https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA?tab=readme-ov-file#clock-phase)                                                                                                                                                                                                                                                     |
+| panel drive            | 0(SHIFTREG), 1(FM6124), 2(FM6126A), 3(ICN2038S), 4(MBI5124), 5(SM5266P), 6(DP3246_SM5368) | Default is 0(SHIFTREG), see [Specific chips found to work](https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA?tab=readme-ov-file#specific-chips-found-to-work)                                                                                                                                                                                                              |
+| panel i2s speed        | 8, 16, 20                                                                                 | The frequency used to transfer the data to the panel driver, default is 8Mhz. It might need to be changed in case a "non-standard" driver chip is used in your panels                                                                                                                                                                                                                |
+| panel latch blanking   | 0, 1, 2, 3, 4                                                                             | Default is 2, see [Latch Blanking](https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA?tab=readme-ov-file#latch-blanking)                                                                                                                                                                                                                                                    |
+| panel min refresh rate | 30..120                                                                                   | The refresh rate used to update panels. A higher value leads to smoother animations and less lag. But too high values lead to errors, especially if large areas of the DMD change frequently. The default of 30Hz is very low. Try to increase it. 60Hz is a good value for ZeDMD HD, 90Hz for ZeDMD.                                                                                |
+| transport              | 0(USB), 1(WiFi UDP), 2(WiFi TCP), 3(SPI)                                                  | 0(USB) is the default. In WiFi mode you can choose between 1(UDP) and 2(TCP). UDP is a faster and preferable but could lead artifacts or restarts of ZeDMD if the WiFi quality is not good. TCP ensures that everything is displayed, but could lead to stuttering and sometimes frame drops if the WiFi quality is not good. SPI is meant for futitre use in real pinball machines. |
+| UDP delay              | 0..9                                                                                      | A delay of milliseconds beten UDP packages. A higher value reduces the risk of artifactsor restarts but add a bit of a lag. Default is 5ms.                                                                                                                                                                                                                                          |
+| USB package size       | 32..1920 (step 32)                                                                        | The amount of bytes sent per data package via USB. A higher value leads to smoother animations and less lag. The default of 32 is very low. Good values are 512 bytes for the original EPS32 and 1024 for the ESP32 S3. But the highest possible value depend on a lot of factors like USB chipset, cable quality, etc.                                                              |
+| WiFi port              |                                                                                           | The network port to be used to stream frames to ZeDMD via WiFi. The default is 3333. Only change this value in case this port is already in use in your network or blocked by a firewall.                                                                                                                                                                                            |
+
+> [!WARNING]
+> The most important values you should adjust even if ZeDMD works are the panel min refresh rate and, in case of USB, the USB package size. Both are also easlilyajustable in the settings menu! Otherwise your ZeDMD will work, but not as good as it could.
+
 ## ZeDMD-WiFi
 
 After activating either `WiFi UDP` or `WiFi TCP` in the settings menu, connect your mobile device or laptop to the `ZeDMD-WiFi` network using password `zedmd1234`.
@@ -173,7 +223,6 @@ ZeDMD uses
 * [miniz](https://github.com/richgel999/miniz)
 * [Tiny 4x6 Pixel Font](https://hackaday.io/project/6309-vga-graphics-over-spi-and-serial-vgatonic/log/20759-a-tiny-4x6-pixel-font-that-will-fit-on-almost-any-microcontroller-license-mit)
 * [ESPAsyncWebServer]([https://github.com/me-no-dev/ESPAsyncWebServer](https://github.com/ESP32Async/ESPAsyncWebServer))
-* ~~[JPEGDEC](https://github.com/bitbank2/JPEGDEC)~~
 * [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI)
 * [RM67162 with fixes from Nikthefix](https://github.com/Xinyuan-LilyGO/T-Display-S3-AMOLED/issues/2)
 * [pioarduino](https://github.com/pioarduino)
@@ -214,8 +263,7 @@ Here is some background information:
 * https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA?tab=readme-ov-file#supported-panel-can-types
 * https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA?tab=readme-ov-file#latch-blanking
 
-These are the available config options:
-https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA/blob/54ef6071663325e7b8f3a9e1e0db89b0b0b7398d/src/ESP32-HUB75-MatrixPanel-I2S-DMA.h#L235-L309
+Thes available config options are decribed above in [Advanced Settings](#advanced-settings).
 
 The pre-built firmware uses the default config which is suitable for the most common LED panels.
 Obviously we can't provide a menu on the device to adjust these settings as you won't see them ;-)
