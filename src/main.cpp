@@ -196,6 +196,7 @@ bool serverRunning;
 uint8_t throbberColors[6] __attribute__((aligned(4))) = {0};
 mz_ulong uncompressedBufferSize = 2048;
 uint16_t shortId;
+uint8_t wifiPower;
 
 void DoRestart(int sec) {
   if (wifiActive) {
@@ -486,6 +487,8 @@ bool LoadWiFiConfig() {
     pwd = wifiConfig.readStringUntil('\n');
     pwd_length = wifiConfig.readStringUntil('\n').toInt();
     port = wifiConfig.readStringUntil('\n').toInt();
+    if (wifiConfig.available())
+      wifiPower = wifiConfig.readStringUntil('\n').toInt();
   }
   wifiConfig.close();
   return true;
@@ -500,6 +503,7 @@ bool SaveWiFiConfig() {
   wifiConfig.println(pwd);
   wifiConfig.println(String(pwd_length));
   wifiConfig.println(String(port));
+  wifiConfig.println(String(wifiPower));
   wifiConfig.close();
   return true;
 }
@@ -1040,6 +1044,15 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             return 1;
           }
 #endif
+          case 26:  // set wifi power
+          {
+            wifiPower = pData[pos++];
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            if (wifiActive) break;
+            return 1;
+          }
+
           case 27:  // set SSID
           {
             if (payloadMissing == payloadSize) {
@@ -1947,7 +1960,7 @@ void StartServer() {
 #else
             "0"
 #endif
-            + "|" + String(shortId));
+            + "|" + String(shortId) + "|" + String(wifiPower));
   });
 
   server->on("/ppuc.png", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -2130,6 +2143,17 @@ void StartWiFi() {
   }
 
   WiFi.setSleep(false);  // WiFi speed improvement on ESP32 S3 and others.
+  WiFi.setTxPower((wifi_power_t)wifiPower);
+
+  if (debug) {
+    display->DisplayText("WiFi RSSI: ", 0, TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
+    DisplayNumber(WiFi.RSSI(), 3, 11 * 4, TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
+    display->DisplayText("TX Power:  ", 0, TOTAL_HEIGHT / 2 - 3, 255, 0, 0);
+    DisplayNumber(WiFi.getTxPower(), 3, 11 * 4, TOTAL_HEIGHT / 2 - 3, 255, 0,
+                  0);
+    display->DisplayText("Channel:   ", 0, TOTAL_HEIGHT / 2 + 3, 255, 0, 0);
+    DisplayNumber(WiFi.channel(), 3, 11 * 4, TOTAL_HEIGHT / 2 + 3, 255, 0, 0);
+  }
 
   wifiActive = true;
 
@@ -2185,6 +2209,7 @@ void setup() {
   ssid = "";
   pwd = "";
   port = 3333;
+  wifiPower = 80;
 
   uint64_t chipId = ESP.getEfuseMac();
   shortId =
