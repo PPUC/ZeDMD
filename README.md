@@ -240,7 +240,7 @@ The intention of ZeDMD is to provide a cheap DIY DMD solution. The maintainers o
 
 Nevertheless, there are are some shops we are aware of who designed their own shields to build a ZeDMD.
 And as this might ease the task to use a ZeDMD for some users, we agreed to add some links here:
-* https://janspinballmods.com/mods/zedmd/shield-esp32-s3-not-included/
+* https://janspinballmods.com/mods/zedmd/shield-esp32-s3/
 * https://shop.arnoz.com/en/dmd/87-esp-dmd-shield.html
 * https://benfactory.fr/produit/zedmd-shield/
 * https://www.smallcab.net/shield-zedmd-p-2697.html
@@ -304,3 +304,11 @@ python ~/esp/v5.3.2/esp-idf/components/espcoredump/espcoredump.py info_corefile 
 
 Yes! A native MPF driver is under development.
 See [libzedmd-python-pybind11-extension](https://github.com/PPUC/libzedmd-python-pybind11-extension).
+
+### My ESP32-S3-N16R8 ZeDMD is not booting/getting black screen
+
+Unfortunately a lot of ESP32-S3-N16R8's that are currently being made feature an unintended capacitor near the "BOOT" button. Whenever the device is powered through USB or external power and the mini capacitor next to the "BOOT" button is present, the S3 device will not boot correctly, and often needs a manual reset for it to work. 
+> Of course, this is not the behaviour which we expect out of the ESP32-S3-N16R8. 
+
+If the capacitor next to the boot button is present on your S3, the fix is to _simply destroy_ it.
+Please have a look at [THIS](https://www.youtube.com/shorts/o72Jn5TY_w8) video. 
