@@ -4,7 +4,6 @@
 
 #include <cstring>
 #include <algorithm>
-#include <cmath>
 #include <hardware/clocks.h>
 #include "hub75.hpp"
 
@@ -14,6 +13,33 @@
 Hub75::Hub75(uint width, uint height, Pixel *buffer, PanelType panel_type, bool inverted_stb,
              COLOR_ORDER color_order)
     : width(width), height(height), panel_type(panel_type), inverted_stb(inverted_stb), color_order(color_order) {
+    for (uint8_t i = DATA_BASE_PIN; i < DATA_N_PINS; i++) {
+        gpio_init(i);
+        gpio_set_function(i, GPIO_FUNC_SIO);
+        gpio_set_dir(i, true);
+        gpio_put(i, 0);
+    }
+
+    for (uint8_t i = ROWSEL_BASE_PIN; i < ROWSEL_BASE_PIN + ROWSEL_N_PINS; i++) {
+        gpio_init(i);
+        gpio_set_function(i, GPIO_FUNC_SIO);
+        gpio_set_dir(i, true);
+        gpio_put(i, 0);
+    }
+
+    gpio_init(pin_clk);
+    gpio_set_function(pin_clk, GPIO_FUNC_SIO);
+    gpio_set_dir(pin_clk, true);
+    gpio_put(pin_clk, !clk_polarity);
+    gpio_init(pin_stb);
+    gpio_set_function(pin_stb, GPIO_FUNC_SIO);
+    gpio_set_dir(pin_stb, true);
+    gpio_put(pin_clk, !stb_polarity);
+    gpio_init(pin_oe);
+    gpio_set_function(pin_oe, GPIO_FUNC_SIO);
+    gpio_set_dir(pin_oe, true);
+    gpio_put(pin_clk, !oe_polarity);
+
     if (buffer == nullptr) {
         back_buffer = new Pixel[width * height];
         managed_buffer = true;
