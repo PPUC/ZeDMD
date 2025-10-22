@@ -42,7 +42,7 @@
 #include "displayDriver.h"
 #include "panel.h"  // Include ZeDMD panel constants
 
-extern int8_t rgbMode;
+extern uint8_t rgbMode;
 extern int8_t yOffset;
 extern uint8_t panelClkphase;
 extern uint8_t panelDriver;

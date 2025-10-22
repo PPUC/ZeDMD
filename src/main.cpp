@@ -1,11 +1,19 @@
 
 #include <Arduino.h>
+#ifndef ZEDMD_NO_NETWORKING
 #include <AsyncUDP.h>
+#endif
 #include <Bounce2.h>
+#ifdef ARDUINO_RASPBERRY_PI_PICO
+#include "pico/zedmd_pico.h"
+#else
 #include <ESPAsyncWebServer.h>
 #include <ESPmDNS.h>
+#endif
 #include <LittleFS.h>
+#ifndef ZEDMD_NO_NETWORKING
 #include <WiFi.h>
+#endif
 
 #include <cstring>
 
@@ -27,6 +35,8 @@
 // To save RAM only include the driver we want to use.
 #ifdef DISPLAY_RM67162_AMOLED
 #include "displays/Rm67162Amoled.h"
+#elif ARDUINO_RASPBERRY_PI_PICO
+#include "displays/PicoLEDMatrix.h"
 #else
 #include "displays/LEDMatrix.h"
 #endif
@@ -44,12 +54,16 @@
 #define NUM_RENDER_BUFFERS 2
 #endif
 #define BUFFER_SIZE 1152
+#elif ARDUINO_RASPBERRY_PI_PICO
+#define NUM_BUFFERS 6  // Number of buffers
+#define NUM_RENDER_BUFFERS 1
+#define BUFFER_SIZE 1152
 #else
 #define NUM_BUFFERS 12  // Number of buffers
 #define NUM_RENDER_BUFFERS 1
 #define BUFFER_SIZE 1152
 #endif
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || defined(DISPLAY_PICO_LED_MATRIX)
 // USB CDC
 #define SERIAL_BAUD 115200
 #define USB_PACKAGE_SIZE 512
@@ -70,6 +84,9 @@
 #elif defined(DISPLAY_RM67162_AMOLED)
 #define UP_BUTTON_PIN 0
 #define FORWARD_BUTTON_PIN 21
+#elif defined(DISPLAY_PICO_LED_MATRIX)
+#define UP_BUTTON_PIN 18
+#define FORWARD_BUTTON_PIN 19
 #else
 #define UP_BUTTON_PIN 21
 #define FORWARD_BUTTON_PIN 33
@@ -94,9 +111,11 @@ const uint8_t CtrlChars[6]
     __attribute__((aligned(4))) = {'Z', 'e', 'D', 'M', 'D', 'A'};
 uint8_t numCtrlCharsFound = 0;
 
+#ifndef ZEDMD_NO_NETWORKING
 AsyncWebServer *server;
 AsyncServer *tcp;
 AsyncUDP *udp;
+#endif
 DisplayDriver *display;
 
 // Buffers for storing data
@@ -125,7 +144,7 @@ uint8_t processingBuffer __attribute__((aligned(4)));
 uint8_t brightness = 5;
 #else
 uint8_t brightness = 2;
-int8_t rgbMode = 0;
+uint8_t rgbMode = 0;
 uint8_t rgbModeLoaded = 0;
 int8_t yOffset = 0;
 uint8_t panelClkphase = 0;
@@ -160,7 +179,7 @@ bool wifiActive;
 #ifdef ZEDMD_WIFI
 int8_t transport = TRANSPORT_WIFI_UDP;
 #else
-int8_t transport = TRANSPORT_USB;
+uint8_t transport = TRANSPORT_USB;
 #endif
 bool logoActive;
 bool transportActive;
@@ -173,10 +192,12 @@ mz_ulong uncompressedBufferSize = 2048;
 uint16_t shortId;
 
 void DoRestart(int sec) {
+#ifndef ZEDMD_NO_NETWORKING
   if (wifiActive) {
     MDNS.end();
     WiFi.disconnect(true);
   }
+#endif
   display->ClearScreen();
   display->DisplayText("Restarting ...", 0, 0, 255, 0, 0);
   vTaskDelay(pdMS_TO_TICKS(sec * 1000));
@@ -284,7 +305,7 @@ void LoadTransport() {
   f.close();
 }
 
-#ifdef DISPLAY_LED_MATRIX
+#if defined(DISPLAY_LED_MATRIX) || defined(DISPLAY_PICO_LED_MATRIX)
 void SaveRgbOrder() {
   File f = LittleFS.open("/rgb_order.val", "w");
   f.write(rgbMode);
@@ -803,7 +824,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
 #else
             response[N_INTERMEDIATE_CTR_CHARS + 18] = 0;
 #endif
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || defined(DISPLAY_PICO_LED_MATRIX)
             response[N_INTERMEDIATE_CTR_CHARS + 18] += 0b00000010;
 #endif
             response[N_INTERMEDIATE_CTR_CHARS + 19] = shortId & 0xff;
@@ -969,7 +990,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             SaveUsbPackageSizeMultiplier();
             SaveUdpDelay();
             SaveWiFiConfig();
-#ifdef DISPLAY_LED_MATRIX
+#if defined(DISPLAY_LED_MATRIX) || defined(DISPLAY_PICO_LED_MATRIX)
             SaveRgbOrder();
             SavePanelSettings();
 #endif
@@ -1199,8 +1220,12 @@ void Task_ReadSerial(void *pvParameters) {
   const uint16_t usbPackageSize = usbPackageSizeMultiplier * 32;
   bool connected = false;
 
+#ifdef ARDUINO_RASPBERRY_PI_PICO // TODO !?
+  //Serial.ignoreFlowControl();
+#else
   Serial.setRxBufferSize(usbPackageSize + 128);
   Serial.setTxBufferSize(64);
+#endif
 #if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
   // S3 USB CDC. The actual baud rate doesn't matter.
   Serial.begin(115200);
@@ -1312,6 +1337,7 @@ void Task_ReadSerial(void *pvParameters) {
   }
 }
 
+#ifndef ZEDMD_NO_NETWORKING
 static void HandleUdpPacket(AsyncUDPPacket packet) {
   static bool isProcessing = false;
 
@@ -1526,7 +1552,7 @@ void StartServer() {
   });
 
   server->on("/get_s3", HTTP_GET, [](AsyncWebServerRequest *request) {
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || defined(DISPLAY_PICO_LED_MATRIX)
     request->send(200, "text/plain", String(1));
 #else
     request->send(200, "text/plain", String(0));
@@ -1543,7 +1569,7 @@ void StartServer() {
         String(TOTAL_WIDTH) + "|" + String(TOTAL_HEIGHT) + "|" +
             String(ZEDMD_VERSION_MAJOR) + "." + String(ZEDMD_VERSION_MINOR) +
             "." + String(ZEDMD_VERSION_PATCH) + "|" +
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || defined(DISPLAY_PICO_LED_MATRIX)
             String(1)
 #else
             String(0)
@@ -1776,6 +1802,7 @@ void StartWiFi() {
     tcp->begin();
   }
 }
+#endif  // ZEDMD_NO_NETWORKING
 
 void setup() {
   esp_log_level_set("*", ESP_LOG_NONE);
@@ -1817,7 +1844,7 @@ void setup() {
 #endif
     LoadWiFiConfig();
     LoadUsbPackageSizeMultiplier();
-#ifdef DISPLAY_LED_MATRIX
+#if defined(DISPLAY_LED_MATRIX) || defined(DISPLAY_PICO_LED_MATRIX)
     LoadRgbOrder();
     LoadPanelSettings();
 #endif
@@ -1833,6 +1860,8 @@ void setup() {
   display = new Rm67162Amoled();  // For AMOLED display
 #elif defined(DISPLAY_LED_MATRIX)
   display = new LedMatrix();  // For LED matrix display
+#elif defined(DISPLAY_PICO_LED_MATRIX)
+  display = new PicoLedMatrix();  // For pico LED matrix display
 #endif
   display->SetBrightness(brightness);
 
@@ -2156,11 +2185,13 @@ void setup() {
       break;
     }
 
+#ifndef ZEDMD_NO_NETWORKING
     case TRANSPORT_WIFI_UDP:
     case TRANSPORT_WIFI_TCP: {
       StartWiFi();
       break;
     }
+#endif // ZEDMD_NO_NETWORKING
 
     case TRANSPORT_SPI: {
       display->DisplayText("SPI connection failure ...", 0, 0, 255, 0, 0);
