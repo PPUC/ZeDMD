@@ -1220,8 +1220,8 @@ void Task_ReadSerial(void *pvParameters) {
   const uint16_t usbPackageSize = usbPackageSizeMultiplier * 32;
   bool connected = false;
 
-#ifdef ARDUINO_RASPBERRY_PI_PICO // TODO !?
-  //Serial.ignoreFlowControl();
+#ifdef ARDUINO_RASPBERRY_PI_PICO
+  tud_cdc_set_ignore_dtr(1);
 #else
   Serial.setRxBufferSize(usbPackageSize + 128);
   Serial.setTxBufferSize(64);
