@@ -17,6 +17,10 @@ constexpr uint DATA_BASE_PIN = 0;
 constexpr uint DATA_N_PINS = 6;
 constexpr uint ROWSEL_BASE_PIN = 6;
 constexpr uint ROWSEL_N_PINS = 5;
+constexpr uint CLK_PIN = 11;
+constexpr uint STB_PIN = 12;
+constexpr uint OE_PIN = 13;
+
 constexpr uint BIT_DEPTH = 10;
 
 /*
@@ -90,7 +94,6 @@ public:
     PanelType panel_type;
     bool inverted_stb = false;
     COLOR_ORDER color_order;
-    Pixel background;
 
     // DMA & PIO
     int dma_channel = -1;
@@ -107,26 +110,26 @@ public:
     uint brightness = 4;
 
     // Top half of display - 16 rows on a 32x32 panel
-    unsigned int pin_r0 = 0;
-    unsigned int pin_g0 = 1;
-    unsigned int pin_b0 = 2;
+    unsigned int pin_r0 = DATA_BASE_PIN;
+    unsigned int pin_g0 = DATA_BASE_PIN + 1;
+    unsigned int pin_b0 = DATA_BASE_PIN + 2;
 
     // Bottom half of display - 16 rows on a 64x64 panel
-    unsigned int pin_r1 = 3;
-    unsigned int pin_g1 = 4;
-    unsigned int pin_b1 = 5;
+    unsigned int pin_r1 = DATA_BASE_PIN + 3;
+    unsigned int pin_g1 = DATA_BASE_PIN + 4;
+    unsigned int pin_b1 = DATA_BASE_PIN + 5;
 
     // Address pins, 5 lines = 2^5 = 32 values (max 64x64 display)
-    unsigned int pin_row_a = 6;
-    unsigned int pin_row_b = 7;
-    unsigned int pin_row_c = 8;
-    unsigned int pin_row_d = 9;
-    unsigned int pin_row_e = 10;
+    unsigned int pin_row_a = ROWSEL_BASE_PIN;
+    unsigned int pin_row_b = ROWSEL_BASE_PIN + 1;
+    unsigned int pin_row_c = ROWSEL_BASE_PIN + 2;
+    unsigned int pin_row_d = ROWSEL_BASE_PIN + 3;
+    unsigned int pin_row_e = ROWSEL_BASE_PIN + 4;
 
     // Sundry things
-    unsigned int pin_clk = 11; // Clock
-    unsigned int pin_stb = 12; // Strobe/Latch
-    unsigned int pin_oe = 13; // Output Enable
+    unsigned int pin_clk = CLK_PIN; // Clock
+    unsigned int pin_stb = STB_PIN; // Strobe/Latch
+    unsigned int pin_oe = OE_PIN; // Output Enable
 
     const bool clk_polarity = true;
     const bool stb_polarity = true;
