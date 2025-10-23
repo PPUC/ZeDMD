@@ -1,4 +1,4 @@
-#ifdef ARDUINO_RASPBERRY_PI_PICO
+#ifdef PICO_BUILD
 
 // from https://github.com/pimoroni/pimoroni-pico/blob/main/drivers/hub75
 
@@ -7,8 +7,11 @@
 #include <hardware/clocks.h>
 #include "hub75.hpp"
 
-//#define IRAM_ATTR __attribute__((section(".time_critical.")))
+#ifdef PICO_RP2350
+#define IRAM_ATTR __attribute__((section(".time_critical.")))
+#else
 #define IRAM_ATTR
+#endif
 
 Hub75::Hub75(uint width, uint height, Pixel *buffer, PanelType panel_type, bool inverted_stb,
              COLOR_ORDER color_order)

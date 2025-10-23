@@ -4,7 +4,7 @@
 #include <AsyncUDP.h>
 #endif
 #include <Bounce2.h>
-#ifdef ARDUINO_RASPBERRY_PI_PICO
+#ifdef PICO_BUILD
 #include "pico/zedmd_pico.h"
 #else
 #include <ESPAsyncWebServer.h>
@@ -35,7 +35,7 @@
 // To save RAM only include the driver we want to use.
 #ifdef DISPLAY_RM67162_AMOLED
 #include "displays/Rm67162Amoled.h"
-#elif ARDUINO_RASPBERRY_PI_PICO
+#elif PICO_BUILD
 #include "displays/PicoLEDMatrix.h"
 #else
 #include "displays/LEDMatrix.h"
@@ -54,8 +54,12 @@
 #define NUM_RENDER_BUFFERS 2
 #endif
 #define BUFFER_SIZE 1152
-#elif ARDUINO_RASPBERRY_PI_PICO
+#elif PICO_BUILD
+#ifdef PICO_RP2350
+#define NUM_BUFFERS 12  // Number of buffers
+#else
 #define NUM_BUFFERS 6  // Number of buffers
+#endif
 #define NUM_RENDER_BUFFERS 1
 #define BUFFER_SIZE 1152
 #else
@@ -1220,7 +1224,7 @@ void Task_ReadSerial(void *pvParameters) {
   const uint16_t usbPackageSize = usbPackageSizeMultiplier * 32;
   bool connected = false;
 
-#ifdef ARDUINO_RASPBERRY_PI_PICO
+#ifdef PICO_BUILD
   tud_cdc_set_ignore_dtr(1);
 #else
   Serial.setRxBufferSize(usbPackageSize + 128);
