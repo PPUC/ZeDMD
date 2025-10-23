@@ -29,6 +29,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "miniz/miniz.h"
+#include "utility/clock.h"
 #include "panel.h"
 #include "version.h"
 
@@ -185,11 +186,11 @@ int8_t transport = TRANSPORT_WIFI_UDP;
 #else
 uint8_t transport = TRANSPORT_USB;
 #endif
-bool logoActive;
+bool logoActive, updateActive, saverActive;
 bool transportActive;
 uint8_t transportWaitCounter;
-uint8_t logoWaitCounter;
-uint32_t lastDataReceived;
+Clock logoWaitCounterClock;
+Clock lastDataReceivedClock;
 bool serverRunning;
 uint8_t throbberColors[6] __attribute__((aligned(4))) = {0};
 mz_ulong uncompressedBufferSize = 2048;
@@ -635,7 +636,7 @@ void DisplayLogo(void) {
   throbberColors[5] = 255;
 
   logoActive = true;
-  logoWaitCounter = 0;
+  logoWaitCounterClock.restart();
 }
 
 void DisplayId() {
@@ -1127,7 +1128,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
                                    7 * (TOTAL_WIDTH / 128),
                                    (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
             }
-            lastDataReceived = millis();
+            lastDataReceivedClock.restart();
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (wifiActive) break;
@@ -1199,7 +1200,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             buffers[currentBuffer][1] = 255;
             MarkCurrentBufferDone();
 #endif
-            lastDataReceived = millis();
+            lastDataReceivedClock.restart();
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (wifiActive) break;
@@ -1267,14 +1268,14 @@ void Task_ReadSerial(void *pvParameters) {
   headerBytesReceived = 0;
   numCtrlCharsFound = 0;
 
+  Clock timeoutClock;
   int16_t received = 0;
   int16_t expected = 0;
-  uint16_t noDataMs = 0;
   uint8_t numFrameCharsFound = 0;
   uint8_t result = 0;
 
   while (1) {
-    noDataMs = 0;
+    timeoutClock.restart();
     numFrameCharsFound = 0;
     // Wait for FRAME header
     while (numFrameCharsFound < N_FRAME_CHARS) {
@@ -1285,9 +1286,9 @@ void Task_ReadSerial(void *pvParameters) {
           numFrameCharsFound = 0;
         }
       } else {
-        if (++noDataMs > 5000) {
+        if (timeoutClock.getElapsedTime().asMilliseconds() > CONNECTION_TIMEOUT) {
           transportActive = false;
-          noDataMs = 0;
+          timeoutClock.restart();
         }
         // Avoid busy-waiting
         vTaskDelay(pdMS_TO_TICKS(1));
@@ -1296,7 +1297,7 @@ void Task_ReadSerial(void *pvParameters) {
 
     expected = usbPackageSize - N_FRAME_CHARS;
     transportActive = true;
-    noDataMs = 0;
+    timeoutClock.restart();
     result = 0;
 
     while (1) {
@@ -1327,11 +1328,11 @@ void Task_ReadSerial(void *pvParameters) {
         Serial.write(CtrlChars, N_ACK_CHARS);
         Serial.flush();
         if (1 == result) break;  // Wait for the next FRAME header
-        noDataMs = 0;
+        timeoutClock.restart();
       } else {
-        if (++noDataMs > 5000) {
+        if (timeoutClock.getElapsedTime().asMilliseconds() > CONNECTION_TIMEOUT) {
           transportActive = false;
-          noDataMs = 0;
+          timeoutClock.restart();
           break;  // Wait for the next FRAME header
         }
         // Avoid busy-waiting
@@ -1827,8 +1828,8 @@ void setup() {
   logoActive = true;
   transportActive = false;
   transportWaitCounter = 0;
-  logoWaitCounter = 0;
-  lastDataReceived = 0;
+  logoWaitCounterClock.restart();
+  lastDataReceivedClock.restart();
   serverRunning = false;
   ssid_length = 0;
   pwd_length = 0;
@@ -2228,17 +2229,15 @@ void loop() {
       // StartServer();
     }
 
-    if (!logoActive) {
-      logoActive = true;
-      logoWaitCounter = 199;
-    }
+    if (!logoActive) logoActive = true;
 
-    if (logoWaitCounter < 201) ++logoWaitCounter;
-
-    if (100 == logoWaitCounter) {
+    if (!updateActive && logoWaitCounterClock.getElapsedTime().asSeconds() > 10) {
+      updateActive = true;
       DisplayUpdate();
     }
-    if (200 == logoWaitCounter) {
+
+    if (!saverActive && logoWaitCounterClock.getElapsedTime().asSeconds() > 20) {
+      saverActive = true;
       ScreenSaver();
     }
 
@@ -2308,8 +2307,7 @@ void loop() {
     //  serverRunning = false;
     //}
 
-    if (lastDataReceived > 0 &&
-        (millis() - lastDataReceived) > CONNECTION_TIMEOUT) {
+    if (lastDataReceivedClock.getElapsedTime().asMilliseconds() > CONNECTION_TIMEOUT) {
       transportActive = false;
       return;
     }
