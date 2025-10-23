@@ -15,6 +15,7 @@
 #include <WiFi.h>
 #endif
 
+#include <string>
 #include <cstring>
 
 // Specific improvements and #define for the ESP32 S3 series
@@ -191,6 +192,8 @@ bool transportActive;
 uint8_t transportWaitCounter;
 Clock logoWaitCounterClock;
 Clock lastDataReceivedClock;
+Clock fpsClock;
+uint16_t fps = 0, frames = 0;
 bool serverRunning;
 uint8_t throbberColors[6] __attribute__((aligned(4))) = {0};
 mz_ulong uncompressedBufferSize = 2048;
@@ -542,6 +545,14 @@ void CheckMenuButton() {
     Restart();
   }
 #endif
+}
+
+void UpdateFps() {
+  if (fpsClock.getElapsedTime().asMilliseconds() >= 500) {
+    fps = frames;
+    frames = 0;
+    fpsClock.restart();
+  }
 }
 
 void MarkCurrentBufferDone() { lastBuffer = currentBuffer; }
@@ -2221,6 +2232,8 @@ void setup() {
 }
 
 void loop() {
+  if (debug) UpdateFps();
+
   CheckMenuButton();
 
   if (!transportActive) {
@@ -2407,6 +2420,12 @@ void loop() {
     } else {
       // Avoid busy-waiting
       vTaskDelay(pdMS_TO_TICKS(1));
+    }
+
+    if (debug) {
+      display->DisplayText(std::to_string(fps).c_str(),
+        TOTAL_WIDTH - 7, TOTAL_HEIGHT - 5, 255, 0, 0, false, false);
+      frames++;
     }
   }
 }
