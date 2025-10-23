@@ -15,7 +15,6 @@
 #include <WiFi.h>
 #endif
 
-#include <string>
 #include <cstring>
 
 // Specific improvements and #define for the ESP32 S3 series
@@ -194,6 +193,7 @@ Clock logoWaitCounterClock;
 Clock lastDataReceivedClock;
 Clock fpsClock;
 uint16_t fps = 0, frames = 0;
+char fpsStr[3];
 bool serverRunning;
 uint8_t throbberColors[6] __attribute__((aligned(4))) = {0};
 mz_ulong uncompressedBufferSize = 2048;
@@ -550,6 +550,7 @@ void CheckMenuButton() {
 void UpdateFps() {
   if (fpsClock.getElapsedTime().asMilliseconds() >= 500) {
     fps = frames;
+    snprintf(fpsStr, 3, "%02i", fps);
     frames = 0;
     fpsClock.restart();
   }
@@ -2244,10 +2245,12 @@ void loop() {
 
     if (!logoActive) logoActive = true;
 
-    if (!updateActive && logoWaitCounterClock.getElapsedTime().asSeconds() > 10) {
+#ifndef PICO_RP2040 // save some ram
+    if (!updateActive && logoWaitCounterClock.getElapsedTime().asSeconds() > 2) {
       updateActive = true;
       DisplayUpdate();
     }
+#endif
 
     if (!saverActive && logoWaitCounterClock.getElapsedTime().asSeconds() > 20) {
       saverActive = true;
@@ -2423,7 +2426,7 @@ void loop() {
     }
 
     if (debug) {
-      display->DisplayText(std::to_string(fps).c_str(),
+      display->DisplayText(fpsStr,
         TOTAL_WIDTH - 7, TOTAL_HEIGHT - 5, 255, 0, 0, false, false);
       frames++;
     }

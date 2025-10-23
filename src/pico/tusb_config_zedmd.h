@@ -50,8 +50,8 @@ extern "C" {
 
 #else
 // Otherwise enable host controller with MAX3421E
-#define CFG_TUH_ENABLED 1
-#define CFG_TUH_MAX3421 1
+#define CFG_TUH_ENABLED 0
+#define CFG_TUH_MAX3421 0
 
 #endif // pio_usb.h
 #endif // USE_TINYUSB_HOST

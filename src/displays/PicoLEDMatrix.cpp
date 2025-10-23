@@ -1,7 +1,7 @@
 #ifdef DISPLAY_PICO_LED_MATRIX
 
-#include <SerialUART.h>
 #include <cstring>
+#include <SerialUART.h>
 #include <hardware/vreg.h>
 #include "PicoLEDMatrix.h"
 #include "fonts/tiny4x6.h"
