@@ -198,6 +198,9 @@ bool serverRunning;
 uint8_t throbberColors[6] __attribute__((aligned(4))) = {0};
 mz_ulong uncompressedBufferSize = 2048;
 uint16_t shortId;
+#ifdef PICO_BUILD
+bool rebootToBootloader = false;
+#endif
 
 void DoRestart(int sec) {
 #ifndef ZEDMD_NO_NETWORKING
@@ -211,6 +214,10 @@ void DoRestart(int sec) {
   vTaskDelay(pdMS_TO_TICKS(sec * 1000));
   display->ClearScreen();
   delay(20);
+
+#ifdef PICO_BUILD
+  if (rebootToBootloader) rp2040.rebootToBootloader();
+#endif
 
   // Note: ESP.restart() or esp_restart() will keep the state of global and
   // static variables. And not all sub-systems get resetted.
@@ -1029,6 +1036,15 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             }
             Restart();
           }
+
+#ifdef PICO_BUILD
+          case 32:  // reboot to bootloader for easy updating
+          {
+            rebootToBootloader = true;
+            Restart();
+          }
+#endif
+
 #ifndef DISPLAY_RM67162_AMOLED
           case 40:  // set panelClkphase
           {
