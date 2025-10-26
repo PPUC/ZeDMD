@@ -56,11 +56,7 @@
 #endif
 #define BUFFER_SIZE 1152
 #elif PICO_BUILD
-#ifdef PICO_RP2350
-#define NUM_BUFFERS 12  // Number of buffers
-#else
-#define NUM_BUFFERS 6  // Number of buffers
-#endif
+#define NUM_BUFFERS 12  // Number of buffers r of buffers
 #define NUM_RENDER_BUFFERS 1
 #define BUFFER_SIZE 1152
 #else
@@ -192,7 +188,7 @@ uint8_t transportWaitCounter;
 Clock logoWaitCounterClock;
 Clock lastDataReceivedClock;
 Clock fpsClock;
-uint16_t fps = 0, frames = 0;
+uint16_t frames = 0;
 char fpsStr[3];
 bool serverRunning;
 uint8_t throbberColors[6] __attribute__((aligned(4))) = {0};
@@ -554,15 +550,6 @@ void CheckMenuButton() {
 #endif
 }
 
-void UpdateFps() {
-  if (fpsClock.getElapsedTime().asMilliseconds() >= 500) {
-    fps = frames;
-    snprintf(fpsStr, 3, "%02i", fps);
-    frames = 0;
-    fpsClock.restart();
-  }
-}
-
 void MarkCurrentBufferDone() { lastBuffer = currentBuffer; }
 
 bool AcquireNextProcessingBuffer() {
@@ -659,7 +646,7 @@ void DisplayLogo(void) {
 }
 
 void DisplayId() {
-  char id[4];
+  char id[5];
   sprintf(id, "%04X", shortId);
   display->DisplayText(id, TOTAL_WIDTH - 16, 0, 0, 0, 0, 1);
 }
@@ -2249,8 +2236,6 @@ void setup() {
 }
 
 void loop() {
-  if (debug) UpdateFps();
-
   CheckMenuButton();
 
   if (!transportActive) {
@@ -2261,12 +2246,10 @@ void loop() {
 
     if (!logoActive) logoActive = true;
 
-#ifndef PICO_RP2040 // save some ram
-    if (!updateActive && logoWaitCounterClock.getElapsedTime().asSeconds() > 2) {
+    if (!updateActive && logoWaitCounterClock.getElapsedTime().asSeconds() > 10) {
       updateActive = true;
       DisplayUpdate();
     }
-#endif
 
     if (!saverActive && logoWaitCounterClock.getElapsedTime().asSeconds() > 20) {
       saverActive = true;
@@ -2427,11 +2410,13 @@ void loop() {
                     rgb888, 3);
               }
             }
+            if (debug) frames++;
 #else
             display->FillZoneRaw565(
                 uncompressBuffer[uncompressedBufferPosition++],
                 &uncompressBuffer[uncompressedBufferPosition]);
             uncompressedBufferPosition += RGB565_ZONE_SIZE;
+            if (debug) frames++;
 #endif
           }
         }
@@ -2442,9 +2427,13 @@ void loop() {
     }
 
     if (debug) {
+      if (fpsClock.getElapsedTime().asMilliseconds() >= 200) {
+        snprintf(fpsStr, 3, "%02i", frames * 5);
+        frames = 0;
+        fpsClock.restart();
+      }
       display->DisplayText(fpsStr,
         TOTAL_WIDTH - 7, TOTAL_HEIGHT - 5, 255, 0, 0, false, false);
-      frames++;
     }
   }
 }

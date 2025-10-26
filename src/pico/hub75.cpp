@@ -3,7 +3,6 @@
 // from https://github.com/pimoroni/pimoroni-pico/blob/main/drivers/hub75
 
 #include <cstring>
-#include <algorithm>
 #include <hardware/clocks.h>
 #include "hub75.hpp"
 

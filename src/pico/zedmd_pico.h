@@ -9,7 +9,11 @@
 #include <RP2040Support.h>
 
 // in ram
+#ifdef PICO_RP2350
 #define IRAM_ATTR __attribute__((section(".time_critical.")))
+#else
+#define IRAM_ATTR
+#endif
 
 #define MALLOC_CAP_SPIRAM 0
 #define MALLOC_CAP_32BIT 1

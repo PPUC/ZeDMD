@@ -2,7 +2,7 @@
 // Created by cpasjuste on 23/10/2025.
 //
 
-#include <sys/time.h>
+#include <Arduino.h>
 #include "clock.h"
 
 Clock::Clock() {
@@ -10,9 +10,7 @@ Clock::Clock() {
 }
 
 Time Clock::getCurrentTime() {
-    timeval time{};
-    gettimeofday(&time, nullptr);
-    return microseconds(static_cast<long>(1000000) * time.tv_sec + time.tv_usec);
+    return microseconds(micros());
 }
 
 Time Clock::getElapsedTime() const {
