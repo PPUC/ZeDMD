@@ -107,7 +107,7 @@ extern "C" {
 #define CFG_TUD_VIDEO_STREAMING_EP_BUFSIZE 256
 
 // CDC FIFO size of TX and RX
-#define CFG_TUD_CDC_RX_BUFSIZE 512
+#define CFG_TUD_CDC_RX_BUFSIZE 640
 #define CFG_TUD_CDC_TX_BUFSIZE 64
 
 // MSC Buffer size of Device Mass storage

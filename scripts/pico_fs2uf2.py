@@ -37,6 +37,9 @@ def fs2uf2_action(source, target, env):
     # get fs offset
     fs_offset = 0x10000000 + int(env["PICO_FLASH_LENGTH"])
 
+    # get family
+    family = "0xe48bff59" if env["BOARD_MCU"] == "rp2350" else "0xe48bff56"
+
     # create little fs data uf2
     uf2conv = find_uf2conv(env)
     if not uf2conv:
@@ -47,7 +50,7 @@ def fs2uf2_action(source, target, env):
         str(uf2conv),
         "--convert",
         "--base", hex(fs_offset),
-        "--family", "RP2040",
+        "--family", str(family),
         str(fs_bin),
         "--output", str(fs_data_uf2)
     ]
