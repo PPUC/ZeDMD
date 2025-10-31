@@ -305,10 +305,29 @@ python ~/esp/v5.3.2/esp-idf/components/espcoredump/espcoredump.py info_corefile 
 Yes! A native MPF driver is under development.
 See [libzedmd-python-pybind11-extension](https://github.com/PPUC/libzedmd-python-pybind11-extension).
 
-### My ESP32-S3-N16R8 ZeDMD is not booting/getting black screen
+## ESP32-S3-N16R8 Issues
+Unfortunately a lot of ESP32-S3-N16R8's that are currently being manufactured feature unintended electrical components, resulting in odd behaviour. If you experience running into issues such as:
+* ZeDMD not booting by itself upon receiving power
+* ZeDMD Being stuck in the settings menu
 
-Unfortunately a lot of ESP32-S3-N16R8's that are currently being made feature an unintended capacitor near the "BOOT" button. Whenever the device is powered through USB or external power and the mini capacitor next to the "BOOT" button is present, the S3 device will not boot correctly, and often needs a manual reset for it to work. 
-> Of course, this is not the behaviour which we expect out of the ESP32-S3-N16R8. 
+You likely have an ESP32-S3-N16R8 variant which is not faulty, but needs a hardware modification to achieve the correct behaviour.
+> [!IMPORTANT]
+> Modifying hardware is at your own risk! Us maintainers of ZeDMD are certainly not liable for any damage that might occur.
 
-If the capacitor next to the boot button is present on your S3, the fix is to _simply destroy_ it.
-Please have a look at [THIS](https://www.youtube.com/shorts/o72Jn5TY_w8) video. 
+### Issue #1
+
+Some ESP32-S3-N16R8's feature an unintended capacitor near the "BOOT" button. Whenever the device is powered through USB or external power and the mini capacitor next to the "BOOT" button is present, the S3 device will not boot correctly, and often needs a manual reset for it to work. 
+ 
+![S3NoCapCorrect](docs/images/S3_no_cap_correct.png)
+![S3CapIncorrect](docs/images/S3_cap_Incorrect.png)  
+ 
+As seen in the picture to the right, if the capacitor next to the boot button is present on your S3, the fix is to _simply destroy_ it. The goal is to have it looking like the picture to the left.
+Possibly have a look at [THIS](https://www.youtube.com/shorts/o72Jn5TY_w8) video. 
+
+### Issue #2
+
+A recent report has shown that some models feature a 0 ohm resistor bridging the connection near the RGB LED. For some reason, this resulted in no longer being able to exit the settings menu, therefore making the ZeDMD unusable.
+
+![S3ResistorIncorrect](docs/images/S3_resistor_incorrect.png) 
+
+> YD-ESP32-S3 (github/vcc-gnd/yd-esp32-s3)
