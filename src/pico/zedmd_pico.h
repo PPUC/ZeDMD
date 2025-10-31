@@ -31,10 +31,6 @@
 
 class EspClass {
 public:
-    static uint32_t getFreeHeap() {
-        return rp2040.getFreeHeap();
-    }
-
     static uint64_t getEfuseMac() {
         static pico_unique_board_id_t board_id;
         pico_get_unique_board_id(&board_id);
@@ -43,8 +39,6 @@ public:
 };
 
 inline EspClass ESP;
-
-inline void esp_restart() { rp2040.reboot(); }
 
 inline uint8_t esp_reset_reason() {
     const auto reason = rp2040.getResetReason();
@@ -57,20 +51,6 @@ inline uint8_t esp_reset_reason() {
             return 0;
     }
 }
-
-inline uint32_t esp_get_free_heap_size() {
-    return rp2040.getFreeHeap();
-}
-
-inline unsigned sleep(const unsigned int seconds) {
-    sleep_ms(seconds * 1000);
-    return 0;
-}
-
-inline void esp_sleep_enable_timer_wakeup(uint64_t ms) {
-}
-
-inline void esp_deep_sleep_start() { rp2040.reboot(); }
 
 inline BaseType_t xTaskCreatePinnedToCore(const TaskFunction_t pxTaskCode,
                                           const char *const pcName,

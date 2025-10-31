@@ -22,8 +22,10 @@
 #include "S3Specific.h"
 #endif
 #include "displayDriver.h"  // Base class for all display drivers
+#ifndef PICO_BUILD
 #include "esp_log.h"
 #include "esp_task_wdt.h"
+#endif
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
 #include "freertos/semphr.h"
@@ -223,8 +225,12 @@ void DoRestart(int sec) {
   // Note: ESP.restart() or esp_restart() will keep the state of global and
   // static variables. And not all sub-systems get resetted.
 #if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
+#ifdef PICO_BUILD
+  rp2040.reboot();
+#else
   esp_sleep_enable_timer_wakeup(1000);  // Wake up after 1ms
   esp_deep_sleep_start();  // Enter deep sleep (ESP32 reboots on wake)
+#endif
 #else
   esp_restart();
 #endif
@@ -776,7 +782,11 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
         headerCompleted = true;
         continue;
       } else if (headerBytesReceived == 4) {
+#ifdef PICO_BUILD
+        rp2040.wdt_reset();
+#else
         esp_task_wdt_reset();
+#endif
         if (payloadSize > BUFFER_SIZE) {
           if (debug) {
             display->DisplayText("Error, payloadSize > BUFFER_SIZE", 0, 0, 255,
@@ -1831,7 +1841,9 @@ void StartWiFi() {
 #endif  // ZEDMD_NO_NETWORKING
 
 void setup() {
+#ifndef PICO_BUILD
   esp_log_level_set("*", ESP_LOG_NONE);
+#endif
 
   // (Re-)Initialize global state variables that might have survived a restart
   // and that don't get set by Load() functions below.
@@ -1911,7 +1923,7 @@ void setup() {
       if (debug) {
         display->DisplayText("Reboot in 30 seconds ...", 0, 24, 255, 0, 0);
         for (uint8_t i = 29; i > 0; i--) {
-          sleep(1);
+          delay(1000);
           DisplayNumber(i, 2, 40, 24, 255, 0, 0);
         }
         Restart();
@@ -1925,7 +1937,7 @@ void setup() {
       display->DisplayText("hardware.", 0, 12, 255, 0, 0);
       display->DisplayText("Reboot in 30 seconds ...", 0, 24, 255, 0, 0);
       for (uint8_t i = 29; i > 0; i--) {
-        sleep(1);
+        delay(1000);
         DisplayNumber(i, 2, 40, 24, 255, 0, 0);
       }
       Restart();
@@ -2362,7 +2374,11 @@ void loop() {
               display->DisplayText("miniz error: ", 0, 0, 255, 0, 0);
               DisplayNumber(minizStatus, 3, 13 * 4, 0, 255, 0, 0);
               display->DisplayText("free heap: ", 0, 6, 255, 0, 0);
+#ifdef PICO_BUILD
+              DisplayNumber(rp2040.getFreeHeap(), 8, 11 * 4, 6, 255, 0, 0);
+#else
               DisplayNumber(esp_get_free_heap_size(), 8, 11 * 4, 6, 255, 0, 0);
+#endif
               while (1);
             }
             return;
