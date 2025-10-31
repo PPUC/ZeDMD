@@ -614,7 +614,7 @@ void DisplayLogo(void) {
 }
 
 void DisplayId() {
-  char id[4];
+  char id[5];
   sprintf(id, "%04X", shortId);
   display->DisplayText(id, TOTAL_WIDTH - 16, 0, 0, 0, 0, 1);
 }
