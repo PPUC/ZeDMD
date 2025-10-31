@@ -82,6 +82,11 @@
 #define DOWN_BUTTON_PIN 45
 #define FORWARD_BUTTON_PIN 48
 #define BACKWARD_BUTTON_PIN 47
+#elif defined(PICO_BUILD)
+#define UP_BUTTON_PIN 14
+#define DOWN_BUTTON_PIN 15
+#define FORWARD_BUTTON_PIN 26   // so we can use rp2040 / rp2350 zero
+#define BACKWARD_BUTTON_PIN 27  // so we can use rp2040 / rp2350 zero
 #elif defined(DISPLAY_RM67162_AMOLED)
 #define UP_BUTTON_PIN 0
 #define FORWARD_BUTTON_PIN 21
@@ -1968,7 +1973,7 @@ void setup() {
     upButton->interval(100);
     upButton->setPressedState(LOW);
 
-#ifdef ARDUINO_ESP32_S3_N16R8
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(PICO_BUILD)
     Bounce2::Button *backwardButton = new Bounce2::Button();
     backwardButton->attach(BACKWARD_BUTTON_PIN, INPUT_PULLUP);
     backwardButton->interval(100);
@@ -1985,7 +1990,7 @@ void setup() {
       forwardButton->update();
       bool forward = forwardButton->pressed();
       bool backward = false;
-#ifdef ARDUINO_ESP32_S3_N16R8
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(PICO_BUILD)
       backwardButton->update();
       backward = backwardButton->pressed();
 #endif
@@ -2066,7 +2071,7 @@ void setup() {
       upButton->update();
       bool up = upButton->pressed();
       bool down = false;
-#ifdef ARDUINO_ESP32_S3_N16R8
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(PICO_BUILD)
       downButton->update();
       down = downButton->pressed();
 #endif
