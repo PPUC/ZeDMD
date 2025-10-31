@@ -1242,6 +1242,7 @@ void Task_ReadSerial(void *pvParameters) {
 
 #ifdef PICO_BUILD
   tud_cdc_set_ignore_dtr(1);
+  tud_cdc_set_rx_buffer_size(usbPackageSize + 128);
 #else
   Serial.setRxBufferSize(usbPackageSize + 128);
   Serial.setTxBufferSize(64);
