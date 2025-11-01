@@ -93,10 +93,8 @@ jobs:
         name: Build ZeDMD pico
         run: |
           pio run -e ${{ matrix.panels }}
-          pio run -e ${{ matrix.panels }} -t buildfs
-          pio run -e ${{ matrix.panels }} -t fs2uf2
-          cp .pio/build/${{ matrix.panels }}/firmware.uf2 firmware.uf2
-          cp .pio/build/${{ matrix.panels }}/littlefs_data.uf2 littlefs_data.uf2
+          pio run -e ${{ matrix.panels }} -t buildunified
+          cp .pio/build/${{ matrix.panels }}/firmware_with_fs.uf2 firmware.uf2
 
       - if: ${{ matrix.panels != 'pico_128x32' && matrix.panels != 'pico2_128x32' }}
         uses: actions/upload-artifact@v4
@@ -112,7 +110,6 @@ jobs:
           name: ZeDMD-${{ matrix.panels }}
           path: |
             firmware.uf2
-            littlefs_data.uf2
 
   post-build:
     runs-on: ubuntu-latest
@@ -148,9 +145,9 @@ jobs:
             echo "${{ needs.version.outputs.tag }}" > version.txt
             zip ../ZeDMD-LilygoS3Amoled_128x32_wifi.zip ZeDMD.bin firmware.elf version.txt
             cd ../ZeDMD-pico_128x32
-            zip ../ZeDMD-pico_128x32.zip firmware.uf2 littlefs_data.uf2 version.txt
+            zip ../ZeDMD-pico_128x32.zip firmware.uf2 version.txt
             cd ../ZeDMD-pico2_128x32
-            zip ../ZeDMD-pico2_128x32.zip firmware.uf2 littlefs_data.uf2 version.txt
+            zip ../ZeDMD-pico2_128x32.zip firmware.uf2 version.txt
             cd ..
       - name: Release
         uses: softprops/action-gh-release@v1
