@@ -1,6 +1,6 @@
 #if defined(DISPLAY_LED_MATRIX) && defined(PICO_BUILD)
 
-#include "PicoLEDMatrix.h"
+#include "PicoLedMatrix.h"
 
 #include <SerialUART.h>
 #include <hardware/vreg.h>

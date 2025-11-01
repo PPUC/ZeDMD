@@ -39,7 +39,7 @@
 #ifdef DISPLAY_RM67162_AMOLED
 #include "displays/Rm67162Amoled.h"
 #elif PICO_BUILD
-#include "displays/PicoLEDMatrix.h"
+#include "displays/PicoLedMatrix.h"
 #else
 #include "displays/Esp32LedMatrix.h"
 #endif
