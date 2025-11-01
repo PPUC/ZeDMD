@@ -41,15 +41,6 @@
 
 #include "LedMatrix.h"
 
-extern uint8_t rgbMode;
-extern int8_t yOffset;
-extern uint8_t panelClkphase;
-extern uint8_t panelDriver;
-extern uint8_t panelI2sspeed;
-extern uint8_t panelLatchBlanking;
-extern uint8_t panelMinRefreshRate;
-extern const uint8_t rgbOrder[3 * 6];
-
 class Esp32LedMatrix final : public LedMatrix {
  private:
   MatrixPanel_I2S_DMA *dma_display;
@@ -62,9 +53,10 @@ class Esp32LedMatrix final : public LedMatrix {
 
   void DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g, uint8_t b);
   void DrawPixel(uint16_t x, uint16_t y, uint16_t color);
-  void ClearScreen();
-  void SetBrightness(uint8_t level);
-  void FillScreen(uint8_t r, uint8_t g, uint8_t b);
+
+  void ClearScreen() override;
+  void SetBrightness(uint8_t level) override;
+  void FillScreen(uint8_t r, uint8_t g, uint8_t b) override;
 };
 
 #endif  // ESP32LEDMATRIX_H

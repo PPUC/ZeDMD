@@ -4,9 +4,6 @@
 #include "LedMatrix.h"
 #include "hub75.hpp"
 
-extern uint8_t rgbMode;
-extern int8_t yOffset;
-
 class PicoLedMatrix final : public LedMatrix {
  public:
   PicoLedMatrix();   // Constructor
