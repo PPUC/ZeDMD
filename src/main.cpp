@@ -41,7 +41,7 @@
 #elif PICO_BUILD
 #include "displays/PicoLEDMatrix.h"
 #else
-#include "displays/LEDMatrix.h"
+#include "displays/Esp32LedMatrix.h"
 #endif
 
 #define N_FRAME_CHARS 5
@@ -66,7 +66,7 @@
 #define NUM_RENDER_BUFFERS 1
 #define BUFFER_SIZE 1152
 #endif
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || defined(DISPLAY_PICO_LED_MATRIX)
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || defined(PICO_BUILD)
 // USB CDC
 #define SERIAL_BAUD 115200
 #define USB_PACKAGE_SIZE 512
@@ -92,9 +92,6 @@
 #elif defined(DISPLAY_RM67162_AMOLED)
 #define UP_BUTTON_PIN 0
 #define FORWARD_BUTTON_PIN 21
-#elif defined(DISPLAY_PICO_LED_MATRIX)
-#define UP_BUTTON_PIN 14
-#define FORWARD_BUTTON_PIN 15
 #else
 #define UP_BUTTON_PIN 21
 #define FORWARD_BUTTON_PIN 33
@@ -327,7 +324,7 @@ void LoadTransport() {
   f.close();
 }
 
-#if defined(DISPLAY_LED_MATRIX) || defined(DISPLAY_PICO_LED_MATRIX)
+#if defined(DISPLAY_LED_MATRIX)
 void SaveRgbOrder() {
   File f = LittleFS.open("/rgb_order.val", "w");
   f.write(rgbMode);
@@ -745,7 +742,7 @@ void RefreshSetupScreen() {
                        (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
 }
 
-static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
+static uint8_t HandleData(uint8_t *pData, size_t len) {
   uint16_t pos = 0;
   bool headerCompleted = false;
 
@@ -850,7 +847,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
 #else
             response[N_INTERMEDIATE_CTR_CHARS + 18] = 0;
 #endif
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || defined(DISPLAY_PICO_LED_MATRIX)
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || defined(PICO_BUILD)
             response[N_INTERMEDIATE_CTR_CHARS + 18] += 0b00000010;
 #endif
             response[N_INTERMEDIATE_CTR_CHARS + 19] = shortId & 0xff;
@@ -1016,7 +1013,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             SaveUsbPackageSizeMultiplier();
             SaveUdpDelay();
             SaveWiFiConfig();
-#if defined(DISPLAY_LED_MATRIX) || defined(DISPLAY_PICO_LED_MATRIX)
+#if defined(DISPLAY_LED_MATRIX)
             SaveRgbOrder();
             SavePanelSettings();
 #endif
@@ -1588,7 +1585,7 @@ void StartServer() {
   });
 
   server->on("/get_s3", HTTP_GET, [](AsyncWebServerRequest *request) {
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || defined(DISPLAY_PICO_LED_MATRIX)
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || defined(PICO_BUILD)
     request->send(200, "text/plain", String(1));
 #else
     request->send(200, "text/plain", String(0));
@@ -1605,7 +1602,7 @@ void StartServer() {
         String(TOTAL_WIDTH) + "|" + String(TOTAL_HEIGHT) + "|" +
             String(ZEDMD_VERSION_MAJOR) + "." + String(ZEDMD_VERSION_MINOR) +
             "." + String(ZEDMD_VERSION_PATCH) + "|" +
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || defined(DISPLAY_PICO_LED_MATRIX)
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || defined(PICO_BUILD)
             String(1)
 #else
             String(0)
@@ -1897,9 +1894,11 @@ void setup() {
 #ifdef DISPLAY_RM67162_AMOLED
   display = new Rm67162Amoled();  // For AMOLED display
 #elif defined(DISPLAY_LED_MATRIX)
-  display = new LedMatrix();  // For LED matrix display
-#elif defined(DISPLAY_PICO_LED_MATRIX)
+#if PICO_BUILD
   display = new PicoLedMatrix();  // For pico LED matrix display
+#else
+  display = new Esp32LedMatrix();  // For ESP32 LED matrix display
+#endif
 #endif
   display->SetBrightness(brightness);
 
