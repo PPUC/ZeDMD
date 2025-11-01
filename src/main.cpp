@@ -128,7 +128,7 @@ uint8_t *buffers[NUM_BUFFERS];
 mz_ulong bufferSizes[NUM_BUFFERS] __attribute__((aligned(4))) = {0};
 bool bufferCompressed[NUM_BUFFERS] __attribute__((aligned(4))) = {0};
 
-// The uncompress buffer should be bug enough
+// The uncompress buffer should be big enough
 uint8_t uncompressBuffer[2048] __attribute__((aligned(4)));
 uint8_t *renderBuffer[NUM_RENDER_BUFFERS];
 uint8_t currentRenderBuffer __attribute__((aligned(4)));
@@ -158,7 +158,7 @@ uint8_t panelI2sspeed = 8;
 uint8_t panelLatchBlanking = 2;
 uint8_t panelMinRefreshRate = 30;
 
-// I needed to change these from RGB to RC (Red Color), BC, GC to prevent
+// We needed to change these from RGB to RC (Red Color), BC, GC to prevent
 // conflicting with the TFT_SPI Library.
 const uint8_t rgbOrder[3 * 6] = {
     RC, GC, BC,  // rgbMode 0
