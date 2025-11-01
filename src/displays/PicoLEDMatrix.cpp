@@ -5,14 +5,12 @@
 #include <hardware/vreg.h>
 #include "PicoLEDMatrix.h"
 #include "fonts/tiny4x6.h"
-#include "pico/hub75.hpp"
 #include "pico/zedmd_pico.h"
 
-static Hub75 *s_hub75;
+static pimoroni::Hub75 *s_hub75;
 
 // interrupt callback required function
 static void __isr dma_complete() {
-    //Serial1.println("dma_complete");
     s_hub75->dma_complete();
 }
 
@@ -31,6 +29,25 @@ static void init_rgb_tables() {
     }
 }
 
+static uint16_t lut_table[256] = {
+    0, 0, 1, 1, 1, 2, 2, 3, 4, 5, 5, 6, 7, 8, 9, 10,
+    11, 12, 13, 14, 15, 17, 18, 19, 20, 22, 23, 24, 26, 27, 29, 30,
+    32, 33, 35, 36, 38, 39, 41, 43, 44, 46, 48, 50, 51, 53, 55, 57,
+    59, 60, 62, 64, 66, 68, 70, 72, 74, 76, 78, 80, 82, 84, 87, 89,
+    91, 93, 95, 98, 100, 102, 104, 107, 109, 112, 114, 116, 119, 121, 124, 126,
+    129, 131, 134, 136, 139, 142, 144, 147, 150, 152, 155, 158, 161, 163, 166, 169,
+    172, 175, 178, 181, 184, 187, 190, 193, 196, 199, 202, 205, 208, 211, 214, 218,
+    221, 224, 227, 231, 234, 237, 241, 244, 248, 251, 254, 258, 262, 265, 269, 272,
+    276, 280, 283, 287, 291, 295, 298, 302, 306, 310, 314, 318, 322, 326, 330, 334,
+    338, 342, 346, 350, 354, 359, 363, 367, 372, 376, 380, 385, 389, 394, 398, 403,
+    407, 412, 416, 421, 426, 431, 435, 440, 445, 450, 455, 460, 465, 470, 475, 480,
+    485, 490, 495, 500, 506, 511, 516, 522, 527, 532, 538, 543, 549, 555, 560, 566,
+    572, 577, 583, 589, 595, 601, 607, 613, 619, 625, 631, 637, 643, 649, 656, 662,
+    668, 675, 681, 688, 694, 701, 708, 714, 721, 728, 735, 741, 748, 755, 762, 769,
+    776, 784, 791, 798, 805, 813, 820, 828, 835, 843, 850, 858, 866, 874, 881, 889,
+    897, 905, 913, 921, 929, 938, 946, 954, 963, 971, 980, 988, 997, 1005, 1014, 1023
+};
+
 PicoLedMatrix::PicoLedMatrix() {
 #if 0
     Serial1.setTX(16);
@@ -47,9 +64,9 @@ PicoLedMatrix::PicoLedMatrix() {
     // rgb565 > rgb888 "fast" pixel conversion
     init_rgb_tables();
 
-    // TODO: handle rgbOrder/rgbMode
-    s_hub75 = new Hub75(TOTAL_WIDTH, PANEL_HEIGHT, nullptr,
-                        PANEL_FM6126A, false, static_cast<Hub75::COLOR_ORDER>(color_order[rgbMode]));
+    s_hub75 = new pimoroni::Hub75(TOTAL_WIDTH, PANEL_HEIGHT, nullptr,
+                                  pimoroni::PANEL_FM6126A, false,
+                                  static_cast<pimoroni::Hub75::COLOR_ORDER>(color_order[rgbMode]), lut_table);
     s_hub75->start(dma_complete);
 }
 
@@ -71,7 +88,6 @@ void PicoLedMatrix::DrawPixel(const uint16_t x, const uint16_t y, const uint8_t 
 }
 
 void PicoLedMatrix::DrawPixel(const uint16_t x, const uint16_t y, const uint16_t color) {
-    //Serial1.println("DrawPixel(color)");
     s_hub75->set_pixel(x, y + yOffset,
                        r5_to_8[(color >> 11) & 0x1F],
                        g6_to_8[(color >> 5) & 0x3F],
@@ -79,18 +95,16 @@ void PicoLedMatrix::DrawPixel(const uint16_t x, const uint16_t y, const uint16_t
 }
 
 void PicoLedMatrix::ClearScreen() {
-    //Serial1.println("ClearScreen");
     s_hub75->clear();
 }
 
 void PicoLedMatrix::SetBrightness(const uint8_t level) {
     // TODO: verify this (compare with an "esp board") ?
     const auto b = static_cast<uint8_t>(static_cast<float>(level) * 1.5f);
-    s_hub75->set_brightness(b);
+    s_hub75->brightness = b;
 }
 
 void PicoLedMatrix::FillScreen(const uint8_t r, const uint8_t g, const uint8_t b) {
-    //Serial1.println("FillScreen");
     for (auto x = 0; x < TOTAL_WIDTH; x++) {
         for (auto y = 0; y < TOTAL_HEIGHT; y++) {
             s_hub75->set_pixel(x, y, r, g, b);
@@ -101,7 +115,6 @@ void PicoLedMatrix::FillScreen(const uint8_t r, const uint8_t g, const uint8_t b
 void PicoLedMatrix::DisplayText(const char *text, const uint16_t x, const uint16_t y,
                                 const uint8_t r, const uint8_t g, const uint8_t b,
                                 const bool transparent, const bool inverted) {
-    //Serial1.printf("PicoLedMatrix::DisplayText: %s\r\n", text);
     for (uint8_t ti = 0; ti < strlen(text); ti++) {
         for (uint8_t tj = 0; tj <= 5; tj++) {
             const uint8_t fourPixels = getFontLine(text[ti], tj);
@@ -120,7 +133,6 @@ void PicoLedMatrix::DisplayText(const char *text, const uint16_t x, const uint16
 }
 
 void IRAM_ATTR PicoLedMatrix::FillZoneRaw(const uint8_t idx, uint8_t *pBuffer) {
-    //Serial1.println("FillZoneRaw");
     const uint8_t zoneYOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
     const uint8_t zoneXOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
 
@@ -134,7 +146,6 @@ void IRAM_ATTR PicoLedMatrix::FillZoneRaw(const uint8_t idx, uint8_t *pBuffer) {
 }
 
 void IRAM_ATTR PicoLedMatrix::FillZoneRaw565(const uint8_t idx, uint8_t *pBuffer) {
-    //Serial1.println("PicoLedMatrix::FillZoneRaw565");
     const uint8_t zoneYOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
     const uint8_t zoneXOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
 
@@ -149,7 +160,6 @@ void IRAM_ATTR PicoLedMatrix::FillZoneRaw565(const uint8_t idx, uint8_t *pBuffer
 }
 
 void IRAM_ATTR PicoLedMatrix::ClearZone(const uint8_t idx) {
-    //Serial1.println("PicoLedMatrix::ClearZone");
     const uint8_t zoneYOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
     const uint8_t zoneXOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
 
@@ -161,8 +171,6 @@ void IRAM_ATTR PicoLedMatrix::ClearZone(const uint8_t idx) {
 }
 
 void IRAM_ATTR PicoLedMatrix::FillPanelRaw(uint8_t *pBuffer) {
-    //Serial1.println("PicoLedMatrix::FillPanelRaw");
-
     for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
         for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
             const uint16_t pos = (y * TOTAL_WIDTH + x) * 3;
@@ -172,7 +180,6 @@ void IRAM_ATTR PicoLedMatrix::FillPanelRaw(uint8_t *pBuffer) {
 }
 
 PicoLedMatrix::~PicoLedMatrix() {
-    //Serial1.println("PicoLedMatrix::PicoLedMatrix");
     s_hub75->stop(dma_complete);
     delete s_hub75;
 }

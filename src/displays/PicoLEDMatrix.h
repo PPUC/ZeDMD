@@ -48,12 +48,12 @@ public:
 
 private:
     uint8_t color_order[6] = {
-        Hub75::COLOR_ORDER::RGB,
-        Hub75::COLOR_ORDER::BRG,
-        Hub75::COLOR_ORDER::GBR,
-        Hub75::COLOR_ORDER::RBG,
-        Hub75::COLOR_ORDER::GRB,
-        Hub75::COLOR_ORDER::BGR
+        static_cast<uint8_t>(pimoroni::Hub75::COLOR_ORDER::RGB),
+        static_cast<uint8_t>(pimoroni::Hub75::COLOR_ORDER::BRG),
+        static_cast<uint8_t>(pimoroni::Hub75::COLOR_ORDER::GBR),
+        static_cast<uint8_t>(pimoroni::Hub75::COLOR_ORDER::RBG),
+        static_cast<uint8_t>(pimoroni::Hub75::COLOR_ORDER::GRB),
+        static_cast<uint8_t>(pimoroni::Hub75::COLOR_ORDER::BGR)
     };
 };
 
