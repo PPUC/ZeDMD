@@ -1,3 +1,7 @@
 .DS_Store
 /.pio/
 /.vscode/
+# clion
+.idea/
+# pico pio
+*.pio.h

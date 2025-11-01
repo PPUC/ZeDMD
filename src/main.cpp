@@ -1,11 +1,19 @@
 
 #include <Arduino.h>
+#ifndef ZEDMD_NO_NETWORKING
 #include <AsyncUDP.h>
+#endif
 #include <Bounce2.h>
+#ifdef PICO_BUILD
+#include "pico/zedmd_pico.h"
+#else
 #include <ESPAsyncWebServer.h>
 #include <ESPmDNS.h>
+#endif
 #include <LittleFS.h>
+#ifndef ZEDMD_NO_NETWORKING
 #include <WiFi.h>
+#endif
 
 #include <cstring>
 
@@ -14,19 +22,24 @@
 #include "S3Specific.h"
 #endif
 #include "displayDriver.h"  // Base class for all display drivers
+#ifndef PICO_BUILD
 #include "esp_log.h"
 #include "esp_task_wdt.h"
+#endif
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "miniz/miniz.h"
+#include "utility/clock.h"
 #include "panel.h"
 #include "version.h"
 
 // To save RAM only include the driver we want to use.
 #ifdef DISPLAY_RM67162_AMOLED
 #include "displays/Rm67162Amoled.h"
+#elif PICO_BUILD
+#include "displays/PicoLEDMatrix.h"
 #else
 #include "displays/LEDMatrix.h"
 #endif
@@ -44,12 +57,16 @@
 #define NUM_RENDER_BUFFERS 2
 #endif
 #define BUFFER_SIZE 1152
+#elif PICO_BUILD
+#define NUM_BUFFERS 12  // Number of buffers r of buffers
+#define NUM_RENDER_BUFFERS 1
+#define BUFFER_SIZE 1152
 #else
 #define NUM_BUFFERS 12  // Number of buffers
 #define NUM_RENDER_BUFFERS 1
 #define BUFFER_SIZE 1152
 #endif
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || defined(DISPLAY_PICO_LED_MATRIX)
 // USB CDC
 #define SERIAL_BAUD 115200
 #define USB_PACKAGE_SIZE 512
@@ -67,9 +84,17 @@
 #define DOWN_BUTTON_PIN 45
 #define FORWARD_BUTTON_PIN 48
 #define BACKWARD_BUTTON_PIN 47
+#elif defined(PICO_BUILD)
+#define UP_BUTTON_PIN 14
+#define DOWN_BUTTON_PIN 15
+#define FORWARD_BUTTON_PIN 26   // so we can use rp2040 / rp2350 zero
+#define BACKWARD_BUTTON_PIN 27  // so we can use rp2040 / rp2350 zero
 #elif defined(DISPLAY_RM67162_AMOLED)
 #define UP_BUTTON_PIN 0
 #define FORWARD_BUTTON_PIN 21
+#elif defined(DISPLAY_PICO_LED_MATRIX)
+#define UP_BUTTON_PIN 14
+#define FORWARD_BUTTON_PIN 15
 #else
 #define UP_BUTTON_PIN 21
 #define FORWARD_BUTTON_PIN 33
@@ -94,9 +119,11 @@ const uint8_t CtrlChars[6]
     __attribute__((aligned(4))) = {'Z', 'e', 'D', 'M', 'D', 'A'};
 uint8_t numCtrlCharsFound = 0;
 
+#ifndef ZEDMD_NO_NETWORKING
 AsyncWebServer *server;
 AsyncServer *tcp;
 AsyncUDP *udp;
+#endif
 DisplayDriver *display;
 
 // Buffers for storing data
@@ -125,7 +152,7 @@ uint8_t processingBuffer __attribute__((aligned(4)));
 uint8_t brightness = 5;
 #else
 uint8_t brightness = 2;
-int8_t rgbMode = 0;
+uint8_t rgbMode = 0;
 uint8_t rgbModeLoaded = 0;
 int8_t yOffset = 0;
 uint8_t panelClkphase = 0;
@@ -160,34 +187,50 @@ bool wifiActive;
 #ifdef ZEDMD_WIFI
 int8_t transport = TRANSPORT_WIFI_UDP;
 #else
-int8_t transport = TRANSPORT_USB;
+uint8_t transport = TRANSPORT_USB;
 #endif
-bool logoActive;
+bool logoActive, updateActive, saverActive;
 bool transportActive;
 uint8_t transportWaitCounter;
-uint8_t logoWaitCounter;
-uint32_t lastDataReceived;
+Clock logoWaitCounterClock;
+Clock lastDataReceivedClock;
+Clock fpsClock;
+uint16_t frames = 0;
+char fpsStr[3];
 bool serverRunning;
 uint8_t throbberColors[6] __attribute__((aligned(4))) = {0};
 mz_ulong uncompressedBufferSize = 2048;
 uint16_t shortId;
+#ifdef PICO_BUILD
+bool rebootToBootloader = false;
+#endif
 
 void DoRestart(int sec) {
+#ifndef ZEDMD_NO_NETWORKING
   if (wifiActive) {
     MDNS.end();
     WiFi.disconnect(true);
   }
+#endif
   display->ClearScreen();
   display->DisplayText("Restarting ...", 0, 0, 255, 0, 0);
   vTaskDelay(pdMS_TO_TICKS(sec * 1000));
   display->ClearScreen();
   delay(20);
 
+#ifdef PICO_BUILD
+  if (rebootToBootloader) rp2040.rebootToBootloader();
+#endif
+
   // Note: ESP.restart() or esp_restart() will keep the state of global and
   // static variables. And not all sub-systems get resetted.
 #if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
+#ifdef PICO_BUILD
+  rp2040.reboot();
+#else
   esp_sleep_enable_timer_wakeup(1000);  // Wake up after 1ms
   esp_deep_sleep_start();  // Enter deep sleep (ESP32 reboots on wake)
+#endif
 #else
   esp_restart();
 #endif
@@ -284,7 +327,7 @@ void LoadTransport() {
   f.close();
 }
 
-#ifdef DISPLAY_LED_MATRIX
+#if defined(DISPLAY_LED_MATRIX) || defined(DISPLAY_PICO_LED_MATRIX)
 void SaveRgbOrder() {
   File f = LittleFS.open("/rgb_order.val", "w");
   f.write(rgbMode);
@@ -610,7 +653,7 @@ void DisplayLogo(void) {
   throbberColors[5] = 255;
 
   logoActive = true;
-  logoWaitCounter = 0;
+  logoWaitCounterClock.restart();
 }
 
 void DisplayId() {
@@ -739,7 +782,11 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
         headerCompleted = true;
         continue;
       } else if (headerBytesReceived == 4) {
+#ifdef PICO_BUILD
+        rp2040.wdt_reset();
+#else
         esp_task_wdt_reset();
+#endif
         if (payloadSize > BUFFER_SIZE) {
           if (debug) {
             display->DisplayText("Error, payloadSize > BUFFER_SIZE", 0, 0, 255,
@@ -803,7 +850,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
 #else
             response[N_INTERMEDIATE_CTR_CHARS + 18] = 0;
 #endif
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || defined(DISPLAY_PICO_LED_MATRIX)
             response[N_INTERMEDIATE_CTR_CHARS + 18] += 0b00000010;
 #endif
             response[N_INTERMEDIATE_CTR_CHARS + 19] = shortId & 0xff;
@@ -969,7 +1016,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             SaveUsbPackageSizeMultiplier();
             SaveUdpDelay();
             SaveWiFiConfig();
-#ifdef DISPLAY_LED_MATRIX
+#if defined(DISPLAY_LED_MATRIX) || defined(DISPLAY_PICO_LED_MATRIX)
             SaveRgbOrder();
             SavePanelSettings();
 #endif
@@ -991,6 +1038,15 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             }
             Restart();
           }
+
+#ifdef PICO_BUILD
+          case 32:  // reboot to bootloader for easy updating
+          {
+            rebootToBootloader = true;
+            Restart();
+          }
+#endif
+
 #ifndef DISPLAY_RM67162_AMOLED
           case 40:  // set panelClkphase
           {
@@ -1102,7 +1158,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
                                    7 * (TOTAL_WIDTH / 128),
                                    (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
             }
-            lastDataReceived = millis();
+            lastDataReceivedClock.restart();
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (wifiActive) break;
@@ -1174,7 +1230,7 @@ static uint8_t IRAM_ATTR HandleData(uint8_t *pData, size_t len) {
             buffers[currentBuffer][1] = 255;
             MarkCurrentBufferDone();
 #endif
-            lastDataReceived = millis();
+            lastDataReceivedClock.restart();
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (wifiActive) break;
@@ -1199,8 +1255,13 @@ void Task_ReadSerial(void *pvParameters) {
   const uint16_t usbPackageSize = usbPackageSizeMultiplier * 32;
   bool connected = false;
 
+#ifdef PICO_BUILD
+  tud_cdc_set_ignore_dtr(1);
+  tud_cdc_set_rx_buffer_size(usbPackageSize + 128);
+#else
   Serial.setRxBufferSize(usbPackageSize + 128);
   Serial.setTxBufferSize(64);
+#endif
 #if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
   // S3 USB CDC. The actual baud rate doesn't matter.
   Serial.begin(115200);
@@ -1238,14 +1299,14 @@ void Task_ReadSerial(void *pvParameters) {
   headerBytesReceived = 0;
   numCtrlCharsFound = 0;
 
+  Clock timeoutClock;
   int16_t received = 0;
   int16_t expected = 0;
-  uint16_t noDataMs = 0;
   uint8_t numFrameCharsFound = 0;
   uint8_t result = 0;
 
   while (1) {
-    noDataMs = 0;
+    timeoutClock.restart();
     numFrameCharsFound = 0;
     // Wait for FRAME header
     while (numFrameCharsFound < N_FRAME_CHARS) {
@@ -1256,9 +1317,9 @@ void Task_ReadSerial(void *pvParameters) {
           numFrameCharsFound = 0;
         }
       } else {
-        if (++noDataMs > 5000) {
+        if (timeoutClock.getElapsedTime().asMilliseconds() > CONNECTION_TIMEOUT) {
           transportActive = false;
-          noDataMs = 0;
+          timeoutClock.restart();
         }
         // Avoid busy-waiting
         vTaskDelay(pdMS_TO_TICKS(1));
@@ -1267,7 +1328,7 @@ void Task_ReadSerial(void *pvParameters) {
 
     expected = usbPackageSize - N_FRAME_CHARS;
     transportActive = true;
-    noDataMs = 0;
+    timeoutClock.restart();
     result = 0;
 
     while (1) {
@@ -1298,11 +1359,11 @@ void Task_ReadSerial(void *pvParameters) {
         Serial.write(CtrlChars, N_ACK_CHARS);
         Serial.flush();
         if (1 == result) break;  // Wait for the next FRAME header
-        noDataMs = 0;
+        timeoutClock.restart();
       } else {
-        if (++noDataMs > 5000) {
+        if (timeoutClock.getElapsedTime().asMilliseconds() > CONNECTION_TIMEOUT) {
           transportActive = false;
-          noDataMs = 0;
+          timeoutClock.restart();
           break;  // Wait for the next FRAME header
         }
         // Avoid busy-waiting
@@ -1312,6 +1373,7 @@ void Task_ReadSerial(void *pvParameters) {
   }
 }
 
+#ifndef ZEDMD_NO_NETWORKING
 static void HandleUdpPacket(AsyncUDPPacket packet) {
   static bool isProcessing = false;
 
@@ -1526,7 +1588,7 @@ void StartServer() {
   });
 
   server->on("/get_s3", HTTP_GET, [](AsyncWebServerRequest *request) {
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || defined(DISPLAY_PICO_LED_MATRIX)
     request->send(200, "text/plain", String(1));
 #else
     request->send(200, "text/plain", String(0));
@@ -1543,7 +1605,7 @@ void StartServer() {
         String(TOTAL_WIDTH) + "|" + String(TOTAL_HEIGHT) + "|" +
             String(ZEDMD_VERSION_MAJOR) + "." + String(ZEDMD_VERSION_MINOR) +
             "." + String(ZEDMD_VERSION_PATCH) + "|" +
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || defined(DISPLAY_PICO_LED_MATRIX)
             String(1)
 #else
             String(0)
@@ -1776,9 +1838,12 @@ void StartWiFi() {
     tcp->begin();
   }
 }
+#endif  // ZEDMD_NO_NETWORKING
 
 void setup() {
+#ifndef PICO_BUILD
   esp_log_level_set("*", ESP_LOG_NONE);
+#endif
 
   // (Re-)Initialize global state variables that might have survived a restart
   // and that don't get set by Load() functions below.
@@ -1796,8 +1861,8 @@ void setup() {
   logoActive = true;
   transportActive = false;
   transportWaitCounter = 0;
-  logoWaitCounter = 0;
-  lastDataReceived = 0;
+  logoWaitCounterClock.restart();
+  lastDataReceivedClock.restart();
   serverRunning = false;
   ssid_length = 0;
   pwd_length = 0;
@@ -1817,7 +1882,7 @@ void setup() {
 #endif
     LoadWiFiConfig();
     LoadUsbPackageSizeMultiplier();
-#ifdef DISPLAY_LED_MATRIX
+#if defined(DISPLAY_LED_MATRIX) || defined(DISPLAY_PICO_LED_MATRIX)
     LoadRgbOrder();
     LoadPanelSettings();
 #endif
@@ -1833,6 +1898,8 @@ void setup() {
   display = new Rm67162Amoled();  // For AMOLED display
 #elif defined(DISPLAY_LED_MATRIX)
   display = new LedMatrix();  // For LED matrix display
+#elif defined(DISPLAY_PICO_LED_MATRIX)
+  display = new PicoLedMatrix();  // For pico LED matrix display
 #endif
   display->SetBrightness(brightness);
 
@@ -1856,7 +1923,7 @@ void setup() {
       if (debug) {
         display->DisplayText("Reboot in 30 seconds ...", 0, 24, 255, 0, 0);
         for (uint8_t i = 29; i > 0; i--) {
-          sleep(1);
+          delay(1000);
           DisplayNumber(i, 2, 40, 24, 255, 0, 0);
         }
         Restart();
@@ -1870,7 +1937,7 @@ void setup() {
       display->DisplayText("hardware.", 0, 12, 255, 0, 0);
       display->DisplayText("Reboot in 30 seconds ...", 0, 24, 255, 0, 0);
       for (uint8_t i = 29; i > 0; i--) {
-        sleep(1);
+        delay(1000);
         DisplayNumber(i, 2, 40, 24, 255, 0, 0);
       }
       Restart();
@@ -1918,7 +1985,7 @@ void setup() {
     upButton->interval(100);
     upButton->setPressedState(LOW);
 
-#ifdef ARDUINO_ESP32_S3_N16R8
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(PICO_BUILD)
     Bounce2::Button *backwardButton = new Bounce2::Button();
     backwardButton->attach(BACKWARD_BUTTON_PIN, INPUT_PULLUP);
     backwardButton->interval(100);
@@ -1935,7 +2002,7 @@ void setup() {
       forwardButton->update();
       bool forward = forwardButton->pressed();
       bool backward = false;
-#ifdef ARDUINO_ESP32_S3_N16R8
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(PICO_BUILD)
       backwardButton->update();
       backward = backwardButton->pressed();
 #endif
@@ -2016,7 +2083,7 @@ void setup() {
       upButton->update();
       bool up = upButton->pressed();
       bool down = false;
-#ifdef ARDUINO_ESP32_S3_N16R8
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(PICO_BUILD)
       downButton->update();
       down = downButton->pressed();
 #endif
@@ -2156,11 +2223,13 @@ void setup() {
       break;
     }
 
+#ifndef ZEDMD_NO_NETWORKING
     case TRANSPORT_WIFI_UDP:
     case TRANSPORT_WIFI_TCP: {
       StartWiFi();
       break;
     }
+#endif // ZEDMD_NO_NETWORKING
 
     case TRANSPORT_SPI: {
       display->DisplayText("SPI connection failure ...", 0, 0, 255, 0, 0);
@@ -2193,17 +2262,15 @@ void loop() {
       // StartServer();
     }
 
-    if (!logoActive) {
-      logoActive = true;
-      logoWaitCounter = 199;
-    }
+    if (!logoActive) logoActive = true;
 
-    if (logoWaitCounter < 201) ++logoWaitCounter;
-
-    if (100 == logoWaitCounter) {
+    if (!updateActive && logoWaitCounterClock.getElapsedTime().asSeconds() > 10) {
+      updateActive = true;
       DisplayUpdate();
     }
-    if (200 == logoWaitCounter) {
+
+    if (!saverActive && logoWaitCounterClock.getElapsedTime().asSeconds() > 20) {
+      saverActive = true;
       ScreenSaver();
     }
 
@@ -2273,8 +2340,7 @@ void loop() {
     //  serverRunning = false;
     //}
 
-    if (lastDataReceived > 0 &&
-        (millis() - lastDataReceived) > CONNECTION_TIMEOUT) {
+    if (lastDataReceivedClock.getElapsedTime().asMilliseconds() > CONNECTION_TIMEOUT) {
       transportActive = false;
       return;
     }
@@ -2308,7 +2374,11 @@ void loop() {
               display->DisplayText("miniz error: ", 0, 0, 255, 0, 0);
               DisplayNumber(minizStatus, 3, 13 * 4, 0, 255, 0, 0);
               display->DisplayText("free heap: ", 0, 6, 255, 0, 0);
+#ifdef PICO_BUILD
+              DisplayNumber(rp2040.getFreeHeap(), 8, 11 * 4, 6, 255, 0, 0);
+#else
               DisplayNumber(esp_get_free_heap_size(), 8, 11 * 4, 6, 255, 0, 0);
+#endif
               while (1);
             }
             return;
@@ -2362,11 +2432,13 @@ void loop() {
                     rgb888, 3);
               }
             }
+            if (debug) frames++;
 #else
             display->FillZoneRaw565(
                 uncompressBuffer[uncompressedBufferPosition++],
                 &uncompressBuffer[uncompressedBufferPosition]);
             uncompressedBufferPosition += RGB565_ZONE_SIZE;
+            if (debug) frames++;
 #endif
           }
         }
@@ -2374,6 +2446,16 @@ void loop() {
     } else {
       // Avoid busy-waiting
       vTaskDelay(pdMS_TO_TICKS(1));
+    }
+
+    if (debug) {
+      if (fpsClock.getElapsedTime().asMilliseconds() >= 200) {
+        snprintf(fpsStr, 3, "%02i", frames * 5);
+        frames = 0;
+        fpsClock.restart();
+      }
+      display->DisplayText(fpsStr,
+        TOTAL_WIDTH - 7, TOTAL_HEIGHT - 5, 255, 0, 0, false, false);
     }
   }
 }
