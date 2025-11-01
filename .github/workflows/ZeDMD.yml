@@ -93,6 +93,7 @@ jobs:
         name: Build ZeDMD pico
         run: |
           pio run -e ${{ matrix.panels }}
+          pio run -e ${{ matrix.panels }} -t buildfs
           pio run -e ${{ matrix.panels }} -t buildunified
           cp .pio/build/${{ matrix.panels }}/firmware_with_fs.uf2 firmware.uf2
 
