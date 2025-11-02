@@ -149,7 +149,7 @@ uint8_t processingBuffer __attribute__((aligned(4)));
 uint8_t brightness = 5;
 #else
 uint8_t brightness = 2;
-uint8_t rgbMode = 0;
+int8_t rgbMode = 0; // Valid values are 0-5, but during the settings, it can be temporarily be -1 or 6.
 uint8_t rgbModeLoaded = 0;
 int8_t yOffset = 0;
 uint8_t panelClkphase = 0;
