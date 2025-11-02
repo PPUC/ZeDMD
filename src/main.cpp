@@ -132,7 +132,7 @@ uint8_t panelClkphase = 0;
 uint8_t panelDriver = 0;
 uint8_t panelI2sspeed = 8;
 uint8_t panelLatchBlanking = 2;
-uint8_t panelMinRefreshRate = 30;
+uint8_t panelMinRefreshRate = 60;
 
 // I needed to change these from RGB to RC (Red Color), BC, GC to prevent
 // conflicting with the TFT_SPI Library.
