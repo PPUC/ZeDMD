@@ -49,12 +49,12 @@ uint8_t LedMatrix::GetCurrentScalingMode() { return 0; }
 
 void LedMatrix::SetCurrentScalingMode(uint8_t mode) {}
 
-void LedMatrix::DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g,
+void IRAM_ATTR LedMatrix::DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g,
                           uint8_t b) {
   dma_display->drawPixelRGB888(x, y + yOffset, r, g, b);
 }
 
-void LedMatrix::DrawPixel(uint16_t x, uint16_t y, uint16_t color) {
+void IRAM_ATTR LedMatrix::DrawPixel(uint16_t x, uint16_t y, uint16_t color) {
   dma_display->drawPixel(x, y + yOffset, color);
 }
 
