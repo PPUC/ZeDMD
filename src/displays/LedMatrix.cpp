@@ -1,6 +1,16 @@
 #ifdef DISPLAY_LED_MATRIX
 #include "LedMatrix.h"
 
+#ifdef ESP_BUILD
+#include "esp_attr.h"
+#elif defined(PICO_BUILD)
+#ifdef PICO_RP2350
+#define IRAM_ATTR __attribute__((section(".time_critical.")))
+#else
+#define IRAM_ATTR
+#endif
+#endif
+
 #include <cstring>
 
 #include "fonts/tiny4x6.h"
@@ -49,7 +59,7 @@ void LedMatrix::DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t r,
   }
 }
 
-void LedMatrix::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
+void IRAM_ATTR LedMatrix::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
   const uint8_t zoneYOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
   const uint8_t zoneXOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
 
@@ -63,7 +73,7 @@ void LedMatrix::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
   }
 }
 
-void LedMatrix::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
+void IRAM_ATTR LedMatrix::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
   const uint8_t zoneYOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
   const uint8_t zoneXOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
 
@@ -76,7 +86,7 @@ void LedMatrix::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
   }
 }
 
-void LedMatrix::ClearZone(uint8_t idx) {
+void IRAM_ATTR LedMatrix::ClearZone(uint8_t idx) {
   const uint8_t zoneYOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
   const uint8_t zoneXOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
 
@@ -87,7 +97,7 @@ void LedMatrix::ClearZone(uint8_t idx) {
   }
 }
 
-void LedMatrix::FillPanelRaw(uint8_t *pBuffer) {
+void IRAM_ATTR LedMatrix::FillPanelRaw(uint8_t *pBuffer) {
   uint16_t pos;
 
   for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
