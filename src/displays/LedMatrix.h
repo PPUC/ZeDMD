@@ -1,17 +1,7 @@
 #ifndef LEDMATRIX_H
 #define LEDMATRIX_H
 
-#include "displayDriver.h"
-#include "panel.h"  // Include ZeDMD panel constants
-
-extern uint8_t rgbMode;
-extern int8_t yOffset;
-extern uint8_t panelClkphase;
-extern uint8_t panelDriver;
-extern uint8_t panelI2sspeed;
-extern uint8_t panelLatchBlanking;
-extern uint8_t panelMinRefreshRate;
-extern const uint8_t rgbOrder[3 * 6];
+#include "main.h"
 
 class LedMatrix : public DisplayDriver {
  public:
