@@ -149,7 +149,7 @@ uint8_t processingBuffer __attribute__((aligned(4)));
 uint8_t brightness = 5;
 #else
 uint8_t brightness = 2;
-int8_t rgbMode = 0; // Valid values are 0-5, but during the settings, it can be temporarily be -1 or 6.
+uint8_t rgbMode = 0; // Valid values are 0-5.
 uint8_t rgbModeLoaded = 0;
 int8_t yOffset = 0;
 uint8_t panelClkphase = 0;
@@ -327,7 +327,7 @@ void LoadTransport() {
 #if defined(DISPLAY_LED_MATRIX)
 void SaveRgbOrder() {
   File f = LittleFS.open("/rgb_order.val", "w");
-  f.write(rgbMode);
+  f.write((uint8_t) rgbMode);
   f.close();
 }
 
@@ -2147,7 +2147,7 @@ void setup() {
             }
             if (up && ++rgbMode > 5)
               rgbMode = 0;
-            else if (down && --rgbMode < 0)
+            else if (down && --rgbMode > 5) // underflow will result in 255, set it to 5
               rgbMode = 5;
             RefreshSetupScreen();
             DisplayRGB(255, 191, 0);
