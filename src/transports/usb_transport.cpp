@@ -27,9 +27,11 @@ bool UsbTransport::init() {
 }
 
 bool UsbTransport::deinit() {
-  m_active = false;
-  delay(500);
-  vTaskDelete(m_task);
+  if (m_active) {
+    m_active = false;
+    delay(500);
+    vTaskDelete(m_task);
+  }
 
   return true;
 }
@@ -68,10 +70,10 @@ void UsbTransport::Task_ReadSerial(void* pvParameters) {
 #endif
 
 #ifdef BOARD_HAS_PSRAM
-  uint8_t* pUsbBuffer = (uint8_t*)heap_caps_malloc(
-      usbPackageSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
+  const auto pUsbBuffer = static_cast<uint8_t*>(heap_caps_malloc(
+      usbPackageSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT));
 #else
-  uint8_t* pUsbBuffer = (uint8_t*)malloc(usbPackageSize);
+  const auto pUsbBuffer = static_cast<uint8_t*>(malloc(usbPackageSize));
 #endif
 
   if (nullptr == pUsbBuffer) {
@@ -84,8 +86,8 @@ void UsbTransport::Task_ReadSerial(void* pvParameters) {
   numCtrlCharsFound = 0;
 
   Clock timeoutClock;
-  int16_t received = 0;
-  int16_t expected = 0;
+  size_t received = 0;
+  size_t expected = 0;
   uint8_t numFrameCharsFound = 0;
   uint8_t result = 0;
 
@@ -114,7 +116,6 @@ void UsbTransport::Task_ReadSerial(void* pvParameters) {
     expected = usbPackageSize - N_FRAME_CHARS;
     transportActive = true;
     timeoutClock.restart();
-    result = 0;
 
     while (transport->isActive()) {
       // Wait for data to be ready

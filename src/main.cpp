@@ -708,8 +708,7 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
 #else
             response[N_INTERMEDIATE_CTR_CHARS + 18] = 0;
 #endif
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || \
-    defined(PICO_BUILD)
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || defined(PICO_BUILD)
             response[N_INTERMEDIATE_CTR_CHARS + 18] += 0b00000010;
 #endif
             response[N_INTERMEDIATE_CTR_CHARS + 19] = shortId & 0xff;
@@ -1457,10 +1456,8 @@ void setup() {
             uint8_t delay = transport->getDelay();
             if (up && ++delay > 9)
               delay = 0;
-            else if (down && delay == 0)
+            else if (down && --delay > 9) // underflow will result in 255, set it to 9
               delay = 9;
-            else if (down)
-              --delay;
 
             DisplayNumber(delay, 1,
                           TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 4,
