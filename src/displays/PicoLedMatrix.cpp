@@ -77,13 +77,13 @@ PicoLedMatrix::~PicoLedMatrix() {
   delete s_hub75;
 }
 
-void PicoLedMatrix::DrawPixel(const uint16_t x, const uint16_t y,
+void IRAM_ATTR PicoLedMatrix::DrawPixel(const uint16_t x, const uint16_t y,
                               const uint8_t r, const uint8_t g,
                               const uint8_t b) {
   s_hub75->set_pixel(x, y + yOffset, r, g, b);
 }
 
-void PicoLedMatrix::DrawPixel(const uint16_t x, const uint16_t y,
+void IRAM_ATTR PicoLedMatrix::DrawPixel(const uint16_t x, const uint16_t y,
                               const uint16_t color) {
   s_hub75->set_pixel(x, y + yOffset, r5_to_8[(color >> 11) & 0x1F],
                      g6_to_8[(color >> 5) & 0x3F], b5_to_8[color & 0x1F]);

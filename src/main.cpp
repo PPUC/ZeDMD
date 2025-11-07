@@ -67,14 +67,14 @@ uint8_t processingBuffer __attribute__((aligned(4)));
 uint8_t brightness = 5;
 #else
 uint8_t brightness = 2;
-uint8_t rgbMode = 0;
+uint8_t rgbMode = 0; // Valid values are 0-5.
 uint8_t rgbModeLoaded = 0;
 int8_t yOffset = 0;
 uint8_t panelClkphase = 0;
 uint8_t panelDriver = 0;
 uint8_t panelI2sspeed = 8;
 uint8_t panelLatchBlanking = 2;
-uint8_t panelMinRefreshRate = 30;
+uint8_t panelMinRefreshRate = 60;
 
 // We needed to change these from RGB to RC (Red Color), BC, GC to prevent
 // conflicting with the TFT_SPI Library.
@@ -233,7 +233,7 @@ void LoadTransport() {
 #if defined(DISPLAY_LED_MATRIX)
 void SaveRgbOrder() {
   File f = LittleFS.open("/rgb_order.val", "w");
-  f.write(rgbMode);
+  f.write((uint8_t) rgbMode);
   f.close();
 }
 
@@ -1445,7 +1445,7 @@ void setup() {
             }
             if (up && ++rgbMode > 5)
               rgbMode = 0;
-            else if (down && --rgbMode < 0)
+            else if (down && --rgbMode > 5) // underflow will result in 255, set it to 5
               rgbMode = 5;
             RefreshSetupScreen();
             DisplayRGB(255, 191, 0);
