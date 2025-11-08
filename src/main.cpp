@@ -609,11 +609,13 @@ void RefreshSetupScreen() {
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
   DisplayNumber(debug, 1, 7 * (TOTAL_WIDTH / 128) + (6 * 4),
                 (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
-  display->DisplayText("USB Packet Size:", 7 * (TOTAL_WIDTH / 128),
-                       (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
-  DisplayNumber(usbPackageSizeMultiplier * 32, 4,
-                7 * (TOTAL_WIDTH / 128) + (16 * 4), (TOTAL_HEIGHT / 2) + 4, 255,
-                191, 0);
+  if (transport->isUsb()) {
+    display->DisplayText("USB Packet Size:", 7 * (TOTAL_WIDTH / 128),
+                         (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
+    DisplayNumber(usbPackageSizeMultiplier * 32, 4,
+                  7 * (TOTAL_WIDTH / 128) + (16 * 4), (TOTAL_HEIGHT / 2) + 4, 255,
+                  191, 0);
+  }
   if (transport->isWifi()) {
     display->DisplayText(
         "UDP Delay:", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - (11 * 4),
@@ -1313,6 +1315,9 @@ void setup() {
           position = 1;
         else if (backward && --position < 1)
           position = MENU_ITEMS_COUNT;
+        if (!transport->isUsb()) {
+          if (position == 3) position = forward ? 4 : 2;
+        }
 
         switch (position) {
           case 1: {  // Exit
@@ -1417,10 +1422,10 @@ void setup() {
             else if (down && --type < Transport::USB)
               type = Transport::SPI;
 #endif
-            display->DisplayText(transport->getTypeString(),
-                7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             SaveTransport(type);
             RefreshSetupScreen();
+            display->DisplayText(transport->getTypeString(),
+                7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             break;
           }
           case 5: {  // Debug

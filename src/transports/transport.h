@@ -46,6 +46,10 @@ public:
 
   virtual bool saveDelay() { return true; }
 
+  bool isUsb() const {
+    return m_type == USB;
+  }
+
   bool isWifi() const {
     return m_type == WIFI_UDP || m_type == WIFI_TCP;
   }
