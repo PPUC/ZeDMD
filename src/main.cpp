@@ -99,9 +99,6 @@ bool transportActive;
 uint8_t transportWaitCounter;
 Clock logoWaitCounterClock;
 Clock lastDataReceivedClock;
-Clock fpsClock;
-uint16_t frames = 0;
-char fpsStr[3];
 uint8_t throbberColors[6] __attribute__((aligned(4))) = {0};
 mz_ulong uncompressedBufferSize = 2048;
 uint16_t shortId;
@@ -460,6 +457,28 @@ bool AcquireNextProcessingBuffer() {
   return false;
 }
 
+//#define ZEDMD_CLIENT_DEBUG_FPS
+#ifdef ZEDMD_CLIENT_DEBUG_FPS
+Clock fpsClock;
+uint16_t frames = 0;
+char fpsStr[3];
+
+void FpsUpdate() {
+  //if (debug) {
+    frames++;
+
+    if (fpsClock.getElapsedTime().asMilliseconds() >= 200) {
+      snprintf(fpsStr, 3, "%02i", frames * 5);
+      frames = 0;
+      fpsClock.restart();
+    }
+
+    display->DisplayText(fpsStr, TOTAL_WIDTH - 7, TOTAL_HEIGHT - 5, 255, 0, 0,
+                         false, false);
+  //}
+}
+#endif
+
 void Render() {
   if (NUM_RENDER_BUFFERS == 1) {
     display->FillPanelRaw(renderBuffer[currentRenderBuffer]);
@@ -483,6 +502,10 @@ void Render() {
     memcpy(renderBuffer[currentRenderBuffer], renderBuffer[lastRenderBuffer],
            TOTAL_BYTES);
   }
+
+#ifdef ZEDMD_CLIENT_DEBUG_FPS
+  FpsUpdate();
+#endif
 }
 
 void ClearScreen() {
@@ -1684,13 +1707,11 @@ void loop() {
                     rgb888, 3);
               }
             }
-            if (debug) frames++;
 #else
             display->FillZoneRaw565(
                 uncompressBuffer[uncompressedBufferPosition++],
                 &uncompressBuffer[uncompressedBufferPosition]);
             uncompressedBufferPosition += RGB565_ZONE_SIZE;
-            if (debug) frames++;
 #endif
           }
         }
@@ -1698,16 +1719,6 @@ void loop() {
     } else {
       // Avoid busy-waiting
       vTaskDelay(pdMS_TO_TICKS(1));
-    }
-
-    if (debug) {
-      if (fpsClock.getElapsedTime().asMilliseconds() >= 200) {
-        snprintf(fpsStr, 3, "%02i", frames * 5);
-        frames = 0;
-        fpsClock.restart();
-      }
-      display->DisplayText(fpsStr, TOTAL_WIDTH - 7, TOTAL_HEIGHT - 5, 255, 0, 0,
-                           false, false);
     }
   }
 }
