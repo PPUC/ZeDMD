@@ -49,10 +49,10 @@ class Esp32LedMatrix final : public LedMatrix {
 
  public:
   Esp32LedMatrix();   // Constructor
-  ~Esp32LedMatrix();  // Destructor
+  ~Esp32LedMatrix() override;  // Destructor
 
-  void DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g, uint8_t b);
-  void DrawPixel(uint16_t x, uint16_t y, uint16_t color);
+  void DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g, uint8_t b) override;
+  void DrawPixel(uint16_t x, uint16_t y, uint16_t color) override;
 
   void ClearScreen() override;
   void SetBrightness(uint8_t level) override;
