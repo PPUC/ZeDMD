@@ -22,6 +22,8 @@ public:
 
   virtual uint8_t getType() { return m_type; }
 
+  virtual void setType(const uint8_t type) { m_type = type; }
+
   virtual bool loadConfig() { return true; }
 
   virtual bool saveConfig() { return true; }

@@ -93,7 +93,6 @@ uint8_t settingsMenu = 0;
 uint8_t debug = 0;
 
 Transport *transport = nullptr;
-uint8_t transportType = Transport::USB;
 
 bool logoActive, updateActive, saverActive;
 bool transportActive;
@@ -213,21 +212,50 @@ void LoadSettingsMenu() {
   f.close();
 }
 
-void SaveTransport() {
+void SaveTransport(const uint8_t type = Transport::USB) {
+  if (!transport) return;
+
   File f = LittleFS.open("/transport.val", "w");
-  f.write(transportType);
+  f.write(type);
   f.close();
+
+  // set new transport type (not active until reboot)
+  transport->setType(type);
 }
 
 void LoadTransport() {
   File f = LittleFS.open("/transport.val", "r");
   if (!f) {
-    SaveTransport();
+    SaveTransport(transport ? transport->getType() : Transport::USB);
     return;
   }
 
-  transportType = f.read();
+  const uint8_t value = f.read();
   f.close();
+
+  // "reload" new transport (without init)
+  delete transport;
+
+  switch (value) {
+    case Transport::USB: {
+      transport = new UsbTransport();
+      break;
+    }
+#ifndef ZEDMD_NO_NETWORKING
+    case Transport::WIFI_UDP:
+    case Transport::WIFI_TCP: {
+      transport = new WifiTransport();
+      break;
+    }
+#endif
+    case Transport::SPI:
+    default: {
+      transport = new Transport();
+    }
+  }
+
+  transport->loadConfig();
+  transport->loadDelay();
 }
 
 #if defined(DISPLAY_LED_MATRIX)
@@ -412,6 +440,7 @@ void AcquireNextBuffer() {
 void CheckMenuButton() {
 #ifndef DISPLAY_RM67162_AMOLED
   if (!digitalRead(FORWARD_BUTTON_PIN)) {
+    Serial1.println("CheckMenuButton: forward button pressed...");
     settingsMenu = true;
     SaveSettingsMenu();
     delay(20);
@@ -575,11 +604,11 @@ void RefreshSetupScreen() {
   DisplayRGB();
   DisplayLum();
   display->DisplayText(
-      transportType == Transport::USB
+      transport->getType() == Transport::USB
           ? "USB "
-          : (transportType == Transport::WIFI_UDP
+          : (transport->getType() == Transport::WIFI_UDP
                  ? "WiFi UDP"
-                 : (transportType == Transport::WIFI_TCP ? "WiFi TCP" : "SPI ")),
+                 : (transport->getType() == Transport::WIFI_TCP ? "WiFi TCP" : "SPI ")),
       7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
   display->DisplayText("Debug:", 7 * (TOTAL_WIDTH / 128),
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
@@ -590,11 +619,13 @@ void RefreshSetupScreen() {
   DisplayNumber(usbPackageSizeMultiplier * 32, 4,
                 7 * (TOTAL_WIDTH / 128) + (16 * 4), (TOTAL_HEIGHT / 2) + 4, 255,
                 191, 0);
-  display->DisplayText(
-      "UDP Delay:", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - (11 * 4),
-      (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
-  DisplayNumber(transport->getDelay(), 1, TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 4,
-                (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+  if (transport->isWifi()) {
+    display->DisplayText(
+        "UDP Delay:", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - (11 * 4),
+        (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
+    DisplayNumber(transport->getDelay(), 1, TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 4,
+                  (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+  }
 #ifdef ZEDMD_HD_HALF
   display->DisplayText("Y-Offset", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
@@ -966,8 +997,8 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
 #endif
           case 45:  // set transport
           {
-            // TODO: verify this (need Reset ?)
-            transportType = pData[pos++];
+            // TODO: verify this (need Save ? need Reset ?)
+            transport->setType(pData[pos++]);
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (transport->isWifiAndActive()) break;
@@ -1168,27 +1199,6 @@ void setup() {
 #endif
   }
 
-  switch (transportType) {
-    case Transport::USB: {
-      transport = new UsbTransport();
-      break;
-    }
-#ifndef ZEDMD_NO_NETWORKING
-    case Transport::WIFI_UDP:
-    case Transport::WIFI_TCP: {
-      transport = new WifiTransport();
-      break;
-    }
-#endif
-    case Transport::SPI:
-    default: {
-      transport = new Transport();
-    }
-  }
-
-  transport->loadConfig();
-  transport->loadDelay();
-
 #ifdef DISPLAY_RM67162_AMOLED
   display = new Rm67162Amoled();  // For AMOLED display
 #elif defined(DISPLAY_LED_MATRIX)
@@ -1304,17 +1314,11 @@ void setup() {
       backward = backwardButton->pressed();
 #endif
       if (forward || backward) {
-#ifdef ZEDMD_HD_HALF
-        if (forward && ++position > 8)
+        if (forward && ++position > MENU_ITEMS_COUNT)
           position = 1;
         else if (backward && --position < 1)
-          position = 8;
-#else
-        if (forward && ++position > 7)
-          position = 1;
-        else if (backward && --position < 1)
-          position = 7;
-#endif
+          position = MENU_ITEMS_COUNT;
+
         switch (position) {
           case 1: {  // Exit
             RefreshSetupScreen();
@@ -1337,12 +1341,10 @@ void setup() {
           case 4: {  // Transport
             RefreshSetupScreen();
             display->DisplayText(
-                transportType == Transport::USB
-                    ? "USB     "
-                    : (transportType == Transport::WIFI_UDP
-                           ? "WiFi UDP"
-                           : (transportType == Transport::WIFI_TCP ? "WiFi TCP"
-                                                              : "SPI     ")),
+                transport->getType() == Transport::USB ? "USB     "
+                : transport->getType() == Transport::WIFI_UDP ? "WiFi UDP"
+                : transport->getType() == Transport::WIFI_TCP ? "WiFi TCP"
+                : "SPI     ",
                 7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             break;
           }
@@ -1414,19 +1416,21 @@ void setup() {
             break;
           }
           case 4: {  // Transport
-            if (up && ++transportType > Transport::SPI)
-              transportType = Transport::USB;
-            else if (down && --transportType < Transport::USB)
-              transportType = Transport::SPI;
+#ifdef ZEDMD_NO_NETWORKING
+            uint8_t type = transport->getType() == Transport::USB ?
+              Transport::SPI : Transport::USB;
+#else
+            if (up && ++type > Transport::SPI)
+              type = Transport::USB;
+            else if (down && --type < Transport::USB)
+              type = Transport::SPI;
+#endif
             display->DisplayText(
-                transportType == Transport::USB
-                    ? "USB     "
-                    : (transportType == Transport::WIFI_UDP
-                           ? "WiFi UDP"
-                           : (transportType == Transport::WIFI_TCP ? "WiFi TCP"
-                                                              : "SPI     ")),
+                type == Transport::USB ? "USB     "
+                : type == Transport::WIFI_UDP ? "WiFi UDP"
+                : type == Transport::WIFI_TCP ? "WiFi TCP" : "SPI     ",
                 7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
-            SaveTransport();
+            SaveTransport(type);
             break;
           }
           case 5: {  // Debug
@@ -1489,6 +1493,12 @@ void setup() {
 #endif
 
   pinMode(FORWARD_BUTTON_PIN, INPUT_PULLUP);
+#ifdef PICO_BUILD
+  // do not leave some pin configured as adc / floating
+  pinMode(BACKWARD_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(UP_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(DOWN_BUTTON_PIN, INPUT_PULLUP);
+#endif
 
   DisplayLogo();
   DisplayId();

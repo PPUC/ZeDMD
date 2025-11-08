@@ -29,8 +29,9 @@ bool UsbTransport::init() {
 bool UsbTransport::deinit() {
   if (m_active) {
     m_active = false;
-    delay(500);
-    vTaskDelete(m_task);
+    // TODO ? clean exit ?
+    //delay(500);
+    //vTaskDelete(m_task);
   }
 
   return true;
