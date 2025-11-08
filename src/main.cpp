@@ -189,6 +189,32 @@ void DisplayRGB(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
 /// @brief Get DisplayDriver object, required for webserver
 DisplayDriver *GetDisplayDriver() { return display; }
 
+void TransportCreate(const uint8_t type = Transport::USB) {
+  // "reload" new transport (without init)
+  delete transport;
+
+  switch (type) {
+    case Transport::USB: {
+      transport = new UsbTransport();
+      break;
+    }
+#ifndef ZEDMD_NO_NETWORKING
+    case Transport::WIFI_UDP:
+    case Transport::WIFI_TCP: {
+      transport = new WifiTransport();
+      break;
+    }
+#endif
+    case Transport::SPI:
+    default: {
+      transport = new Transport();
+    }
+  }
+
+  transport->loadConfig();
+  transport->loadDelay();
+}
+
 void SaveSettingsMenu() {
   File f = LittleFS.open("/settings_menu.val", "w");
   f.write(settingsMenu);
@@ -223,36 +249,15 @@ void SaveTransport(const uint8_t type = Transport::USB) {
 void LoadTransport() {
   File f = LittleFS.open("/transport.val", "r");
   if (!f) {
-    SaveTransport(transport ? transport->getType() : Transport::USB);
+    const uint8_t type = transport != nullptr ? transport->getType() : Transport::USB;
+    SaveTransport(type);
+    TransportCreate(type);
     return;
   }
 
-  const uint8_t value = f.read();
+  const uint8_t type = f.read();
   f.close();
-
-  // "reload" new transport (without init)
-  delete transport;
-
-  switch (value) {
-    case Transport::USB: {
-      transport = new UsbTransport();
-      break;
-    }
-#ifndef ZEDMD_NO_NETWORKING
-    case Transport::WIFI_UDP:
-    case Transport::WIFI_TCP: {
-      transport = new WifiTransport();
-      break;
-    }
-#endif
-    case Transport::SPI:
-    default: {
-      transport = new Transport();
-    }
-  }
-
-  transport->loadConfig();
-  transport->loadDelay();
+  TransportCreate(type);
 }
 
 #if defined(DISPLAY_LED_MATRIX)
@@ -1216,15 +1221,17 @@ void setup() {
 #ifdef ZEDMD_HD_HALF
     LoadYOffset();
 #endif
+  } else {
+    TransportCreate();
   }
 
 #ifdef DISPLAY_RM67162_AMOLED
-  display = new Rm67162Amoled();  // For AMOLED display
+  display = (DisplayDriver *) new Rm67162Amoled();  // For AMOLED display
 #elif defined(DISPLAY_LED_MATRIX)
 #if PICO_BUILD
-  display = new PicoLedMatrix();  // For pico LED matrix display
+  display = (DisplayDriver *) new PicoLedMatrix();  // For pico LED matrix display
 #else
-  display = new Esp32LedMatrix();  // For ESP32 LED matrix display
+  display = (DisplayDriver *) new Esp32LedMatrix();  // For ESP32 LED matrix display
 #endif
 #endif
   display->SetBrightness(brightness);
