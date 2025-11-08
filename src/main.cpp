@@ -603,12 +603,7 @@ void RefreshSetupScreen() {
   }
   DisplayRGB();
   DisplayLum();
-  display->DisplayText(
-      transport->getType() == Transport::USB
-          ? "USB "
-          : (transport->getType() == Transport::WIFI_UDP
-                 ? "WiFi UDP"
-                 : (transport->getType() == Transport::WIFI_TCP ? "WiFi TCP" : "SPI ")),
+  display->DisplayText(transport->getTypeString(),
       7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
   display->DisplayText("Debug:", 7 * (TOTAL_WIDTH / 128),
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
@@ -1340,11 +1335,7 @@ void setup() {
           }
           case 4: {  // Transport
             RefreshSetupScreen();
-            display->DisplayText(
-                transport->getType() == Transport::USB ? "USB     "
-                : transport->getType() == Transport::WIFI_UDP ? "WiFi UDP"
-                : transport->getType() == Transport::WIFI_TCP ? "WiFi TCP"
-                : "SPI     ",
+            display->DisplayText(transport->getTypeString(),
                 7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             break;
           }
@@ -1417,7 +1408,7 @@ void setup() {
           }
           case 4: {  // Transport
 #ifdef ZEDMD_NO_NETWORKING
-            uint8_t type = transport->getType() == Transport::USB ?
+            const uint8_t type = transport->getType() == Transport::USB ?
               Transport::SPI : Transport::USB;
 #else
             uint8_t type = transport->getType();
@@ -1426,12 +1417,10 @@ void setup() {
             else if (down && --type < Transport::USB)
               type = Transport::SPI;
 #endif
-            display->DisplayText(
-                type == Transport::USB ? "USB     "
-                : type == Transport::WIFI_UDP ? "WiFi UDP"
-                : type == Transport::WIFI_TCP ? "WiFi TCP" : "SPI     ",
+            display->DisplayText(transport->getTypeString(),
                 7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             SaveTransport(type);
+            RefreshSetupScreen();
             break;
           }
           case 5: {  // Debug

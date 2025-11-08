@@ -24,6 +24,16 @@ public:
 
   virtual void setType(const uint8_t type) { m_type = type; }
 
+  virtual const char* getTypeString() {
+    return m_type == USB
+             ? "USB     "
+             : m_type == WIFI_UDP
+             ? "WiFi UDP"
+             : m_type == WIFI_TCP
+             ? "WiFi TCP"
+             : "SPI     ";
+  }
+
   virtual bool loadConfig() { return true; }
 
   virtual bool saveConfig() { return true; }
