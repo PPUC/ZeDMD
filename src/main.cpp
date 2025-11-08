@@ -1467,6 +1467,7 @@ void setup() {
             DisplayNumber(delay, 1,
                           TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 4,
                           (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+            transport->setDelay(delay);
             transport->saveDelay();
             break;
           }

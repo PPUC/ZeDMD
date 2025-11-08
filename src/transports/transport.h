@@ -28,7 +28,7 @@ public:
 
   virtual bool saveConfig() { return true; }
 
-  virtual uint8_t getDelay() { return 0; }
+  virtual uint8_t getDelay() { return m_delay; }
 
   virtual void setDelay(const uint8_t delay) { m_delay = delay; }
 
