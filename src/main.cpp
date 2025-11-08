@@ -440,7 +440,6 @@ void AcquireNextBuffer() {
 void CheckMenuButton() {
 #ifndef DISPLAY_RM67162_AMOLED
   if (!digitalRead(FORWARD_BUTTON_PIN)) {
-    Serial1.println("CheckMenuButton: forward button pressed...");
     settingsMenu = true;
     SaveSettingsMenu();
     delay(20);
