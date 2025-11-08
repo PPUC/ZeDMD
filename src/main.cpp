@@ -1380,7 +1380,7 @@ void setup() {
       }
 
       upButton->update();
-      bool up = upButton->pressed();
+      const bool up = upButton->pressed();
       bool down = false;
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(PICO_BUILD)
       downButton->update();
@@ -1420,6 +1420,7 @@ void setup() {
             uint8_t type = transport->getType() == Transport::USB ?
               Transport::SPI : Transport::USB;
 #else
+            uint8_t type = transport->getType();
             if (up && ++type > Transport::SPI)
               type = Transport::USB;
             else if (down && --type < Transport::USB)
