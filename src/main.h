@@ -71,9 +71,9 @@ defined(PICO_BUILD)
 #endif
 #else
 #ifdef ZEDMD_HD_HALF
-#define MENU_ITEMS_COUNT 7
-#else
 #define MENU_ITEMS_COUNT 8
+#else
+#define MENU_ITEMS_COUNT 7
 #endif
 #endif
 

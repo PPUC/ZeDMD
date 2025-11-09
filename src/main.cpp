@@ -645,10 +645,10 @@ void RefreshSetupScreen() {
   }
   if (transport->isWifi()) {
     display->DisplayText(
-        "UDP Delay:", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - (11 * 4),
-        (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
-    DisplayNumber(transport->getDelay(), 1, TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 4,
-                  (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+    "UDP Delay:", 7 * (TOTAL_WIDTH / 128),
+                     (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
+    DisplayNumber(transport->getDelay(), 1, 7 * (TOTAL_WIDTH / 128) + 10 * 4,
+                         (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
   }
 #ifdef ZEDMD_HD_HALF
   display->DisplayText("Y-Offset", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
@@ -1344,7 +1344,12 @@ void setup() {
           position = 1;
         else if (backward && --position < 1)
           position = MENU_ITEMS_COUNT;
-        if (!transport->isUsb()) {
+        // skip disabled transport menus
+        if (transport->isUsb()) {
+          if (position == 4) position = forward ? 5 : 3;
+        } else if (transport->isSpi()) {
+          if (position == 3 || position == 4) position = forward ? 5 : 2;
+        } else {
           if (position == 3) position = forward ? 4 : 2;
         }
 
@@ -1367,29 +1372,28 @@ void setup() {
                                  (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
             break;
           }
-          case 4: {  // Transport
+          case 4: {  // UDP Delay
+            RefreshSetupScreen();
+            display->DisplayText(
+                "UDP Delay:",
+                7 * (TOTAL_WIDTH / 128), TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
+            break;
+          }
+          case 5: {  // Transport
             RefreshSetupScreen();
             display->DisplayText(transport->getTypeString(),
                 7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             break;
           }
-          case 5: {  // Debug
+          case 6: {  // Debug
             RefreshSetupScreen();
             display->DisplayText("Debug:", 7 * (TOTAL_WIDTH / 128),
                                  (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
             break;
           }
-          case 6: {  // RGB order
+          case 7: {  // RGB order
             RefreshSetupScreen();
             DisplayRGB(255, 191, 0);
-            break;
-          }
-          case 7: {  // UDP Delay
-            RefreshSetupScreen();
-            display->DisplayText(
-                "UDP Delay:",
-                TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - (11 * 4),
-                (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             break;
           }
 #ifdef ZEDMD_HD_HALF
@@ -1440,7 +1444,20 @@ void setup() {
             SaveUsbPackageSizeMultiplier();
             break;
           }
-          case 4: {  // Transport
+          case 4: {  // UDP Delay
+            uint8_t delay = transport->getDelay();
+            if (up && ++delay > 9)
+              delay = 0;
+            else if (down && --delay > 9) // underflow will result in 255, set it to 9
+              delay = 9;
+
+            DisplayNumber(delay, 1, 7 * (TOTAL_WIDTH / 128) + 10 * 4,
+              TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
+            transport->setDelay(delay);
+            transport->saveDelay();
+            break;
+          }
+          case 5: {  // Transport
 #ifdef ZEDMD_NO_NETWORKING
             const uint8_t type = transport->getType() == Transport::USB ?
               Transport::SPI : Transport::USB;
@@ -1448,7 +1465,7 @@ void setup() {
             uint8_t type = transport->getType();
             if (up && ++type > Transport::SPI)
               type = Transport::USB;
-            else if (down && --type < Transport::USB)
+            else if (down && --type > Transport::SPI)
               type = Transport::SPI;
 #endif
             SaveTransport(type);
@@ -1457,14 +1474,14 @@ void setup() {
                 7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             break;
           }
-          case 5: {  // Debug
+          case 6: {  // Debug
             if (++debug > 1) debug = 0;
             DisplayNumber(debug, 1, 7 * (TOTAL_WIDTH / 128) + (6 * 4),
                           (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
             SaveDebug();
             break;
           }
-          case 6: {  // RGB order
+          case 7: {  // RGB order
             if (rgbModeLoaded != 0) {
               rgbMode = 0;
               SaveRgbOrder();
@@ -1478,20 +1495,6 @@ void setup() {
             RefreshSetupScreen();
             DisplayRGB(255, 191, 0);
             SaveRgbOrder();
-            break;
-          }
-          case 7: {  // UDP Delay
-            uint8_t delay = transport->getDelay();
-            if (up && ++delay > 9)
-              delay = 0;
-            else if (down && --delay > 9) // underflow will result in 255, set it to 9
-              delay = 9;
-
-            DisplayNumber(delay, 1,
-                          TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 4,
-                          (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
-            transport->setDelay(delay);
-            transport->saveDelay();
             break;
           }
 #ifdef ZEDMD_HD_HALF

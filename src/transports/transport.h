@@ -58,6 +58,10 @@ public:
     return m_active && (m_type == WIFI_UDP || m_type == WIFI_TCP);
   }
 
+  bool isSpi() const {
+    return m_type == SPI;
+  }
+
 protected:
   uint8_t m_type = USB;
   bool m_active = false;
