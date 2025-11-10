@@ -48,19 +48,19 @@ static uint16_t lut_table[256] = {
     1023};
 
 PicoLedMatrix::PicoLedMatrix() {
-#if 0
-    Serial1.setTX(16);
-    Serial1.setRX(17);
-    Serial1.begin();
-    Serial1.println("PicoLedMatrix");
-#endif
-
   // tested working on a lot of different devices
   vreg_set_voltage(VREG_VOLTAGE_1_15);
   busy_wait_at_least_cycles((SYS_CLK_VREG_VOLTAGE_AUTO_ADJUST_DELAY_US *
-                             static_cast<uint64_t>(XOSC_HZ)) /
-                            1000000);
+                             static_cast<uint64_t>(XOSC_HZ)) / 1000000);
   set_sys_clock_khz(266000, false);
+
+#if 0
+  // serial needs to be inited after oc
+  Serial1.setTX(16);
+  Serial1.setRX(17);
+  Serial1.begin();
+  Serial1.println("PicoLedMatrix");
+#endif
 
   // rgb565 > rgb888 "fast" pixel conversion
   init_rgb_tables();

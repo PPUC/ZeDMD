@@ -18,6 +18,7 @@
 #define MALLOC_CAP_SPIRAM 0
 #define MALLOC_CAP_32BIT 1
 #define heap_caps_malloc(x, y) malloc(x)
+#define heap_caps_free(x) free(x)
 
 // TODO: verify this...
 #define ESP_RST_PANIC 1

@@ -1,27 +1,18 @@
-
 #include <Arduino.h>
-#ifndef ZEDMD_NO_NETWORKING
-#include <AsyncUDP.h>
-#endif
 #include <Bounce2.h>
 #ifdef PICO_BUILD
 #include "pico/zedmd_pico.h"
-#else
-#include <ESPAsyncWebServer.h>
-#include <ESPmDNS.h>
 #endif
 #include <LittleFS.h>
+#include "transports/usb_transport.h"
 #ifndef ZEDMD_NO_NETWORKING
-#include <WiFi.h>
+#include "transports/wifi_transport.h"
 #endif
-
-#include <cstring>
 
 // Specific improvements and #define for the ESP32 S3 series
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
 #include "S3Specific.h"
 #endif
-#include "displayDriver.h"  // Base class for all display drivers
 #ifndef PICO_BUILD
 #include "esp_log.h"
 #include "esp_task_wdt.h"
@@ -30,10 +21,8 @@
 #include "freertos/portmacro.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
-#include "miniz/miniz.h"
+#include "main.h"
 #include "utility/clock.h"
-#include "panel.h"
-#include "version.h"
 
 // To save RAM only include the driver we want to use.
 #ifdef DISPLAY_RM67162_AMOLED
@@ -44,83 +33,12 @@
 #include "displays/Esp32LedMatrix.h"
 #endif
 
-#define N_FRAME_CHARS 5
-#define N_CTRL_CHARS 5
-#define N_ACK_CHARS (N_CTRL_CHARS + 1)
-#define N_INTERMEDIATE_CTR_CHARS 4
-#ifdef BOARD_HAS_PSRAM
-#define NUM_BUFFERS 128  // Number of buffers
-#ifdef DISPLAY_RM67162_AMOLED
-// @fixme double buffering doesn't work on Lilygo Amoled
-#define NUM_RENDER_BUFFERS 1
-#else
-#define NUM_RENDER_BUFFERS 2
-#endif
-#define BUFFER_SIZE 1152
-#elif PICO_BUILD
-#define NUM_BUFFERS 12  // Number of buffers r of buffers
-#define NUM_RENDER_BUFFERS 1
-#define BUFFER_SIZE 1152
-#else
-#define NUM_BUFFERS 12  // Number of buffers
-#define NUM_RENDER_BUFFERS 1
-#define BUFFER_SIZE 1152
-#endif
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || defined(PICO_BUILD)
-// USB CDC
-#define SERIAL_BAUD 115200
-#define USB_PACKAGE_SIZE 512
-#else
-#define SERIAL_BAUD 921600
-#define USB_PACKAGE_SIZE 32
-#endif
-#define SERIAL_TIMEOUT \
-  8  // Time in milliseconds to wait for the next data chunk.
-
-#define CONNECTION_TIMEOUT 5000
-
-#ifdef ARDUINO_ESP32_S3_N16R8
-#define UP_BUTTON_PIN 0
-#define DOWN_BUTTON_PIN 45
-#define FORWARD_BUTTON_PIN 48
-#define BACKWARD_BUTTON_PIN 47
-#elif defined(PICO_BUILD)
-#define UP_BUTTON_PIN 14
-#define DOWN_BUTTON_PIN 15
-#define FORWARD_BUTTON_PIN 26   // so we can use rp2040 / rp2350 zero
-#define BACKWARD_BUTTON_PIN 27  // so we can use rp2040 / rp2350 zero
-#elif defined(DISPLAY_RM67162_AMOLED)
-#define UP_BUTTON_PIN 0
-#define FORWARD_BUTTON_PIN 21
-#else
-#define UP_BUTTON_PIN 21
-#define FORWARD_BUTTON_PIN 33
-#endif
-
-#define LED_CHECK_DELAY 1000  // ms per color
-
-#define RC 0
-#define GC 1
-#define BC 2
-
-enum {
-  TRANSPORT_USB = 0,
-  TRANSPORT_WIFI_UDP = 1,
-  TRANSPORT_WIFI_TCP = 2,
-  TRANSPORT_SPI = 3
-};
-
 const uint8_t FrameChars[5]
     __attribute__((aligned(4))) = {'F', 'R', 'A', 'M', 'E'};
 const uint8_t CtrlChars[6]
     __attribute__((aligned(4))) = {'Z', 'e', 'D', 'M', 'D', 'A'};
 uint8_t numCtrlCharsFound = 0;
 
-#ifndef ZEDMD_NO_NETWORKING
-AsyncWebServer *server;
-AsyncServer *tcp;
-AsyncUDP *udp;
-#endif
 DisplayDriver *display;
 
 // Buffers for storing data
@@ -173,28 +91,14 @@ const uint8_t rgbOrder[3 * 6] = {
 uint8_t usbPackageSizeMultiplier = USB_PACKAGE_SIZE / 32;
 uint8_t settingsMenu = 0;
 uint8_t debug = 0;
-uint8_t udpDelay = 5;
 
-String ssid;
-String pwd;
-uint16_t port = 3333;
-uint8_t ssid_length;
-uint8_t pwd_length;
-bool wifiActive;
-#ifdef ZEDMD_WIFI
-int8_t transport = TRANSPORT_WIFI_UDP;
-#else
-uint8_t transport = TRANSPORT_USB;
-#endif
+Transport *transport = nullptr;
+
 bool logoActive, updateActive, saverActive;
 bool transportActive;
 uint8_t transportWaitCounter;
 Clock logoWaitCounterClock;
 Clock lastDataReceivedClock;
-Clock fpsClock;
-uint16_t frames = 0;
-char fpsStr[3];
-bool serverRunning;
 uint8_t throbberColors[6] __attribute__((aligned(4))) = {0};
 mz_ulong uncompressedBufferSize = 2048;
 uint16_t shortId;
@@ -203,12 +107,9 @@ bool rebootToBootloader = false;
 #endif
 
 void DoRestart(int sec) {
-#ifndef ZEDMD_NO_NETWORKING
-  if (wifiActive) {
-    MDNS.end();
-    WiFi.disconnect(true);
+  if (transport->isActive()) {
+    transport->deinit();
   }
-#endif
   display->ClearScreen();
   display->DisplayText("Restarting ...", 0, 0, 255, 0, 0);
   vTaskDelay(pdMS_TO_TICKS(sec * 1000));
@@ -238,7 +139,7 @@ void Restart() { DoRestart(1); }
 void RestartAfterError() { DoRestart(30); }
 
 void DisplayNumber(uint32_t chf, uint8_t nc, uint16_t x, uint16_t y, uint8_t r,
-                   uint8_t g, uint8_t b, bool transparent = false) {
+                   uint8_t g, uint8_t b, bool transparent) {
   char text[nc];
   sprintf(text, "%d", chf);
 
@@ -286,7 +187,33 @@ void DisplayRGB(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
 }
 
 /// @brief Get DisplayDriver object, required for webserver
-DisplayDriver *GetDisplayObject() { return display; }
+DisplayDriver *GetDisplayDriver() { return display; }
+
+void TransportCreate(const uint8_t type = Transport::USB) {
+  // "reload" new transport (without init)
+  delete transport;
+
+  switch (type) {
+    case Transport::USB: {
+      transport = new UsbTransport();
+      break;
+    }
+#ifndef ZEDMD_NO_NETWORKING
+    case Transport::WIFI_UDP:
+    case Transport::WIFI_TCP: {
+      transport = new WifiTransport();
+      break;
+    }
+#endif
+    case Transport::SPI:
+    default: {
+      transport = new Transport();
+    }
+  }
+
+  transport->loadConfig();
+  transport->loadDelay();
+}
 
 void SaveSettingsMenu() {
   File f = LittleFS.open("/settings_menu.val", "w");
@@ -308,20 +235,29 @@ void LoadSettingsMenu() {
   f.close();
 }
 
-void SaveTransport() {
+void SaveTransport(const uint8_t type = Transport::USB) {
+  if (!transport) return;
+
   File f = LittleFS.open("/transport.val", "w");
-  f.write(transport);
+  f.write(type);
   f.close();
+
+  // set new transport type (not active until reboot)
+  transport->setType(type);
 }
 
 void LoadTransport() {
   File f = LittleFS.open("/transport.val", "r");
   if (!f) {
-    SaveTransport();
+    const uint8_t type = transport != nullptr ? transport->getType() : Transport::USB;
+    SaveTransport(type);
+    TransportCreate(type);
     return;
   }
-  transport = f.read();
+
+  const uint8_t type = f.read();
   f.close();
+  TransportCreate(type);
 }
 
 #if defined(DISPLAY_LED_MATRIX)
@@ -442,22 +378,6 @@ void LoadUsbPackageSizeMultiplier() {
   f.close();
 }
 
-void SaveUdpDelay() {
-  File f = LittleFS.open("/udp_delay.val", "w");
-  f.write(udpDelay);
-  f.close();
-}
-
-void LoadUdpDelay() {
-  File f = LittleFS.open("/udp_delay.val", "r");
-  if (!f) {
-    SaveUdpDelay();
-    return;
-  }
-  udpDelay = f.read();
-  f.close();
-}
-
 #ifdef ZEDMD_HD_HALF
 void SaveYOffset() {
   File f = LittleFS.open("/y_offset.val", "w");
@@ -490,34 +410,6 @@ void LoadScale() {
   }
   display->SetCurrentScalingMode(f.read());
   f.close();
-}
-
-bool LoadWiFiConfig() {
-  File wifiConfig = LittleFS.open("/wifi_config.txt", "r");
-  if (!wifiConfig) return false;
-
-  while (wifiConfig.available()) {
-    ssid = wifiConfig.readStringUntil('\n');
-    ssid_length = wifiConfig.readStringUntil('\n').toInt();
-    pwd = wifiConfig.readStringUntil('\n');
-    pwd_length = wifiConfig.readStringUntil('\n').toInt();
-    port = wifiConfig.readStringUntil('\n').toInt();
-  }
-  wifiConfig.close();
-  return true;
-}
-
-bool SaveWiFiConfig() {
-  File wifiConfig = LittleFS.open("/wifi_config.txt", "w");
-  if (!wifiConfig) return false;
-
-  wifiConfig.println(ssid);
-  wifiConfig.println(String(ssid_length));
-  wifiConfig.println(pwd);
-  wifiConfig.println(String(pwd_length));
-  wifiConfig.println(String(port));
-  wifiConfig.close();
-  return true;
 }
 
 void LedTester(void) {
@@ -570,6 +462,28 @@ bool AcquireNextProcessingBuffer() {
   return false;
 }
 
+//#define ZEDMD_CLIENT_DEBUG_FPS
+#ifdef ZEDMD_CLIENT_DEBUG_FPS
+Clock fpsClock;
+uint16_t frames = 0;
+char fpsStr[3];
+
+void FpsUpdate() {
+  //if (debug) {
+    frames++;
+
+    if (fpsClock.getElapsedTime().asMilliseconds() >= 200) {
+      snprintf(fpsStr, 3, "%02i", frames * 5);
+      frames = 0;
+      fpsClock.restart();
+    }
+
+    display->DisplayText(fpsStr, TOTAL_WIDTH - 7, TOTAL_HEIGHT - 5, 255, 0, 0,
+                         false, false);
+  //}
+}
+#endif
+
 void Render() {
   if (NUM_RENDER_BUFFERS == 1) {
     display->FillPanelRaw(renderBuffer[currentRenderBuffer]);
@@ -593,6 +507,10 @@ void Render() {
     memcpy(renderBuffer[currentRenderBuffer], renderBuffer[lastRenderBuffer],
            TOTAL_BYTES);
   }
+
+#ifdef ZEDMD_CLIENT_DEBUG_FPS
+  FpsUpdate();
+#endif
 }
 
 void ClearScreen() {
@@ -712,28 +630,26 @@ void RefreshSetupScreen() {
   }
   DisplayRGB();
   DisplayLum();
-  display->DisplayText(
-      transport == TRANSPORT_USB
-          ? "USB "
-          : (transport == TRANSPORT_WIFI_UDP
-                 ? "WiFi UDP"
-                 : (transport == TRANSPORT_WIFI_TCP ? "WiFi TCP" : "SPI ")),
+  display->DisplayText(transport->getTypeString(),
       7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
   display->DisplayText("Debug:", 7 * (TOTAL_WIDTH / 128),
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
   DisplayNumber(debug, 1, 7 * (TOTAL_WIDTH / 128) + (6 * 4),
                 (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
-  display->DisplayText("USB Packet Size:", 7 * (TOTAL_WIDTH / 128),
-                       (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
-  DisplayNumber(usbPackageSizeMultiplier * 32, 4,
-                7 * (TOTAL_WIDTH / 128) + (16 * 4), (TOTAL_HEIGHT / 2) + 4, 255,
-                191, 0);
-  display->DisplayText(
-      "UDP Delay:", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - (11 * 4),
-      (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
-  DisplayNumber(udpDelay, 1, TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 4,
-                (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
-
+  if (transport->isUsb()) {
+    display->DisplayText("USB Packet Size:", 7 * (TOTAL_WIDTH / 128),
+                         (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
+    DisplayNumber(usbPackageSizeMultiplier * 32, 4,
+                  7 * (TOTAL_WIDTH / 128) + (16 * 4), (TOTAL_HEIGHT / 2) + 4, 255,
+                  191, 0);
+  }
+  if (transport->isWifi()) {
+    display->DisplayText(
+    "UDP Delay:", 7 * (TOTAL_WIDTH / 128),
+                     (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
+    DisplayNumber(transport->getDelay(), 1, 7 * (TOTAL_WIDTH / 128) + 10 * 4,
+                         (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
+  }
 #ifdef ZEDMD_HD_HALF
   display->DisplayText("Y-Offset", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
@@ -742,7 +658,7 @@ void RefreshSetupScreen() {
                        (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
 }
 
-static uint8_t HandleData(uint8_t *pData, size_t len) {
+uint8_t HandleData(uint8_t *pData, size_t len) {
   uint16_t pos = 0;
   bool headerCompleted = false;
 
@@ -813,7 +729,7 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
           {
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            if (wifiActive) break;
+            if (transport->isWifiAndActive()) break;
 
             // Including the ACK, the response will be 64 bytes long. That
             // leaves some space for future features.
@@ -841,7 +757,7 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
             response[N_INTERMEDIATE_CTR_CHARS + 15] = panelLatchBlanking;
             response[N_INTERMEDIATE_CTR_CHARS + 16] = panelMinRefreshRate;
 #endif
-            response[N_INTERMEDIATE_CTR_CHARS + 17] = udpDelay;
+            response[N_INTERMEDIATE_CTR_CHARS + 17] = transport->getDelay();
 #ifdef ZEDMD_HD_HALF
             response[N_INTERMEDIATE_CTR_CHARS + 18] = 1;
 #else
@@ -866,7 +782,7 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
             display->SetBrightness(brightness);
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            if (wifiActive) break;
+            if (transport->isWifiAndActive()) break;
             return 1;
           }
 #ifndef DISPLAY_RM67162_AMOLED
@@ -875,10 +791,11 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
             rgbMode = pData[pos++];
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            if (wifiActive) break;
+            if (transport->isWifiAndActive()) break;
             return 1;
           }
 #endif
+#ifndef ZEDMD_NO_NETWORKING
           case 27:  // set SSID
           {
             if (payloadMissing == payloadSize) {
@@ -890,8 +807,10 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
                 break;
               } else {
                 memcpy(tmpStringBuffer, &pData[pos], payloadSize);
-                ssid = String(tmpStringBuffer);
-                ssid_length = payloadSize;
+                if (transport->isWifi()) {
+                  ((WifiTransport *)transport)->ssid = String(tmpStringBuffer);
+                  ((WifiTransport *)transport)->ssid_length = payloadSize;
+                }
                 pos += payloadSize;
                 payloadMissing = 0;
                 headerBytesReceived = 0;
@@ -907,15 +826,17 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
               } else {
                 memcpy(&tmpStringBuffer[payloadSize - payloadMissing],
                        &pData[pos], payloadMissing);
-                ssid = String(tmpStringBuffer);
-                ssid_length = payloadSize;
+                if (transport->isWifi()) {
+                  ((WifiTransport *)transport)->ssid = String(tmpStringBuffer);
+                  ((WifiTransport *)transport)->ssid_length = payloadSize;
+                }
                 pos += payloadMissing;
                 payloadMissing = 0;
                 headerBytesReceived = 0;
                 numCtrlCharsFound = 0;
               }
             }
-            if (wifiActive) break;
+            if (transport->isWifiAndActive()) break;
             return 1;
           }
 
@@ -930,8 +851,10 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
                 break;
               } else {
                 memcpy(tmpStringBuffer, &pData[pos], payloadSize);
-                pwd = String(tmpStringBuffer);
-                pwd_length = payloadSize;
+                if (transport->isWifi()) {
+                  ((WifiTransport *)transport)->pwd = String(tmpStringBuffer);
+                  ((WifiTransport *)transport)->pwd_length = payloadSize;
+                }
                 pos += payloadSize;
                 payloadMissing = 0;
                 headerBytesReceived = 0;
@@ -947,15 +870,17 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
               } else {
                 memcpy(&tmpStringBuffer[payloadSize - payloadMissing],
                        &pData[pos], payloadMissing);
-                pwd = String(tmpStringBuffer);
-                pwd_length = payloadSize;
+                if (transport->isWifi()) {
+                  ((WifiTransport *)transport)->pwd = String(tmpStringBuffer);
+                  ((WifiTransport *)transport)->pwd_length = payloadSize;
+                }
                 pos += payloadMissing;
                 payloadMissing = 0;
                 headerBytesReceived = 0;
                 numCtrlCharsFound = 0;
               }
             }
-            if (wifiActive) break;
+            if (transport->isWifiAndActive()) break;
             return 1;
           }
 
@@ -969,9 +894,11 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
                 pos += len - pos;
                 break;
               } else {
-                memcpy(tmpStringBuffer, &pData[pos], payloadSize);
-                port = tmpStringBuffer[0] << 8;
-                port |= tmpStringBuffer[1];
+                if (transport->isWifi()) {
+                  memcpy(tmpStringBuffer, &pData[pos], payloadSize);
+                  ((WifiTransport *)transport)->port = tmpStringBuffer[0] << 8;
+                  ((WifiTransport *)transport)->port |= tmpStringBuffer[1];
+                }
                 pos += payloadSize;
                 payloadMissing = 0;
                 headerBytesReceived = 0;
@@ -987,21 +914,23 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
               } else {
                 memcpy(&tmpStringBuffer[payloadSize - payloadMissing],
                        &pData[pos], payloadMissing);
-                port = tmpStringBuffer[0] << 8;
-                port |= tmpStringBuffer[1];
+                if (transport->isWifi()) {
+                  ((WifiTransport *)transport)->port = tmpStringBuffer[0] << 8;
+                  ((WifiTransport *)transport)->port |= tmpStringBuffer[1];
+                }
                 pos += payloadMissing;
                 payloadMissing = 0;
                 headerBytesReceived = 0;
                 numCtrlCharsFound = 0;
               }
             }
-            if (wifiActive) break;
+            if (transport->isWifiAndActive()) break;
             return 1;
           }
-
+#endif
           case 30:  // save settings 0x1e
           {
-            if (!wifiActive) {
+            if (transport->getType() == Transport::USB) {
               // send fast ack
               Serial.write(CtrlChars, N_ACK_CHARS);
               Serial.flush();
@@ -1011,8 +940,8 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
             SaveDebug();
             SaveTransport();
             SaveUsbPackageSizeMultiplier();
-            SaveUdpDelay();
-            SaveWiFiConfig();
+            transport->saveDelay();
+            transport->saveConfig();
 #if defined(DISPLAY_LED_MATRIX)
             SaveRgbOrder();
             SavePanelSettings();
@@ -1023,13 +952,13 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
             display->DisplayText("Saving settings ... done", 0, 0, 255, 0, 0);
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            if (wifiActive) break;
+            if (transport->isWifiAndActive()) break;
             return 3;
           }
 
           case 31:  // reset 0x1f
           {
-            if (!wifiActive) {
+            if (transport->getType() == Transport::USB) {
               Serial.write(CtrlChars, N_ACK_CHARS);
               Serial.flush();
             }
@@ -1050,7 +979,7 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
             panelClkphase = pData[pos++];
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            if (wifiActive) break;
+            if (transport->isWifiAndActive()) break;
             return 1;
           }
 
@@ -1059,7 +988,7 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
             panelI2sspeed = pData[pos++];
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            if (wifiActive) break;
+            if (transport->isWifiAndActive()) break;
             return 1;
           }
 
@@ -1068,7 +997,7 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
             panelLatchBlanking = pData[pos++];
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            if (wifiActive) break;
+            if (transport->isWifiAndActive()) break;
             return 1;
           }
 
@@ -1077,7 +1006,7 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
             panelMinRefreshRate = pData[pos++];
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            if (wifiActive) break;
+            if (transport->isWifiAndActive()) break;
             return 1;
           }
 
@@ -1086,25 +1015,26 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
             panelDriver = pData[pos++];
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            if (wifiActive) break;
+            if (transport->isWifiAndActive()) break;
             return 1;
           }
 #endif
           case 45:  // set transport
           {
-            transport = pData[pos++];
+            // TODO: verify this (need Save ? need Reset ?)
+            transport->setType(pData[pos++]);
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            if (wifiActive) break;
+            if (transport->isWifiAndActive()) break;
             return 1;
           }
 
           case 46:  // set udpDelay
           {
-            udpDelay = pData[pos++];
+            transport->setDelay(pData[pos++]);
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            if (wifiActive) break;
+            if (transport->isWifiAndActive()) break;
             return 1;
           }
 
@@ -1113,7 +1043,7 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
             usbPackageSizeMultiplier = pData[pos++];
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            if (wifiActive) break;
+            if (transport->isWifiAndActive()) break;
             return 1;
           }
 #ifndef DISPLAY_RM67162_AMOLED
@@ -1122,12 +1052,12 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
             yOffset = pData[pos++];
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            if (wifiActive) break;
+            if (transport->isWifiAndActive()) break;
             return 1;
           }
 #endif
           case 16: {
-            if (!wifiActive) {
+            if (transport->getType() == Transport::USB) {
               Serial.write(CtrlChars, N_ACK_CHARS);
               Serial.flush();
             }
@@ -1144,7 +1074,7 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
             MarkCurrentBufferDone();
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            if (wifiActive) break;
+            if (transport->isWifiAndActive()) break;
             return 1;
           }
 
@@ -1158,7 +1088,7 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
             lastDataReceivedClock.restart();
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            if (wifiActive) break;
+            if (transport->isWifiAndActive()) break;
             return 1;
           }
 
@@ -1167,7 +1097,7 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
             debug = 0;
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            if (wifiActive) break;
+            if (transport->isWifiAndActive()) break;
             return 1;
           }
 
@@ -1176,7 +1106,7 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
             debug = 1;
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            if (wifiActive) break;
+            if (transport->isWifiAndActive()) break;
             return 1;
           }
 
@@ -1230,14 +1160,14 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
             lastDataReceivedClock.restart();
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            if (wifiActive) break;
+            if (transport->isWifiAndActive()) break;
             return 1;
           }
 
           default: {
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
-            if (wifiActive) break;
+            if (transport->isWifiAndActive()) break;
             return 1;
           }
         }
@@ -1247,595 +1177,6 @@ static uint8_t HandleData(uint8_t *pData, size_t len) {
 
   return 0;
 }
-
-void Task_ReadSerial(void *pvParameters) {
-  const uint16_t usbPackageSize = usbPackageSizeMultiplier * 32;
-  bool connected = false;
-
-#ifdef PICO_BUILD
-  tud_cdc_set_ignore_dtr(1);
-  tud_cdc_set_rx_buffer_size(usbPackageSize + 128);
-#else
-  Serial.setRxBufferSize(usbPackageSize + 128);
-  Serial.setTxBufferSize(64);
-#endif
-#if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
-  // S3 USB CDC. The actual baud rate doesn't matter.
-  Serial.begin(115200);
-  while (!Serial) {
-    vTaskDelay(pdMS_TO_TICKS(10));
-  }
-  display->DisplayText("USB CDC", 0, 0, 0, 0, 0, 1);
-#else
-  Serial.setTimeout(SERIAL_TIMEOUT);
-  Serial.begin(SERIAL_BAUD);
-  while (!Serial) {
-    vTaskDelay(pdMS_TO_TICKS(10));
-  }
-  if (1 == debug) {
-    DisplayNumber(SERIAL_BAUD, (SERIAL_BAUD >= 1000000 ? 7 : 6), 0, 0, 0, 0, 0,
-                  1);
-  } else {
-    display->DisplayText("USB UART", 0, 0, 0, 0, 0, 1);
-  }
-#endif
-
-#ifdef BOARD_HAS_PSRAM
-  uint8_t *pUsbBuffer = (uint8_t *)heap_caps_malloc(
-      usbPackageSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
-#else
-  uint8_t *pUsbBuffer = (uint8_t *)malloc(usbPackageSize);
-#endif
-
-  if (nullptr == pUsbBuffer) {
-    display->DisplayText("out of memory", 0, 0, 255, 0, 0);
-    while (1);
-  }
-
-  payloadMissing = 0;
-  headerBytesReceived = 0;
-  numCtrlCharsFound = 0;
-
-  Clock timeoutClock;
-  int16_t received = 0;
-  int16_t expected = 0;
-  uint8_t numFrameCharsFound = 0;
-  uint8_t result = 0;
-
-  while (1) {
-    timeoutClock.restart();
-    numFrameCharsFound = 0;
-    // Wait for FRAME header
-    while (numFrameCharsFound < N_FRAME_CHARS) {
-      if (Serial.available()) {
-        if (Serial.read() == FrameChars[numFrameCharsFound]) {
-          numFrameCharsFound++;
-        } else {
-          numFrameCharsFound = 0;
-        }
-      } else {
-        if (timeoutClock.getElapsedTime().asMilliseconds() > CONNECTION_TIMEOUT) {
-          transportActive = false;
-          timeoutClock.restart();
-        }
-        // Avoid busy-waiting
-        vTaskDelay(pdMS_TO_TICKS(1));
-      }
-    }
-
-    expected = usbPackageSize - N_FRAME_CHARS;
-    transportActive = true;
-    timeoutClock.restart();
-    result = 0;
-
-    while (1) {
-      // Wait for data to be ready
-      if (Serial.available() >= expected ||
-          (!connected && Serial.available() >= (N_CTRL_CHARS + 4))) {
-        memset(pUsbBuffer, 0, usbPackageSize);
-        received = Serial.readBytes(pUsbBuffer, expected);
-        result = HandleData(pUsbBuffer, received);
-        expected = usbPackageSize;
-        if (2 == result) {  // Error
-          Serial.write(CtrlChars, N_CTRL_CHARS);
-          Serial.write('F');
-          Serial.flush();
-          vTaskDelay(pdMS_TO_TICKS(2));
-          Serial.end();
-          vTaskDelay(pdMS_TO_TICKS(2));
-          Serial.begin(SERIAL_BAUD);
-          while (!Serial) {
-            vTaskDelay(pdMS_TO_TICKS(1));
-          }
-          break;  // Wait for the next FRAME header
-        }
-        connected = true;
-        if (3 == result) {
-          break;  // fast ack has been sent, wait for the next FRAME header
-        }
-        Serial.write(CtrlChars, N_ACK_CHARS);
-        Serial.flush();
-        if (1 == result) break;  // Wait for the next FRAME header
-        timeoutClock.restart();
-      } else {
-        if (timeoutClock.getElapsedTime().asMilliseconds() > CONNECTION_TIMEOUT) {
-          transportActive = false;
-          timeoutClock.restart();
-          break;  // Wait for the next FRAME header
-        }
-        // Avoid busy-waiting
-        vTaskDelay(pdMS_TO_TICKS(1));
-      }
-    }
-  }
-}
-
-#ifndef ZEDMD_NO_NETWORKING
-static void HandleUdpPacket(AsyncUDPPacket packet) {
-  static bool isProcessing = false;
-
-  if (!isProcessing) {
-    isProcessing = true;
-    transportActive = true;
-    HandleData(packet.data(), packet.length());
-    yield();
-    isProcessing = false;
-  }
-}
-
-static void HandleTcpData(void *arg, AsyncClient *client, void *data,
-                          size_t len) {
-  HandleData((uint8_t *)data, len);
-  client->ack(len);
-}
-
-static void HandleTcpDisconnect(void *arg, AsyncClient *client) {
-  delete client;
-  MarkCurrentBufferDone();
-  AcquireNextBuffer();
-  bufferSizes[currentBuffer] = 2;
-  buffers[currentBuffer][0] = 0;
-  buffers[currentBuffer][1] = 0;
-  MarkCurrentBufferDone();
-  ClearScreen();
-  payloadMissing = 0;
-  headerBytesReceived = 0;
-  numCtrlCharsFound = 0;
-  delay(100);
-  transportActive = false;
-}
-
-static void NewTcpClient(void *arg, AsyncClient *client) {
-  if (transportActive) {
-    client->stop();
-    delete client;
-    return;
-  }
-  payloadMissing = 0;
-  headerBytesReceived = 0;
-  numCtrlCharsFound = 0;
-  transportActive = true;
-  client->setNoDelay(true);
-  client->setAckTimeout(2);
-  client->onData(&HandleTcpData, NULL);
-  client->onDisconnect(&HandleTcpDisconnect, NULL);
-}
-
-void StartServer() {
-  server = new AsyncWebServer(80);
-
-  // Serve index.html
-  server->on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(LittleFS, "/index.html", String(), false);
-  });
-
-  // Handle AJAX request to save WiFi configuration
-  server->on("/save_wifi", HTTP_POST, [](AsyncWebServerRequest *request) {
-    if (request->hasParam("ssid", true) &&
-        request->hasParam("password", true) &&
-        request->hasParam("port", true)) {
-      ssid = request->getParam("ssid", true)->value();
-      pwd = request->getParam("password", true)->value();
-      port = request->getParam("port", true)->value().toInt();
-      ssid_length = ssid.length();
-      pwd_length = pwd.length();
-
-      bool success = SaveWiFiConfig();
-      if (success) {
-        request->send(200, "text/plain", "Config saved successfully!");
-        Restart();
-      } else {
-        request->send(500, "text/plain", "Failed to save config!");
-      }
-    } else {
-      request->send(400, "text/plain", "Missing parameters!");
-    }
-  });
-
-  server->on("/wifi_status", HTTP_GET, [](AsyncWebServerRequest *request) {
-    String jsonResponse;
-    if (WiFi.status() == WL_CONNECTED) {
-      int rssi = WiFi.RSSI();
-      IPAddress ip = WiFi.localIP();  // Get the local IP address
-
-      jsonResponse = "{\"connected\":true,\"ssid\":\"" + WiFi.SSID() +
-                     "\",\"signal\":" + String(rssi) + "," + "\"ip\":\"" +
-                     ip.toString() + "\"," + "\"port\":" + String(port) + "}";
-    } else {
-      jsonResponse = "{\"connected\":false}";
-    }
-
-    request->send(200, "application/json", jsonResponse);
-  });
-
-#ifndef DISPLAY_RM67162_AMOLED
-  // Route to save RGB order
-  server->on("/save_rgb_order", HTTP_POST, [](AsyncWebServerRequest *request) {
-    if (request->hasParam("rgbOrder", true)) {
-      if (rgbModeLoaded != 0) {
-        request->send(200, "text/plain",
-                      "ZeDMD needs to reboot first before the RGB order can be "
-                      "adjusted. Try again in a few seconds.");
-
-        rgbMode = 0;
-        SaveRgbOrder();
-        Restart();
-      }
-
-      String rgbOrderValue = request->getParam("rgbOrder", true)->value();
-      rgbMode =
-          rgbOrderValue.toInt();  // Convert to integer and set the RGB mode
-      SaveRgbOrder();
-      RefreshSetupScreen();
-      request->send(200, "text/plain", "RGB order updated successfully");
-    } else {
-      request->send(400, "text/plain", "Missing RGB order parameter");
-    }
-  });
-#endif
-
-  // Route to save brightness
-  server->on("/save_brightness", HTTP_POST, [](AsyncWebServerRequest *request) {
-    if (request->hasParam("brightness", true)) {
-      String brightnessValue = request->getParam("brightness", true)->value();
-      brightness = brightnessValue.toInt();
-      GetDisplayObject()->SetBrightness(brightness);
-      SaveLum();
-      RefreshSetupScreen();
-      request->send(200, "text/plain", "Brightness updated successfully");
-    } else {
-      request->send(400, "text/plain", "Missing brightness parameter");
-    }
-  });
-
-  server->on("/get_version", HTTP_GET, [](AsyncWebServerRequest *request) {
-    String version = String(ZEDMD_VERSION_MAJOR) + "." +
-                     String(ZEDMD_VERSION_MINOR) + "." +
-                     String(ZEDMD_VERSION_PATCH);
-    request->send(200, "text/plain", version);
-  });
-
-  server->on("/get_height", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", String(TOTAL_HEIGHT));
-  });
-
-  server->on("/get_width", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", String(TOTAL_WIDTH));
-  });
-#ifndef DISPLAY_RM67162_AMOLED
-  server->on("/get_rgb_order", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", String(rgbMode));
-  });
-
-  server->on("/get_panel_clkphase", HTTP_GET,
-             [](AsyncWebServerRequest *request) {
-               request->send(200, "text/plain", String(panelClkphase));
-             });
-
-  server->on("/get_panel_driver", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", String(panelDriver));
-  });
-
-  server->on("/get_panel_i2sspeed", HTTP_GET,
-             [](AsyncWebServerRequest *request) {
-               request->send(200, "text/plain", String(panelI2sspeed));
-             });
-
-  server->on("/get_panel_latchblanking", HTTP_GET,
-             [](AsyncWebServerRequest *request) {
-               request->send(200, "text/plain", String(panelLatchBlanking));
-             });
-
-  server->on("/get_panel_minrefreshrate", HTTP_GET,
-             [](AsyncWebServerRequest *request) {
-               request->send(200, "text/plain", String(panelMinRefreshRate));
-             });
-
-  server->on("/get_y_offset", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", String(yOffset));
-  });
-#endif
-  server->on("/get_udp_delay", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", String(udpDelay));
-  });
-
-  server->on("/get_brightness", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", String(brightness));
-  });
-
-  server->on("/get_protocol", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (TRANSPORT_WIFI_UDP == transport) {
-      request->send(200, "text/plain", "UDP");
-    } else {
-      request->send(200, "text/plain", "TCP");
-    }
-  });
-
-  server->on("/get_port", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", String(port));
-  });
-
-  server->on(
-      "/get_usb_package_size", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(200, "text/plain", String(usbPackageSizeMultiplier * 32));
-      });
-
-  server->on("/get_ssid", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", ssid);
-  });
-
-  server->on("/get_s3", HTTP_GET, [](AsyncWebServerRequest *request) {
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || defined(PICO_BUILD)
-    request->send(200, "text/plain", String(1));
-#else
-    request->send(200, "text/plain", String(0));
-#endif
-  });
-
-  server->on("/get_short_id", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", String(shortId));
-  });
-
-  server->on("/handshake", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(
-        200, "text/plain",
-        String(TOTAL_WIDTH) + "|" + String(TOTAL_HEIGHT) + "|" +
-            String(ZEDMD_VERSION_MAJOR) + "." + String(ZEDMD_VERSION_MINOR) +
-            "." + String(ZEDMD_VERSION_PATCH) + "|" +
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || defined(PICO_BUILD)
-            String(1)
-#else
-            String(0)
-#endif
-            + "|" + ((TRANSPORT_WIFI_UDP == transport) ? "UDP" : "TCP") + "|" +
-            String(port) + "|" + String(udpDelay) + "|" +
-            String(usbPackageSizeMultiplier * 32) + "|" + String(brightness) +
-            "|" +
-#ifndef DISPLAY_RM67162_AMOLED
-            String(rgbMode) + "|" + String(panelClkphase) + "|" +
-            String(panelDriver) + "|" + String(panelI2sspeed) + "|" +
-            String(panelLatchBlanking) + "|" + String(panelMinRefreshRate) +
-            "|" + String(yOffset)
-#else
-            "0|0|0|0|0|0|0"
-#endif
-            + "|" + ssid + "|" +
-#ifdef ZEDMD_HD_HALF
-            "1"
-#else
-            "0"
-#endif
-            + "|" + String(shortId));
-  });
-
-  server->on("/ppuc.png", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(LittleFS, "/ppuc.png", "image/png");
-  });
-
-  server->on("/reset_wifi", HTTP_POST, [](AsyncWebServerRequest *request) {
-    LittleFS.remove("/wifi_config.txt");  // Remove Wi-Fi config
-    request->send(200, "text/plain", "Wi-Fi reset successful.");
-    Restart();  // Restart the device
-  });
-
-  server->on("/apply", HTTP_POST, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "Apply successful.");
-    Restart();  // Restart the device
-  });
-
-  // Serve debug information
-  server->on("/debug_info", HTTP_GET, [](AsyncWebServerRequest *request) {
-    String debugInfo = "IP Address: " + WiFi.localIP().toString() + "\n";
-    debugInfo += "SSID: " + WiFi.SSID() + "\n";
-    debugInfo += "RSSI: " + String(WiFi.RSSI()) + "\n";
-    debugInfo += "Heap Free: " + String(ESP.getFreeHeap()) + " bytes\n";
-    debugInfo += "Uptime: " + String(millis() / 1000) + " seconds\n";
-    // Add more here if you need it
-    request->send(200, "text/plain", debugInfo);
-  });
-
-  // Route to return the current settings as JSON
-  server->on("/get_config", HTTP_GET, [](AsyncWebServerRequest *request) {
-    String trimmedSsid = ssid;
-    trimmedSsid.trim();
-
-    String json = "{";
-    json += "\"ssid\":\"" + trimmedSsid + "\",";
-    json += "\"port\":" + String(port) + ",";
-#ifndef DISPLAY_RM67162_AMOLED
-    json += "\"rgbOrder\":" + String(rgbMode) + ",";
-#endif
-    json += "\"brightness\":" + String(brightness) + ",";
-    json += "\"scaleMode\":" + String(display->GetCurrentScalingMode());
-    json += "}";
-    request->send(200, "application/json", json);
-  });
-
-  server->on(
-      "/get_scaling_modes", HTTP_GET, [](AsyncWebServerRequest *request) {
-        if (!display) {
-          request->send(500, "application/json",
-                        "{\"error\":\"Display object not initialized\"}");
-          return;
-        }
-
-        String jsonResponse;
-        if (display->HasScalingModes()) {
-          jsonResponse = "{";
-          jsonResponse += "\"hasScalingModes\":true,";
-
-          // Fetch current scaling mode
-          uint8_t currentMode = display->GetCurrentScalingMode();
-          jsonResponse += "\"currentMode\":" + String(currentMode) + ",";
-
-          // Add the list of available scaling modes
-          jsonResponse += "\"modes\":[";
-          const char **scalingModes = display->GetScalingModes();
-          uint8_t modeCount = display->GetScalingModeCount();
-          for (uint8_t i = 0; i < modeCount; i++) {
-            jsonResponse += "\"" + String(scalingModes[i]) + "\"";
-            if (i < modeCount - 1) {
-              jsonResponse += ",";
-            }
-          }
-          jsonResponse += "]";
-          jsonResponse += "}";
-        } else {
-          jsonResponse = "{\"hasScalingModes\":false}";
-        }
-
-        request->send(200, "application/json", jsonResponse);
-      });
-
-  // POST request to save the selected scaling mode
-  server->on(
-      "/save_scaling_mode", HTTP_POST, [](AsyncWebServerRequest *request) {
-        if (!display) {
-          request->send(500, "text/plain", "Display object not initialized");
-          return;
-        }
-
-        if (request->hasParam("scalingMode", true)) {
-          String scalingModeValue =
-              request->getParam("scalingMode", true)->value();
-          uint8_t scalingMode = scalingModeValue.toInt();
-
-          // Update the scaling mode using the global display object
-          display->SetCurrentScalingMode(scalingMode);
-          SaveScale();
-          request->send(200, "text/plain", "Scaling mode updated successfully");
-        } else {
-          request->send(400, "text/plain", "Missing scaling mode parameter");
-        }
-      });
-
-  // Start the web server
-  server->begin();
-  serverRunning = true;
-}
-
-void StartWiFi() {
-  char apSSID[15];
-  sprintf(apSSID, "ZeDMD-WiFi-%04X", shortId);
-  const char *apPassword = "zedmd1234";
-  bool softAPFallback = false;
-  IPAddress ip;
-
-  if (ssid_length > 0) {
-    WiFi.disconnect(true);
-    WiFi.begin(ssid.substring(0, ssid_length).c_str(),
-               pwd.substring(0, pwd_length).c_str());
-
-    // Don't use WiFi.waitForConnectResult(10000) here, it blocks the menu
-    // button.
-    unsigned long startTime = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - startTime < 10000) {
-      CheckMenuButton();
-      vTaskDelay(pdMS_TO_TICKS(100));  // FreeRTOS delay, avoids blocking
-    }
-
-    if (WiFi.status() != WL_CONNECTED) {
-      display->DisplayText("No WiFi connection, error ", 10,
-                           TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
-      DisplayNumber(WiFi.status(), 2, 26 * 4 + 10, TOTAL_HEIGHT / 2 - 9, 255, 0,
-                    0);
-      display->DisplayText("Trying again ...", 10, TOTAL_HEIGHT / 2 - 3, 255, 0,
-                           0);
-      // second try
-      startTime = millis();
-      while (WiFi.status() != WL_CONNECTED && millis() - startTime < 10000) {
-        CheckMenuButton();
-        vTaskDelay(pdMS_TO_TICKS(100));  // FreeRTOS delay, avoids blocking
-      }
-      if (WiFi.status() != WL_CONNECTED) {
-        softAPFallback = true;
-      }
-    }
-  } else {
-    // Don't use the fallback to skip the countdown.
-    WiFi.softAP(apSSID, apPassword);
-    ip = WiFi.softAPIP();
-  }
-
-  if (!softAPFallback && WiFi.getMode() == WIFI_STA) {
-    ip = WiFi.localIP();
-  }
-
-  if (ip[0] == 0 || softAPFallback) {
-    display->DisplayText("No WiFi connection, maybe     ", 10,
-                         TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
-    display->DisplayText("the credentials are wrong.", 10, TOTAL_HEIGHT / 2 - 3,
-                         255, 0, 0);
-    display->DisplayText("Start AP in 20 seconds ...", 10, TOTAL_HEIGHT / 2 + 3,
-                         255, 0, 0);
-    for (uint8_t i = 19; i > 0; i--) {
-      CheckMenuButton();
-      vTaskDelay(pdMS_TO_TICKS(1000));
-      DisplayNumber(i, 2, 58, TOTAL_HEIGHT / 2 + 3, 255, 0, 0);
-    }
-    WiFi.softAP(apSSID, apPassword);
-    ip = WiFi.softAPIP();
-    softAPFallback = true;
-  }
-
-  ClearScreen();
-  DisplayLogo();
-  DisplayId();
-
-  for (uint8_t i = 0; i < 4; i++) {
-    if (i > 0) display->DrawPixel(i * 3 * 4 + i * 2 - 2, 4, 0);
-    DisplayNumber(ip[i], 3, i * 3 * 4 + i * 2, 0, 0, 0, 0, 1);
-  }
-
-  WiFi.setSleep(false);  // WiFi speed improvement on ESP32 S3 and others.
-
-  wifiActive = true;
-
-  // Start the MDNS server for easy detection
-  if (!MDNS.begin("zedmd-wifi")) {
-    display->DisplayText("MDNS could not be started", 0, 0, 255, 0, 0);
-    while (1);
-  }
-
-  display->DisplayText("zedmd-wifi.local", 0, TOTAL_HEIGHT - 5, 0, 0, 0, 1);
-
-  StartServer();
-
-  if (TRANSPORT_WIFI_UDP == transport) {
-    udp = new AsyncUDP();
-    udp->onPacket(HandleUdpPacket);
-    if (!udp->listen(ip, port)) {
-      display->DisplayText("UDP server could not be started", 0, 0, 255, 0, 0);
-      while (1);
-    }
-  } else {
-    tcp = new AsyncServer(port);
-    tcp->setNoDelay(true);
-    tcp->onClient(&NewTcpClient, tcp);
-    tcp->begin();
-  }
-}
-#endif  // ZEDMD_NO_NETWORKING
 
 void setup() {
 #ifndef PICO_BUILD
@@ -1854,30 +1195,22 @@ void setup() {
   currentBuffer = NUM_BUFFERS - 1;
   lastBuffer = currentBuffer;
   processingBuffer = NUM_BUFFERS - 1;
-  wifiActive = false;
   logoActive = true;
   transportActive = false;
   transportWaitCounter = 0;
   logoWaitCounterClock.restart();
   lastDataReceivedClock.restart();
-  serverRunning = false;
-  ssid_length = 0;
-  pwd_length = 0;
-  ssid = "";
-  pwd = "";
-  port = 3333;
 
   uint64_t chipId = ESP.getEfuseMac();
   shortId =
       (uint16_t)(chipId ^ (chipId >> 16) ^ (chipId >> 32) ^ (chipId >> 48));
 
   bool fileSystemOK;
-  if (fileSystemOK = LittleFS.begin()) {
+  if ((fileSystemOK = LittleFS.begin())) {
     LoadSettingsMenu();
 #ifndef ZEDMD_WIFI
     LoadTransport();
 #endif
-    LoadWiFiConfig();
     LoadUsbPackageSizeMultiplier();
 #if defined(DISPLAY_LED_MATRIX) || defined(DISPLAY_PICO_LED_MATRIX)
     LoadRgbOrder();
@@ -1885,19 +1218,20 @@ void setup() {
 #endif
     LoadLum();
     LoadDebug();
-    LoadUdpDelay();
 #ifdef ZEDMD_HD_HALF
     LoadYOffset();
 #endif
+  } else {
+    TransportCreate();
   }
 
 #ifdef DISPLAY_RM67162_AMOLED
-  display = new Rm67162Amoled();  // For AMOLED display
+  display = (DisplayDriver *) new Rm67162Amoled();  // For AMOLED display
 #elif defined(DISPLAY_LED_MATRIX)
 #if PICO_BUILD
-  display = new PicoLedMatrix();  // For pico LED matrix display
+  display = (DisplayDriver *) new PicoLedMatrix();  // For pico LED matrix display
 #else
-  display = new Esp32LedMatrix();  // For ESP32 LED matrix display
+  display = (DisplayDriver *) new Esp32LedMatrix();  // For ESP32 LED matrix display
 #endif
 #endif
   display->SetBrightness(brightness);
@@ -1974,23 +1308,23 @@ void setup() {
     display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
                          (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
 
-    Bounce2::Button *forwardButton = new Bounce2::Button();
+    const auto forwardButton = new Bounce2::Button();
     forwardButton->attach(FORWARD_BUTTON_PIN, INPUT_PULLUP);
     forwardButton->interval(100);
     forwardButton->setPressedState(LOW);
 
-    Bounce2::Button *upButton = new Bounce2::Button();
+    const auto upButton = new Bounce2::Button();
     upButton->attach(UP_BUTTON_PIN, INPUT_PULLUP);
     upButton->interval(100);
     upButton->setPressedState(LOW);
 
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(PICO_BUILD)
-    Bounce2::Button *backwardButton = new Bounce2::Button();
+    const auto backwardButton = new Bounce2::Button();
     backwardButton->attach(BACKWARD_BUTTON_PIN, INPUT_PULLUP);
     backwardButton->interval(100);
     backwardButton->setPressedState(LOW);
 
-    Bounce2::Button *downButton = new Bounce2::Button();
+    const auto downButton = new Bounce2::Button();
     downButton->attach(DOWN_BUTTON_PIN, INPUT_PULLUP);
     downButton->interval(100);
     downButton->setPressedState(LOW);
@@ -1999,24 +1333,26 @@ void setup() {
     uint8_t position = 1;
     while (1) {
       forwardButton->update();
-      bool forward = forwardButton->pressed();
+      const bool forward = forwardButton->pressed();
       bool backward = false;
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(PICO_BUILD)
       backwardButton->update();
       backward = backwardButton->pressed();
 #endif
       if (forward || backward) {
-#ifdef ZEDMD_HD_HALF
-        if (forward && ++position > 8)
+        if (forward && ++position > MENU_ITEMS_COUNT)
           position = 1;
         else if (backward && --position < 1)
-          position = 8;
-#else
-        if (forward && ++position > 7)
-          position = 1;
-        else if (backward && --position < 1)
-          position = 7;
-#endif
+          position = MENU_ITEMS_COUNT;
+        // skip disabled transport menus
+        if (transport->isUsb()) {
+          if (position == 4) position = forward ? 5 : 3;
+        } else if (transport->isSpi()) {
+          if (position == 3 || position == 4) position = forward ? 5 : 2;
+        } else {
+          if (position == 3) position = forward ? 4 : 2;
+        }
+
         switch (position) {
           case 1: {  // Exit
             RefreshSetupScreen();
@@ -2036,35 +1372,28 @@ void setup() {
                                  (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
             break;
           }
-          case 4: {  // Transport
+          case 4: {  // UDP Delay
             RefreshSetupScreen();
             display->DisplayText(
-                transport == TRANSPORT_USB
-                    ? "USB     "
-                    : (transport == TRANSPORT_WIFI_UDP
-                           ? "WiFi UDP"
-                           : (transport == TRANSPORT_WIFI_TCP ? "WiFi TCP"
-                                                              : "SPI     ")),
+                "UDP Delay:",
+                7 * (TOTAL_WIDTH / 128), TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
+            break;
+          }
+          case 5: {  // Transport
+            RefreshSetupScreen();
+            display->DisplayText(transport->getTypeString(),
                 7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             break;
           }
-          case 5: {  // Debug
+          case 6: {  // Debug
             RefreshSetupScreen();
             display->DisplayText("Debug:", 7 * (TOTAL_WIDTH / 128),
                                  (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
             break;
           }
-          case 6: {  // RGB order
+          case 7: {  // RGB order
             RefreshSetupScreen();
             DisplayRGB(255, 191, 0);
-            break;
-          }
-          case 7: {  // UDP Delay
-            RefreshSetupScreen();
-            display->DisplayText(
-                "UDP Delay:",
-                TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - (11 * 4),
-                (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             break;
           }
 #ifdef ZEDMD_HD_HALF
@@ -2080,7 +1409,7 @@ void setup() {
       }
 
       upButton->update();
-      bool up = upButton->pressed();
+      const bool up = upButton->pressed();
       bool down = false;
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(PICO_BUILD)
       downButton->update();
@@ -2115,30 +1444,44 @@ void setup() {
             SaveUsbPackageSizeMultiplier();
             break;
           }
-          case 4: {  // Transport
-            if (up && ++transport > TRANSPORT_SPI)
-              transport = TRANSPORT_USB;
-            else if (down && --transport < TRANSPORT_USB)
-              transport = TRANSPORT_SPI;
-            display->DisplayText(
-                transport == TRANSPORT_USB
-                    ? "USB     "
-                    : (transport == TRANSPORT_WIFI_UDP
-                           ? "WiFi UDP"
-                           : (transport == TRANSPORT_WIFI_TCP ? "WiFi TCP"
-                                                              : "SPI     ")),
-                7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
-            SaveTransport();
+          case 4: {  // UDP Delay
+            uint8_t delay = transport->getDelay();
+            if (up && ++delay > 9)
+              delay = 0;
+            else if (down && --delay > 9) // underflow will result in 255, set it to 9
+              delay = 9;
+
+            DisplayNumber(delay, 1, 7 * (TOTAL_WIDTH / 128) + 10 * 4,
+              TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
+            transport->setDelay(delay);
+            transport->saveDelay();
             break;
           }
-          case 5: {  // Debug
+          case 5: {  // Transport
+#ifdef ZEDMD_NO_NETWORKING
+            const uint8_t type = transport->getType() == Transport::USB ?
+              Transport::SPI : Transport::USB;
+#else
+            uint8_t type = transport->getType();
+            if (up && ++type > Transport::SPI)
+              type = Transport::USB;
+            else if (down && --type > Transport::SPI)
+              type = Transport::SPI;
+#endif
+            SaveTransport(type);
+            RefreshSetupScreen();
+            display->DisplayText(transport->getTypeString(),
+                7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+            break;
+          }
+          case 6: {  // Debug
             if (++debug > 1) debug = 0;
             DisplayNumber(debug, 1, 7 * (TOTAL_WIDTH / 128) + (6 * 4),
                           (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
             SaveDebug();
             break;
           }
-          case 6: {  // RGB order
+          case 7: {  // RGB order
             if (rgbModeLoaded != 0) {
               rgbMode = 0;
               SaveRgbOrder();
@@ -2152,20 +1495,6 @@ void setup() {
             RefreshSetupScreen();
             DisplayRGB(255, 191, 0);
             SaveRgbOrder();
-            break;
-          }
-          case 7: {  // UDP Delay
-            if (up && ++udpDelay > 9)
-              udpDelay = 0;
-            else if (down && udpDelay == 0)
-              udpDelay = 9;
-            else if (down)
-              --udpDelay;
-
-            DisplayNumber(udpDelay, 1,
-                          TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 4,
-                          (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
-            SaveUdpDelay();
             break;
           }
 #ifdef ZEDMD_HD_HALF
@@ -2192,6 +1521,12 @@ void setup() {
 #endif
 
   pinMode(FORWARD_BUTTON_PIN, INPUT_PULLUP);
+#ifdef PICO_BUILD
+  // do not leave some pin configured as adc / floating
+  pinMode(BACKWARD_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(UP_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(DOWN_BUTTON_PIN, INPUT_PULLUP);
+#endif
 
   DisplayLogo();
   DisplayId();
@@ -2210,65 +1545,23 @@ void setup() {
     }
   }
 
-  switch (transport) {
-    case TRANSPORT_USB: {
-#ifdef BOARD_HAS_PSRAM
-      xTaskCreatePinnedToCore(Task_ReadSerial, "Task_ReadSerial", 8192, NULL, 1,
-                              NULL, 0);
-#else
-      xTaskCreatePinnedToCore(Task_ReadSerial, "Task_ReadSerial", 4096, NULL, 1,
-                              NULL, 0);
-#endif
-      break;
-    }
-
-#ifndef ZEDMD_NO_NETWORKING
-    case TRANSPORT_WIFI_UDP:
-    case TRANSPORT_WIFI_TCP: {
-      StartWiFi();
-      break;
-    }
-#endif // ZEDMD_NO_NETWORKING
-
-    case TRANSPORT_SPI: {
-      display->DisplayText("SPI connection failure ...", 0, 0, 255, 0, 0);
-      delay(5000);
-      display->DisplayText("Is the SPI interface turned on?", 0, 6, 255, 0, 0);
-      delay(5000);
-      display->DisplayText("Your SPI cable might be too long", 0, 12, 255, 0,
-                           0);
-      delay(5000);
-      display->DisplayText("No, your SPI cable is too short!", 0, 18, 255, 0,
-                           0);
-      delay(5000);
-      display->DisplayText("SPI is not implemented yet!", 0, 24, 255, 191, 0);
-      while (digitalRead(FORWARD_BUTTON_PIN));
-      settingsMenu = true;
-      SaveSettingsMenu();
-      delay(20);
-      Restart();
-      break;
-    }
-  }
+  transport->init();
 }
 
 void loop() {
   CheckMenuButton();
 
   if (!transportActive) {
-    if (wifiActive && !serverRunning) {
-      // @see https://github.com/ESP32Async/ESPAsyncWebServer/issues/21
-      // StartServer();
-    }
-
     if (!logoActive) logoActive = true;
 
-    if (!updateActive && logoWaitCounterClock.getElapsedTime().asSeconds() > 10) {
+    if (!updateActive &&
+        logoWaitCounterClock.getElapsedTime().asSeconds() > 10) {
       updateActive = true;
       DisplayUpdate();
     }
 
-    if (!saverActive && logoWaitCounterClock.getElapsedTime().asSeconds() > 20) {
+    if (!saverActive &&
+        logoWaitCounterClock.getElapsedTime().asSeconds() > 20) {
       saverActive = true;
       ScreenSaver();
     }
@@ -2331,15 +1624,8 @@ void loop() {
 
     vTaskDelay(pdMS_TO_TICKS(200));
   } else {
-    // if (wifiActive && serverRunning) {
-    //  @see https://github.com/ESP32Async/ESPAsyncWebServer/issues/21
-    //  server->end();
-    //  delete server;
-    //  server = nullptr;
-    //  serverRunning = false;
-    //}
-
-    if (lastDataReceivedClock.getElapsedTime().asMilliseconds() > CONNECTION_TIMEOUT) {
+    if (lastDataReceivedClock.getElapsedTime().asMilliseconds() >
+        CONNECTION_TIMEOUT) {
       transportActive = false;
       return;
     }
@@ -2431,13 +1717,11 @@ void loop() {
                     rgb888, 3);
               }
             }
-            if (debug) frames++;
 #else
             display->FillZoneRaw565(
                 uncompressBuffer[uncompressedBufferPosition++],
                 &uncompressBuffer[uncompressedBufferPosition]);
             uncompressedBufferPosition += RGB565_ZONE_SIZE;
-            if (debug) frames++;
 #endif
           }
         }
@@ -2445,16 +1729,6 @@ void loop() {
     } else {
       // Avoid busy-waiting
       vTaskDelay(pdMS_TO_TICKS(1));
-    }
-
-    if (debug) {
-      if (fpsClock.getElapsedTime().asMilliseconds() >= 200) {
-        snprintf(fpsStr, 3, "%02i", frames * 5);
-        frames = 0;
-        fpsClock.restart();
-      }
-      display->DisplayText(fpsStr,
-        TOTAL_WIDTH - 7, TOTAL_HEIGHT - 5, 255, 0, 0, false, false);
     }
   }
 }
