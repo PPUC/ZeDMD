@@ -112,6 +112,7 @@ jobs:
           name: ZeDMD-${{ matrix.panels }}
           path: |
             firmware.uf2
+            firmware-update.uf2
 
   post-build:
     runs-on: ubuntu-latest
