@@ -1,6 +1,8 @@
 #ifndef ZEDMD_TRANSPORT_H
 #define ZEDMD_TRANSPORT_H
 
+#include <Arduino.h>
+
 #include <cstdint>
 
 class Transport {
