@@ -61,6 +61,7 @@ uint8_t command __attribute__((aligned(4)));
 uint8_t currentBuffer __attribute__((aligned(4)));
 uint8_t lastBuffer __attribute__((aligned(4)));
 uint8_t processingBuffer __attribute__((aligned(4)));
+bool rgb565ZoneStream = false;
 
 // Init display on a low brightness to avoid power issues, but bright enough to
 // see something.
@@ -725,6 +726,7 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
                         (TOTAL_HEIGHT / 2) - 4, 255, 191, 0);
         }
 
+        bool rgb888ZoneStream = false;
         switch (command) {
           case 12:  // handshake
           {
@@ -770,6 +772,21 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
 #endif
             response[N_INTERMEDIATE_CTR_CHARS + 19] = shortId & 0xff;
             response[N_INTERMEDIATE_CTR_CHARS + 20] = (shortId >> 8) & 0xff;
+#if defined(ARDUINO_ESP32_S3_N16R8)
+            response[N_INTERMEDIATE_CTR_CHARS + 21] = 1;  // ESP32 S3
+#elif defined(DISPLAY_RM67162_AMOLED)
+            response[N_INTERMEDIATE_CTR_CHARS + 21] = 2;  // ESP32 S3 with
+                                                          // RM67162
+#elif defined(PICO_BUILD)
+#ifdef BOARD_HAS_PSRAM
+            response[N_INTERMEDIATE_CTR_CHARS + 21] = 3;  // RP2350
+#else
+            response[N_INTERMEDIATE_CTR_CHARS + 21] = 4;  // RP2040
+#endif
+#else
+            response[N_INTERMEDIATE_CTR_CHARS + 21] = 0;  // ESP32
+#endif
+
             response[63 - N_ACK_CHARS] = 'R';
             Serial.write(response, 64 - N_ACK_CHARS);
             // This flush is required for USB CDC on Windows.
@@ -1112,7 +1129,12 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
             return 1;
           }
 
+          case 4:  // RGB888 Zones Stream
+            rgb888ZoneStream = true;
+            // no break; here, continue to case 5
+
           case 5: {  // RGB565 Zones Stream
+            rgb565ZoneStream = !rgb888ZoneStream;
             if (payloadMissing == payloadSize) {
               AcquireNextBuffer();
               bufferCompressed[currentBuffer] = payloadCompressed;
@@ -1706,31 +1728,48 @@ void loop() {
             const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
             const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
 
-            for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
-              for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
-                const uint16_t rgb565 =
-                    uncompressBuffer[uncompressedBufferPosition++] +
-                    (((uint16_t)uncompressBuffer[uncompressedBufferPosition++])
-                     << 8);
-                uint8_t rgb888[3];
-                rgb888[0] = (rgb565 >> 8) & 0xf8;
-                rgb888[1] = (rgb565 >> 3) & 0xfc;
-                rgb888[2] = (rgb565 << 3);
-                rgb888[0] |= (rgb888[0] >> 5);
-                rgb888[1] |= (rgb888[1] >> 6);
-                rgb888[2] |= (rgb888[2] >> 5);
-                memcpy(
-                    &renderBuffer[currentRenderBuffer]
-                                 [((yOffset + y) * TOTAL_WIDTH + xOffset + x) *
-                                  3],
-                    rgb888, 3);
+            if (rgb565ZoneStream) {
+              for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
+                for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
+                  const uint16_t rgb565 =
+                      uncompressBuffer[uncompressedBufferPosition++] +
+                      (((uint16_t)
+                            uncompressBuffer[uncompressedBufferPosition++])
+                       << 8);
+                  uint8_t rgb888[3];
+                  rgb888[0] = (rgb565 >> 8) & 0xf8;
+                  rgb888[1] = (rgb565 >> 3) & 0xfc;
+                  rgb888[2] = (rgb565 << 3);
+                  rgb888[0] |= (rgb888[0] >> 5);
+                  rgb888[1] |= (rgb888[1] >> 6);
+                  rgb888[2] |= (rgb888[2] >> 5);
+                  memcpy(&renderBuffer
+                             [currentRenderBuffer]
+                             [((yOffset + y) * TOTAL_WIDTH + xOffset + x) * 3],
+                         rgb888, 3);
+                }
+              }
+            } else {
+              for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
+                memcpy(&renderBuffer[currentRenderBuffer]
+                                    [((yOffset + y) * TOTAL_WIDTH + xOffset)],
+                       uncompressBuffer[uncompressedBufferPosition,
+                                        3 * ZONE_WIDTH]);
+                uncompressedBufferPosition += 3 * ZONE_WIDTH;
               }
             }
 #else
-            display->FillZoneRaw565(
-                uncompressBuffer[uncompressedBufferPosition++],
-                &uncompressBuffer[uncompressedBufferPosition]);
-            uncompressedBufferPosition += RGB565_ZONE_SIZE;
+            if (rgb565ZoneStream) {
+              display->FillZoneRaw565(
+                  uncompressBuffer[uncompressedBufferPosition++],
+                  &uncompressBuffer[uncompressedBufferPosition]);
+              uncompressedBufferPosition += RGB565_ZONE_SIZE;
+            } else {
+              display->FillZoneRaw(
+                  uncompressBuffer[uncompressedBufferPosition++],
+                  &uncompressBuffer[uncompressedBufferPosition]);
+              uncompressedBufferPosition += ZONE_SIZE;
+            }
 #endif
           }
         }
