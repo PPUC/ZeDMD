@@ -2,8 +2,6 @@
 
 #include <Arduino.h>
 
-#include <cstdint>
-
 #include "main.h"
 #include "utility/clock.h"
 

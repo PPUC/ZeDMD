@@ -1,6 +1,8 @@
 #ifndef ZEDMD_TRANSPORT_H
 #define ZEDMD_TRANSPORT_H
 
+#include <cstdint>
+
 class Transport {
  public:
   enum { USB = 0, WIFI_UDP = 1, WIFI_TCP = 2, SPI = 3 };
