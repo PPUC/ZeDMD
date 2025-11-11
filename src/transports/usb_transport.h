@@ -7,7 +7,7 @@
 #include "transport.h"
 
 class UsbTransport final : public Transport {
-public:
+ public:
   UsbTransport();
 
   ~UsbTransport() override;
@@ -16,10 +16,10 @@ public:
 
   bool deinit() override;
 
-private:
+ private:
   static void Task_ReadSerial(void *pvParameters);
 
   TaskHandle_t m_task{};
 };
 
-#endif //ZEDMD_USB_TRANSPORT_H
+#endif  // ZEDMD_USB_TRANSPORT_H

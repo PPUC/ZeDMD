@@ -1,24 +1,23 @@
-#include <cstdint>
-#include <Arduino.h>
-#include "main.h"
 #include "usb_transport.h"
+
+#include <Arduino.h>
+
+#include <cstdint>
+
+#include "main.h"
 #include "utility/clock.h"
 
-UsbTransport::UsbTransport() : Transport() {
-  m_type = USB;
-}
+UsbTransport::UsbTransport() : Transport() { m_type = USB; }
 
-UsbTransport::~UsbTransport() {
-  deinit();
-}
+UsbTransport::~UsbTransport() { deinit(); }
 
 bool UsbTransport::init() {
 #ifdef BOARD_HAS_PSRAM
-  xTaskCreatePinnedToCore(Task_ReadSerial, "Task_ReadSerial", 8192,
-                          this, 1, &m_task, 0);
+  xTaskCreatePinnedToCore(Task_ReadSerial, "Task_ReadSerial", 8192, this, 1,
+                          &m_task, 0);
 #else
-  xTaskCreatePinnedToCore(Task_ReadSerial, "Task_ReadSerial", 4096,
-                          this, 1, &m_task, 0);
+  xTaskCreatePinnedToCore(Task_ReadSerial, "Task_ReadSerial", 4096, this, 1,
+                          &m_task, 0);
 #endif
 
   m_active = true;
@@ -30,8 +29,8 @@ bool UsbTransport::deinit() {
   if (m_active) {
     m_active = false;
     // TODO ? clean exit ?
-    //delay(500);
-    //vTaskDelete(m_task);
+    // delay(500);
+    // vTaskDelete(m_task);
   }
 
   return true;
@@ -63,16 +62,16 @@ void UsbTransport::Task_ReadSerial(void* pvParameters) {
     vTaskDelay(pdMS_TO_TICKS(10));
   }
   if (1 == debug) {
-    DisplayNumber(SERIAL_BAUD, (SERIAL_BAUD >= 1000000 ? 7 : 6),
-                  0, 0, 0, 0, 0, true);
+    DisplayNumber(SERIAL_BAUD, (SERIAL_BAUD >= 1000000 ? 7 : 6), 0, 0, 0, 0, 0,
+                  true);
   } else {
     GetDisplayDriver()->DisplayText("USB UART", 0, 0, 0, 0, 0, true);
   }
 #endif
 
 #ifdef BOARD_HAS_PSRAM
-  const auto pUsbBuffer = static_cast<uint8_t*>(heap_caps_malloc(
-      usbPackageSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT));
+  const auto pUsbBuffer = static_cast<uint8_t*>(
+      heap_caps_malloc(usbPackageSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT));
 #else
   const auto pUsbBuffer = static_cast<uint8_t*>(malloc(usbPackageSize));
 #endif
@@ -138,22 +137,22 @@ void UsbTransport::Task_ReadSerial(void* pvParameters) {
           while (!Serial) {
             vTaskDelay(pdMS_TO_TICKS(1));
           }
-          break; // Wait for the next FRAME header
+          break;  // Wait for the next FRAME header
         }
         connected = true;
         if (3 == result) {
-          break; // fast ack has been sent, wait for the next FRAME header
+          break;  // fast ack has been sent, wait for the next FRAME header
         }
         Serial.write(CtrlChars, N_ACK_CHARS);
         Serial.flush();
-        if (1 == result) break; // Wait for the next FRAME header
+        if (1 == result) break;  // Wait for the next FRAME header
         timeoutClock.restart();
       } else {
         if (timeoutClock.getElapsedTime().asMilliseconds() >
             CONNECTION_TIMEOUT) {
           transportActive = false;
           timeoutClock.restart();
-          break; // Wait for the next FRAME header
+          break;  // Wait for the next FRAME header
         }
         // Avoid busy-waiting
         vTaskDelay(pdMS_TO_TICKS(1));

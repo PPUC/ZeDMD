@@ -1,4 +1,5 @@
-// A Tiny 4x6 Pixel Font That Will Fit On Almost Any Microcontroller (License: MIT)
+// A Tiny 4x6 Pixel Font That Will Fit On Almost Any Microcontroller (License:
+// MIT)
 // https://hackaday.io/project/6309-vga-graphics-over-spi-and-serial-vgatonic/log/20759-a-tiny-4x6-pixel-font-that-will-fit-on-almost-any-microcontroller-license-mit
 
 // Font Definition

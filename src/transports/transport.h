@@ -2,13 +2,8 @@
 #define ZEDMD_TRANSPORT_H
 
 class Transport {
-public:
-  enum {
-    USB = 0,
-    WIFI_UDP = 1,
-    WIFI_TCP = 2,
-    SPI = 3
-  };
+ public:
+  enum { USB = 0, WIFI_UDP = 1, WIFI_TCP = 2, SPI = 3 };
 
   Transport() = default;
 
@@ -25,13 +20,10 @@ public:
   virtual void setType(const uint8_t type) { m_type = type; }
 
   virtual const char* getTypeString() {
-    return m_type == USB
-             ? "USB     "
-             : m_type == WIFI_UDP
-             ? "WiFi UDP"
-             : m_type == WIFI_TCP
-             ? "WiFi TCP"
-             : "SPI     ";
+    return m_type == USB        ? "USB     "
+           : m_type == WIFI_UDP ? "WiFi UDP"
+           : m_type == WIFI_TCP ? "WiFi TCP"
+                                : "SPI     ";
   }
 
   virtual bool loadConfig() { return true; }
@@ -46,26 +38,20 @@ public:
 
   virtual bool saveDelay() { return true; }
 
-  bool isUsb() const {
-    return m_type == USB;
-  }
+  bool isUsb() const { return m_type == USB; }
 
-  bool isWifi() const {
-    return m_type == WIFI_UDP || m_type == WIFI_TCP;
-  }
+  bool isWifi() const { return m_type == WIFI_UDP || m_type == WIFI_TCP; }
 
   bool isWifiAndActive() const {
     return m_active && (m_type == WIFI_UDP || m_type == WIFI_TCP);
   }
 
-  bool isSpi() const {
-    return m_type == SPI;
-  }
+  bool isSpi() const { return m_type == SPI; }
 
-protected:
+ protected:
   uint8_t m_type = USB;
   bool m_active = false;
   uint8_t m_delay = 5;
 };
 
-#endif //ZEDMD_TRANSPORT_H
+#endif  // ZEDMD_TRANSPORT_H

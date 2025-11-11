@@ -53,8 +53,8 @@ extern "C" {
 #define CFG_TUH_ENABLED 0
 #define CFG_TUH_MAX3421 0
 
-#endif // pio_usb.h
-#endif // USE_TINYUSB_HOST
+#endif  // pio_usb.h
+#endif  // USE_TINYUSB_HOST
 
 #ifndef CFG_TUSB_MCU
 #define CFG_TUSB_MCU OPT_MCU_RP2040
@@ -97,10 +97,10 @@ extern "C" {
 #define CFG_TUD_VENDOR 0
 #endif
 #ifndef CFG_TUD_VIDEO
-#define CFG_TUD_VIDEO 0 // number of video control interfaces
+#define CFG_TUD_VIDEO 0  // number of video control interfaces
 #endif
 #ifndef CFG_TUD_VIDEO_STREAMING
-#define CFG_TUD_VIDEO_STREAMING 0 // number of video streaming interfaces
+#define CFG_TUD_VIDEO_STREAMING 0  // number of video streaming interfaces
 #endif
 
 // video streaming endpoint buffer size
@@ -165,8 +165,8 @@ extern "C" {
 // Set Line Coding on enumeration/mounted, value for cdc_line_coding_t
 // bit rate = 115200, 1 stop bit, no parity, 8 bit data width
 // This need Pico-PIO-USB at least 0.5.1
-#define CFG_TUH_CDC_LINE_CODING_ON_ENUM                                        \
-  { 115200, CDC_LINE_CODING_STOP_BITS_1, CDC_LINE_CODING_PARITY_NONE, 8 }
+#define CFG_TUH_CDC_LINE_CODING_ON_ENUM \
+  {115200, CDC_LINE_CODING_STOP_BITS_1, CDC_LINE_CODING_PARITY_NONE, 8}
 
 #ifdef __cplusplus
 }

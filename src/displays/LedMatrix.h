@@ -15,7 +15,7 @@ class LedMatrix : public DisplayDriver {
   void SetCurrentScalingMode(uint8_t mode) override;
 
   void DrawPixel(uint16_t x, uint16_t y, uint8_t r, uint8_t g,
-                         uint8_t b) override {}
+                 uint8_t b) override {}
   void DrawPixel(uint16_t x, uint16_t y, uint16_t color) override {}
 
   void ClearScreen() override;

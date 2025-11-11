@@ -6,10 +6,11 @@
 #include <AsyncUDP.h>
 #include <ESPAsyncWebServer.h>
 #include <ESPmDNS.h>
+
 #include "transport.h"
 
 class WifiTransport final : public Transport {
-public:
+ public:
   WifiTransport();
 
   ~WifiTransport() override;
@@ -32,12 +33,13 @@ public:
   uint8_t ssid_length = 0;
   uint8_t pwd_length = 0;
 
-private:
+ private:
   void startServer();
 
   static void HandleUdpPacket(AsyncUDPPacket packet);
 
-  static void HandleTcpData(void *arg, AsyncClient *client, void *data, size_t len);
+  static void HandleTcpData(void *arg, AsyncClient *client, void *data,
+                            size_t len);
 
   static void HandleTcpDisconnect(void *arg, AsyncClient *client);
 

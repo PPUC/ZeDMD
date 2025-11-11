@@ -51,7 +51,8 @@ PicoLedMatrix::PicoLedMatrix() {
   // tested working on a lot of different devices
   vreg_set_voltage(VREG_VOLTAGE_1_15);
   busy_wait_at_least_cycles((SYS_CLK_VREG_VOLTAGE_AUTO_ADJUST_DELAY_US *
-                             static_cast<uint64_t>(XOSC_HZ)) / 1000000);
+                             static_cast<uint64_t>(XOSC_HZ)) /
+                            1000000);
   set_sys_clock_khz(266000, false);
 
 #if 0
@@ -78,13 +79,13 @@ PicoLedMatrix::~PicoLedMatrix() {
 }
 
 void IRAM_ATTR PicoLedMatrix::DrawPixel(const uint16_t x, const uint16_t y,
-                              const uint8_t r, const uint8_t g,
-                              const uint8_t b) {
+                                        const uint8_t r, const uint8_t g,
+                                        const uint8_t b) {
   s_hub75->set_pixel(x, y + yOffset, r, g, b);
 }
 
 void IRAM_ATTR PicoLedMatrix::DrawPixel(const uint16_t x, const uint16_t y,
-                              const uint16_t color) {
+                                        const uint16_t color) {
   s_hub75->set_pixel(x, y + yOffset, r5_to_8[(color >> 11) & 0x1F],
                      g6_to_8[(color >> 5) & 0x3F], b5_to_8[color & 0x1F]);
 }

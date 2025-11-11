@@ -4,6 +4,7 @@
 #include "pico/zedmd_pico.h"
 #endif
 #include <LittleFS.h>
+
 #include "transports/usb_transport.h"
 #ifndef ZEDMD_NO_NETWORKING
 #include "transports/wifi_transport.h"
@@ -67,7 +68,7 @@ uint8_t processingBuffer __attribute__((aligned(4)));
 uint8_t brightness = 5;
 #else
 uint8_t brightness = 2;
-uint8_t rgbMode = 0; // Valid values are 0-5.
+uint8_t rgbMode = 0;  // Valid values are 0-5.
 uint8_t rgbModeLoaded = 0;
 int8_t yOffset = 0;
 uint8_t panelClkphase = 0;
@@ -249,7 +250,8 @@ void SaveTransport(const uint8_t type = Transport::USB) {
 void LoadTransport() {
   File f = LittleFS.open("/transport.val", "r");
   if (!f) {
-    const uint8_t type = transport != nullptr ? transport->getType() : Transport::USB;
+    const uint8_t type =
+        transport != nullptr ? transport->getType() : Transport::USB;
     SaveTransport(type);
     TransportCreate(type);
     return;
@@ -263,7 +265,7 @@ void LoadTransport() {
 #if defined(DISPLAY_LED_MATRIX)
 void SaveRgbOrder() {
   File f = LittleFS.open("/rgb_order.val", "w");
-  f.write((uint8_t) rgbMode);
+  f.write((uint8_t)rgbMode);
   f.close();
 }
 
@@ -462,24 +464,24 @@ bool AcquireNextProcessingBuffer() {
   return false;
 }
 
-//#define ZEDMD_CLIENT_DEBUG_FPS
+// #define ZEDMD_CLIENT_DEBUG_FPS
 #ifdef ZEDMD_CLIENT_DEBUG_FPS
 Clock fpsClock;
 uint16_t frames = 0;
 char fpsStr[3];
 
 void FpsUpdate() {
-  //if (debug) {
-    frames++;
+  // if (debug) {
+  frames++;
 
-    if (fpsClock.getElapsedTime().asMilliseconds() >= 200) {
-      snprintf(fpsStr, 3, "%02i", frames * 5);
-      frames = 0;
-      fpsClock.restart();
-    }
+  if (fpsClock.getElapsedTime().asMilliseconds() >= 200) {
+    snprintf(fpsStr, 3, "%02i", frames * 5);
+    frames = 0;
+    fpsClock.restart();
+  }
 
-    display->DisplayText(fpsStr, TOTAL_WIDTH - 7, TOTAL_HEIGHT - 5, 255, 0, 0,
-                         false, false);
+  display->DisplayText(fpsStr, TOTAL_WIDTH - 7, TOTAL_HEIGHT - 5, 255, 0, 0,
+                       false, false);
   //}
 }
 #endif
@@ -630,8 +632,8 @@ void RefreshSetupScreen() {
   }
   DisplayRGB();
   DisplayLum();
-  display->DisplayText(transport->getTypeString(),
-      7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
+  display->DisplayText(transport->getTypeString(), 7 * (TOTAL_WIDTH / 128),
+                       (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
   display->DisplayText("Debug:", 7 * (TOTAL_WIDTH / 128),
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
   DisplayNumber(debug, 1, 7 * (TOTAL_WIDTH / 128) + (6 * 4),
@@ -640,15 +642,14 @@ void RefreshSetupScreen() {
     display->DisplayText("USB Packet Size:", 7 * (TOTAL_WIDTH / 128),
                          (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
     DisplayNumber(usbPackageSizeMultiplier * 32, 4,
-                  7 * (TOTAL_WIDTH / 128) + (16 * 4), (TOTAL_HEIGHT / 2) + 4, 255,
-                  191, 0);
+                  7 * (TOTAL_WIDTH / 128) + (16 * 4), (TOTAL_HEIGHT / 2) + 4,
+                  255, 191, 0);
   }
   if (transport->isWifi()) {
-    display->DisplayText(
-    "UDP Delay:", 7 * (TOTAL_WIDTH / 128),
-                     (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
+    display->DisplayText("UDP Delay:", 7 * (TOTAL_WIDTH / 128),
+                         (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
     DisplayNumber(transport->getDelay(), 1, 7 * (TOTAL_WIDTH / 128) + 10 * 4,
-                         (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
+                  (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
   }
 #ifdef ZEDMD_HD_HALF
   display->DisplayText("Y-Offset", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
@@ -763,7 +764,8 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
 #else
             response[N_INTERMEDIATE_CTR_CHARS + 18] = 0;
 #endif
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || defined(PICO_BUILD)
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || \
+    defined(PICO_BUILD)
             response[N_INTERMEDIATE_CTR_CHARS + 18] += 0b00000010;
 #endif
             response[N_INTERMEDIATE_CTR_CHARS + 19] = shortId & 0xff;
@@ -1226,12 +1228,14 @@ void setup() {
   }
 
 #ifdef DISPLAY_RM67162_AMOLED
-  display = (DisplayDriver *) new Rm67162Amoled();  // For AMOLED display
+  display = (DisplayDriver *)new Rm67162Amoled();  // For AMOLED display
 #elif defined(DISPLAY_LED_MATRIX)
 #if PICO_BUILD
-  display = (DisplayDriver *) new PicoLedMatrix();  // For pico LED matrix display
+  display =
+      (DisplayDriver *)new PicoLedMatrix();  // For pico LED matrix display
 #else
-  display = (DisplayDriver *) new Esp32LedMatrix();  // For ESP32 LED matrix display
+  display =
+      (DisplayDriver *)new Esp32LedMatrix();  // For ESP32 LED matrix display
 #endif
 #endif
   display->SetBrightness(brightness);
@@ -1374,15 +1378,15 @@ void setup() {
           }
           case 4: {  // UDP Delay
             RefreshSetupScreen();
-            display->DisplayText(
-                "UDP Delay:",
-                7 * (TOTAL_WIDTH / 128), TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
+            display->DisplayText("UDP Delay:", 7 * (TOTAL_WIDTH / 128),
+                                 TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
             break;
           }
           case 5: {  // Transport
             RefreshSetupScreen();
             display->DisplayText(transport->getTypeString(),
-                7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+                                 7 * (TOTAL_WIDTH / 128),
+                                 (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             break;
           }
           case 6: {  // Debug
@@ -1448,19 +1452,21 @@ void setup() {
             uint8_t delay = transport->getDelay();
             if (up && ++delay > 9)
               delay = 0;
-            else if (down && --delay > 9) // underflow will result in 255, set it to 9
+            else if (down &&
+                     --delay > 9)  // underflow will result in 255, set it to 9
               delay = 9;
 
             DisplayNumber(delay, 1, 7 * (TOTAL_WIDTH / 128) + 10 * 4,
-              TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
+                          TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
             transport->setDelay(delay);
             transport->saveDelay();
             break;
           }
           case 5: {  // Transport
 #ifdef ZEDMD_NO_NETWORKING
-            const uint8_t type = transport->getType() == Transport::USB ?
-              Transport::SPI : Transport::USB;
+            const uint8_t type = transport->getType() == Transport::USB
+                                     ? Transport::SPI
+                                     : Transport::USB;
 #else
             uint8_t type = transport->getType();
             if (up && ++type > Transport::SPI)
@@ -1471,7 +1477,8 @@ void setup() {
             SaveTransport(type);
             RefreshSetupScreen();
             display->DisplayText(transport->getTypeString(),
-                7 * (TOTAL_WIDTH / 128), (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+                                 7 * (TOTAL_WIDTH / 128),
+                                 (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             break;
           }
           case 6: {  // Debug
@@ -1490,7 +1497,9 @@ void setup() {
             }
             if (up && ++rgbMode > 5)
               rgbMode = 0;
-            else if (down && --rgbMode > 5) // underflow will result in 255, set it to 5
+            else if (down &&
+                     --rgbMode >
+                         5)  // underflow will result in 255, set it to 5
               rgbMode = 5;
             RefreshSetupScreen();
             DisplayRGB(255, 191, 0);

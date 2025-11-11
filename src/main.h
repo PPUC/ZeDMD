@@ -2,10 +2,11 @@
 #define ZEDMD_MAIN_H
 
 #include <cstdint>
+
+#include "displayDriver.h"
 #include "miniz/miniz.h"
 #include "panel.h"
 #include "version.h"
-#include "displayDriver.h"
 
 #define N_FRAME_CHARS 5
 #define N_CTRL_CHARS 5
@@ -30,7 +31,7 @@
 #define BUFFER_SIZE 1152
 #endif
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || \
-defined(PICO_BUILD)
+    defined(PICO_BUILD)
 // USB CDC
 #define SERIAL_BAUD 115200
 #define USB_PACKAGE_SIZE 512
@@ -39,7 +40,7 @@ defined(PICO_BUILD)
 #define USB_PACKAGE_SIZE 32
 #endif
 #define SERIAL_TIMEOUT \
-8  // Time in milliseconds to wait for the next data chunk.
+  8  // Time in milliseconds to wait for the next data chunk.
 
 #define CONNECTION_TIMEOUT 5000
 
@@ -139,4 +140,4 @@ extern void SaveLum();
 
 extern void SaveScale();
 
-#endif //ZEDMD_MAIN_H
+#endif  // ZEDMD_MAIN_H

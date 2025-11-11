@@ -8,25 +8,25 @@
 #include <cstdint>
 
 class Time {
-public:
-    Time();
+ public:
+  Time();
 
-    [[nodiscard]] float asSeconds() const;
+  [[nodiscard]] float asSeconds() const;
 
-    [[nodiscard]] uint32_t asMilliseconds() const;
+  [[nodiscard]] uint32_t asMilliseconds() const;
 
-    [[nodiscard]] uint64_t asMicroseconds() const;
+  [[nodiscard]] uint64_t asMicroseconds() const;
 
-private:
-    friend Time seconds(float);
+ private:
+  friend Time seconds(float);
 
-    friend Time milliseconds(uint32_t);
+  friend Time milliseconds(uint32_t);
 
-    friend Time microseconds(uint64_t);
+  friend Time microseconds(uint64_t);
 
-    explicit Time(uint64_t microseconds);
+  explicit Time(uint64_t microseconds);
 
-    uint64_t m_microseconds;
+  uint64_t m_microseconds;
 };
 
 Time seconds(float amount);
@@ -83,4 +83,4 @@ Time operator%(Time left, Time right);
 
 Time &operator%=(Time &left, Time right);
 
-#endif //ZEDMD_CLOCK_TIME_H
+#endif  // ZEDMD_CLOCK_TIME_H

@@ -8,17 +8,17 @@
 #include "clock_time.h"
 
 class Clock {
-public:
-    Clock();
+ public:
+  Clock();
 
-    static Time getCurrentTime();
+  static Time getCurrentTime();
 
-    [[nodiscard]] Time getElapsedTime() const;
+  [[nodiscard]] Time getElapsedTime() const;
 
-    Time restart();
+  Time restart();
 
-protected:
-    Time m_startTime;
+ protected:
+  Time m_startTime;
 };
 
-#endif //ZEDMD_CLOCK_H
+#endif  // ZEDMD_CLOCK_H

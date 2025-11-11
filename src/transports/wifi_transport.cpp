@@ -1,19 +1,17 @@
 #ifndef ZEDMD_NO_NETWORKING
 
+#include "wifi_transport.h"
+
 #include <LittleFS.h>
 #include <WiFi.h>
+
 #include "main.h"
 #include "panel.h"
 #include "version.h"
-#include "wifi_transport.h"
 
-WifiTransport::WifiTransport() : Transport() {
-  m_type = WIFI_UDP;
-}
+WifiTransport::WifiTransport() : Transport() { m_type = WIFI_UDP; }
 
-WifiTransport::~WifiTransport() {
-  deinit();
-}
+WifiTransport::~WifiTransport() { deinit(); }
 
 bool WifiTransport::init() {
   char apSSID[16];
@@ -27,25 +25,26 @@ bool WifiTransport::init() {
     WiFi.begin(ssid.substring(0, ssid_length).c_str(),
                pwd.substring(0, pwd_length).c_str());
 
-    // Don't use WiFi.waitForConnectResult(10000) here, it blocks the menu button.
+    // Don't use WiFi.waitForConnectResult(10000) here, it blocks the menu
+    // button.
     unsigned long startTime = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - startTime < 10000) {
       CheckMenuButton();
-      vTaskDelay(pdMS_TO_TICKS(100)); // FreeRTOS delay, avoids blocking
+      vTaskDelay(pdMS_TO_TICKS(100));  // FreeRTOS delay, avoids blocking
     }
 
     if (WiFi.status() != WL_CONNECTED) {
       GetDisplayDriver()->DisplayText("No WiFi connection, error ", 10,
                                       TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
-      DisplayNumber(WiFi.status(), 2, 26 * 4 + 10,
-                    TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
+      DisplayNumber(WiFi.status(), 2, 26 * 4 + 10, TOTAL_HEIGHT / 2 - 9, 255, 0,
+                    0);
       GetDisplayDriver()->DisplayText("Trying again ...", 10,
                                       TOTAL_HEIGHT / 2 - 3, 255, 0, 0);
       // second try
       startTime = millis();
       while (WiFi.status() != WL_CONNECTED && millis() - startTime < 10000) {
         CheckMenuButton();
-        vTaskDelay(pdMS_TO_TICKS(100)); // FreeRTOS delay, avoids blocking
+        vTaskDelay(pdMS_TO_TICKS(100));  // FreeRTOS delay, avoids blocking
       }
       if (WiFi.status() != WL_CONNECTED) {
         softAPFallback = true;
@@ -65,11 +64,9 @@ bool WifiTransport::init() {
     GetDisplayDriver()->DisplayText("No WiFi connection, maybe     ", 10,
                                     TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
     GetDisplayDriver()->DisplayText("the credentials are wrong.", 10,
-                                    TOTAL_HEIGHT / 2 - 3,
-                                    255, 0, 0);
+                                    TOTAL_HEIGHT / 2 - 3, 255, 0, 0);
     GetDisplayDriver()->DisplayText("Start AP in 20 seconds ...", 10,
-                                    TOTAL_HEIGHT / 2 + 3,
-                                    255, 0, 0);
+                                    TOTAL_HEIGHT / 2 + 3, 255, 0, 0);
     for (uint8_t i = 19; i > 0; i--) {
       CheckMenuButton();
       vTaskDelay(pdMS_TO_TICKS(1000));
@@ -88,19 +85,19 @@ bool WifiTransport::init() {
     DisplayNumber(ip[i], 3, i * 3 * 4 + i * 2, 0, 0, 0, 0, true);
   }
 
-  WiFi.setSleep(false); // WiFi speed improvement on ESP32 S3 and others.
+  WiFi.setSleep(false);  // WiFi speed improvement on ESP32 S3 and others.
 
   m_active = true;
 
   // Start the MDNS server for easy detection
   if (!MDNS.begin("zedmd-wifi")) {
-    GetDisplayDriver()->DisplayText("MDNS could not be started", 0, 0,
-                                    255, 0, 0);
+    GetDisplayDriver()->DisplayText("MDNS could not be started", 0, 0, 255, 0,
+                                    0);
     while (1);
   }
 
-  GetDisplayDriver()->DisplayText("zedmd-wifi.local", 0, TOTAL_HEIGHT - 5,
-                                  0, 0, 0, true);
+  GetDisplayDriver()->DisplayText("zedmd-wifi.local", 0, TOTAL_HEIGHT - 5, 0, 0,
+                                  0, true);
 
   startServer();
 
@@ -194,8 +191,8 @@ void WifiTransport::HandleUdpPacket(AsyncUDPPacket packet) {
   }
 }
 
-void WifiTransport::HandleTcpData(void* arg, AsyncClient* client,
-                                  void* data, size_t len) {
+void WifiTransport::HandleTcpData(void* arg, AsyncClient* client, void* data,
+                                  size_t len) {
   HandleData(static_cast<uint8_t*>(data), len);
   client->ack(len);
 }
@@ -267,7 +264,7 @@ void WifiTransport::startServer() {
     String jsonResponse;
     if (WiFi.status() == WL_CONNECTED) {
       const int8_t rssi = WiFi.RSSI();
-      const IPAddress ip = WiFi.localIP(); // Get the local IP address
+      const IPAddress ip = WiFi.localIP();  // Get the local IP address
 
       jsonResponse = R"({"connected":true,"ssid":")" + WiFi.SSID() +
                      R"(","signal":)" + String(rssi) + "," + R"("ip":")" +
@@ -295,7 +292,7 @@ void WifiTransport::startServer() {
 
       const String rgbOrderValue = request->getParam("rgbOrder", true)->value();
       rgbMode =
-          rgbOrderValue.toInt(); // Convert to integer and set the RGB mode
+          rgbOrderValue.toInt();  // Convert to integer and set the RGB mode
       SaveRgbOrder();
       RefreshSetupScreen();
       request->send(200, "text/plain", "RGB order updated successfully");
@@ -308,8 +305,8 @@ void WifiTransport::startServer() {
   // Route to save brightness
   server->on("/save_brightness", HTTP_POST, [](AsyncWebServerRequest* request) {
     if (request->hasParam("brightness", true)) {
-      const String brightnessValue = request->getParam("brightness", true)->
-          value();
+      const String brightnessValue =
+          request->getParam("brightness", true)->value();
       brightness = brightnessValue.toInt();
       GetDisplayDriver()->SetBrightness(brightness);
       SaveLum();
@@ -398,7 +395,8 @@ void WifiTransport::startServer() {
   });
 
   server->on("/get_s3", HTTP_GET, [](AsyncWebServerRequest* request) {
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || defined(PICO_BUILD)
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || \
+    defined(PICO_BUILD)
     request->send(200, "text/plain", String(1));
 #else
     request->send(200, "text/plain", String(0));
@@ -410,36 +408,36 @@ void WifiTransport::startServer() {
   });
 
   server->on("/handshake", HTTP_GET, [this](AsyncWebServerRequest* request) {
-    request->send(
-        200, "text/plain",
-        String(TOTAL_WIDTH) + "|" + String(TOTAL_HEIGHT) + "|" +
-        String(ZEDMD_VERSION_MAJOR) + "." + String(ZEDMD_VERSION_MINOR) +
-        "." + String(ZEDMD_VERSION_PATCH) + "|" +
+    request->send(200, "text/plain",
+                  String(TOTAL_WIDTH) + "|" + String(TOTAL_HEIGHT) + "|" +
+                      String(ZEDMD_VERSION_MAJOR) + "." +
+                      String(ZEDMD_VERSION_MINOR) + "." +
+                      String(ZEDMD_VERSION_PATCH) + "|" +
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || \
     defined(PICO_BUILD)
-        String(1)
+                      String(1)
 #else
         String(0)
 #endif
-        + "|" + (m_type == WIFI_UDP ? "UDP" : "TCP") + "|" +
-        String(port) + "|" + String(m_delay) + "|" +
-        String(usbPackageSizeMultiplier * 32) + "|" + String(brightness) +
-        "|" +
+                      + "|" + (m_type == WIFI_UDP ? "UDP" : "TCP") + "|" +
+                      String(port) + "|" + String(m_delay) + "|" +
+                      String(usbPackageSizeMultiplier * 32) + "|" +
+                      String(brightness) + "|" +
 #ifndef DISPLAY_RM67162_AMOLED
-        String(rgbMode) + "|" + String(panelClkphase) + "|" +
-        String(panelDriver) + "|" + String(panelI2sspeed) + "|" +
-        String(panelLatchBlanking) + "|" + String(panelMinRefreshRate) +
-        "|" + String(yOffset)
+                      String(rgbMode) + "|" + String(panelClkphase) + "|" +
+                      String(panelDriver) + "|" + String(panelI2sspeed) + "|" +
+                      String(panelLatchBlanking) + "|" +
+                      String(panelMinRefreshRate) + "|" + String(yOffset)
 #else
         "0|0|0|0|0|0|0"
 #endif
-        + "|" + ssid + "|" +
+                      + "|" + ssid + "|" +
 #ifdef ZEDMD_HD_HALF
-        "1"
+                      "1"
 #else
         "0"
 #endif
-        + "|" + String(shortId));
+                      + "|" + String(shortId));
   });
 
   server->on("/ppuc.png", HTTP_GET, [](AsyncWebServerRequest* request) {
@@ -447,14 +445,14 @@ void WifiTransport::startServer() {
   });
 
   server->on("/reset_wifi", HTTP_POST, [](AsyncWebServerRequest* request) {
-    LittleFS.remove("/wifi_config.txt"); // Remove Wi-Fi config
+    LittleFS.remove("/wifi_config.txt");  // Remove Wi-Fi config
     request->send(200, "text/plain", "Wi-Fi reset successful.");
-    Restart(); // Restart the device
+    Restart();  // Restart the device
   });
 
   server->on("/apply", HTTP_POST, [](AsyncWebServerRequest* request) {
     request->send(200, "text/plain", "Apply successful.");
-    Restart(); // Restart the device
+    Restart();  // Restart the device
   });
 
   // Serve debug information
@@ -480,8 +478,8 @@ void WifiTransport::startServer() {
     json += R"("rgbOrder":)" + String(rgbMode) + ",";
 #endif
     json += R"("brightness":)" + String(brightness) + ",";
-    json += R"("scaleMode":)" + String(
-        GetDisplayDriver()->GetCurrentScalingMode());
+    json +=
+        R"("scaleMode":)" + String(GetDisplayDriver()->GetCurrentScalingMode());
     json += "}";
     request->send(200, "application/json", json);
   });
@@ -500,8 +498,8 @@ void WifiTransport::startServer() {
           jsonResponse += R"("hasScalingModes":true,)";
 
           // Fetch current scaling mode
-          const uint8_t currentMode = GetDisplayDriver()->
-              GetCurrentScalingMode();
+          const uint8_t currentMode =
+              GetDisplayDriver()->GetCurrentScalingMode();
           jsonResponse += R"("currentMode":)" + String(currentMode) + ",";
 
           // Add the list of available scaling modes
