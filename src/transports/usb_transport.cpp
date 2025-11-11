@@ -1,7 +1,5 @@
 #include "usb_transport.h"
 
-#include <Arduino.h>
-
 #include "main.h"
 #include "utility/clock.h"
 
