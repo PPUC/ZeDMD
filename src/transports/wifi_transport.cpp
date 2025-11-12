@@ -151,7 +151,8 @@ bool WifiTransport::loadConfig() {
     pwd = wifiConfig.readStringUntil('\n');
     pwd_length = wifiConfig.readStringUntil('\n').toInt();
     port = wifiConfig.readStringUntil('\n').toInt();
-    if (wifiConfig.available()) // Backward compatibility, check if power line exists
+    if (wifiConfig
+            .available())  // Backward compatibility, check if power line exists
       wifiPower = wifiConfig.readStringUntil('\n').toInt();
   }
 
@@ -426,36 +427,50 @@ void WifiTransport::startServer() {
   });
 
   server->on("/handshake", HTTP_GET, [this](AsyncWebServerRequest* request) {
-    request->send(200, "text/plain",
-                  String(TOTAL_WIDTH) + "|" + String(TOTAL_HEIGHT) + "|" +
-                      String(ZEDMD_VERSION_MAJOR) + "." +
-                      String(ZEDMD_VERSION_MINOR) + "." +
-                      String(ZEDMD_VERSION_PATCH) + "|" +
+    request->send(
+        200, "text/plain",
+        String(TOTAL_WIDTH) + "|" + String(TOTAL_HEIGHT) + "|" +
+            String(ZEDMD_VERSION_MAJOR) + "." + String(ZEDMD_VERSION_MINOR) +
+            "." + String(ZEDMD_VERSION_PATCH) + "|" +
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || \
     defined(PICO_BUILD)
-                      String(1)
+            String(1)
 #else
         String(0)
 #endif
-                      + "|" + (m_type == WIFI_UDP ? "UDP" : "TCP") + "|" +
-                      String(port) + "|" + String(m_delay) + "|" +
-                      String(usbPackageSizeMultiplier * 32) + "|" +
-                      String(brightness) + "|" +
+            + "|" + (m_type == WIFI_UDP ? "UDP" : "TCP") + "|" + String(port) +
+            "|" + String(m_delay) + "|" +
+            String(usbPackageSizeMultiplier * 32) + "|" + String(brightness) +
+            "|" +
 #ifndef DISPLAY_RM67162_AMOLED
-                      String(rgbMode) + "|" + String(panelClkphase) + "|" +
-                      String(panelDriver) + "|" + String(panelI2sspeed) + "|" +
-                      String(panelLatchBlanking) + "|" +
-                      String(panelMinRefreshRate) + "|" + String(yOffset)
+            String(rgbMode) + "|" + String(panelClkphase) + "|" +
+            String(panelDriver) + "|" + String(panelI2sspeed) + "|" +
+            String(panelLatchBlanking) + "|" + String(panelMinRefreshRate) +
+            "|" + String(yOffset)
 #else
         "0|0|0|0|0|0|0"
 #endif
-                      + "|" + ssid + "|" +
+            + "|" + ssid + "|" +
 #ifdef ZEDMD_HD_HALF
-                      "1"
+            "1"
 #else
-        "0"
+            "0"
 #endif
-                      + "|" + String(shortId) + "|" + String(wifiPower));
+            + "|" + String(shortId) + "|" + String(wifiPower) + "|" +
+#if defined(ARDUINO_ESP32_S3_N16R8)
+            "1"  // ESP32 S3
+#elif defined(DISPLAY_RM67162_AMOLED)
+            "2"  // ESP32 S3 with RM67162
+#elif defined(PICO_BUILD)
+#ifdef BOARD_HAS_PSRAM
+            "3"  // RP2350
+#else
+            "4"  // RP2040
+#endif
+#else
+            "0"  // ESP32
+#endif
+    );
   });
 
   server->on("/ppuc.png", HTTP_GET, [](AsyncWebServerRequest* request) {
