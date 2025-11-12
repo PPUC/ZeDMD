@@ -97,6 +97,7 @@ extern const uint8_t CtrlChars[6];
 
 extern const uint8_t rgbOrder[];
 extern uint16_t shortId;
+extern uint8_t wifiPower;
 extern uint8_t usbPackageSizeMultiplier;
 extern uint8_t rgbMode;
 extern uint8_t rgbModeLoaded;

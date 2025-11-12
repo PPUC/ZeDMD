@@ -87,6 +87,21 @@ bool WifiTransport::init() {
 
   WiFi.setSleep(false);  // WiFi speed improvement on ESP32 S3 and others.
 
+  WiFi.setTxPower((wifi_power_t)wifiPower);
+
+  if (debug) {
+    GetDisplayDriver()->DisplayText("WiFi RSSI: ", 0, TOTAL_HEIGHT / 2 - 9, 255,
+                                    0, 0);
+    DisplayNumber(WiFi.RSSI(), 3, 11 * 4, TOTAL_HEIGHT / 2 - 9, 255, 0, 0);
+    GetDisplayDriver()->DisplayText("TX Power:  ", 0, TOTAL_HEIGHT / 2 - 3, 255,
+                                    0, 0);
+    DisplayNumber(WiFi.getTxPower(), 3, 11 * 4, TOTAL_HEIGHT / 2 - 3, 255, 0,
+                  0);
+    GetDisplayDriver()->DisplayText("Channel:   ", 0, TOTAL_HEIGHT / 2 + 3, 255,
+                                    0, 0);
+    DisplayNumber(WiFi.channel(), 3, 11 * 4, TOTAL_HEIGHT / 2 + 3, 255, 0, 0);
+  }
+
   m_active = true;
 
   // Start the MDNS server for easy detection
@@ -136,6 +151,8 @@ bool WifiTransport::loadConfig() {
     pwd = wifiConfig.readStringUntil('\n');
     pwd_length = wifiConfig.readStringUntil('\n').toInt();
     port = wifiConfig.readStringUntil('\n').toInt();
+    if (wifiConfig.available()) // Backward compatibility, check if power line exists
+      wifiPower = wifiConfig.readStringUntil('\n').toInt();
   }
 
   wifiConfig.close();
@@ -152,6 +169,7 @@ bool WifiTransport::saveConfig() {
   wifiConfig.println(pwd);
   wifiConfig.println(String(pwd_length));
   wifiConfig.println(String(port));
+  wifiConfig.println(String(wifiPower));
   wifiConfig.close();
 
   return true;
@@ -437,7 +455,7 @@ void WifiTransport::startServer() {
 #else
         "0"
 #endif
-                      + "|" + String(shortId));
+                      + "|" + String(shortId) + "|" + String(wifiPower));
   });
 
   server->on("/ppuc.png", HTTP_GET, [](AsyncWebServerRequest* request) {
