@@ -64,18 +64,10 @@
 
 #define LED_CHECK_DELAY 1000  // ms per color
 
-#ifdef ZEDMD_NO_NETWORKING
-#ifdef ZEDMD_HD_HALF
-#define MENU_ITEMS_COUNT 7
-#else
-#define MENU_ITEMS_COUNT 6
-#endif
-#else
 #ifdef ZEDMD_HD_HALF
 #define MENU_ITEMS_COUNT 8
 #else
 #define MENU_ITEMS_COUNT 7
-#endif
 #endif
 
 #define RC 0
