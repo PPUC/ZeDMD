@@ -98,7 +98,7 @@ jobs:
           cp .pio/build/${{ matrix.panels }}/firmware.uf2 firmware-update.uf2
           cp .pio/build/${{ matrix.panels }}/firmware_with_fs.uf2 firmware.uf2
 
-      - if: ${{ matrix.panels != 'pico_128x32' && matrix.panels != 'pico2_128x32' && matrix.panels != 'pico2_128x32_ppuc' }}
+      - if: ${{ matrix.panels != 'pico_128x32' && matrix.panels != 'pico_256x64' && matrix.panels != 'pico2_128x32' && matrix.panels != 'pico2_256x64' && matrix.panels != 'pico2_128x32_ppuc' }}
         uses: actions/upload-artifact@v4
         with:
           name: ZeDMD-${{ matrix.panels }}
