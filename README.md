@@ -53,6 +53,11 @@ Because the firmware pushes the cheap ESP32 to its limits, we can not provide a 
 * ZeDMD S3 128x64: using one 128x64 panel driven by an ESP32 S3 N16R8 connected over USB CDC or WiFi, showing 128x32 content with an offset, suitable for mini cabinets
 * ZeDMD S3 AMOLED: using a small OLED driven by a LilyGo AMOLED T-Display-S3 V2 connected via USB CDC
 * ZeDMD S3 AMOLED WiFi: using a small OLED driven by a LilyGo AMOLED T-Display-S3 V2 connected via WiFi
+* ZeDMD Pico 128x32 using two 64x32 panels driven by an RP2040 connected over USB
+* ZeDMD Pico 256x64 using two 128x64 panels driven by an RP2040 connected over USB
+* ZeDMD Pico2 128x32 using two 64x32 panels driven by an RP2350 connected over USB
+* ZeDMD Pico2 256x64 using two 128x64 panels driven by an RP2350 connected over USB
+* ZeDMD Pico2 PPUC 128x32 using two 64x32 panels driven by an RP2350B connected over SPI to be used as part of PPUC/DMD
 
 There are different ways to flash the firmware on the ESP32.
 
