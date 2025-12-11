@@ -267,11 +267,12 @@ void TransportCreate(const uint8_t type =
   delete transport;
 
   switch (type) {
+#ifdef DMDREADER
     case Transport::LOOPBACK: {
       transport = new LoopbackTransport();
       break;
     }
-#ifndef DMDREADER
+#else
     case Transport::USB: {
       transport = new UsbTransport();
       break;
