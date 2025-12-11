@@ -2029,9 +2029,11 @@ void setup() {
     }
   }
 
+#ifdef DMDREADER
   if (transport->isLoopback()) {
     dmdreader_loopback_init(renderBuffer[0], renderBuffer[1], Color::GREEN);
   }
+#endif
 
   transport->init();
 
@@ -2265,6 +2267,7 @@ void loop() {
           }
         }
       }
+#ifdef DMDREADER
     } else if (transport->isLoopback()) {
       uint8_t *buffer = dmdreader_loopback_render();
       if (buffer != nullptr) {
@@ -2278,10 +2281,10 @@ void loop() {
         // Avoid busy-waiting
         vTaskDelay(pdMS_TO_TICKS(1));
       }
+#endif
     } else {
       // Avoid busy-waiting
       vTaskDelay(pdMS_TO_TICKS(1));
     }
-
   }
 }
