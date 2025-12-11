@@ -257,6 +257,9 @@ void TransportCreate(const uint8_t type = Transport::USB) {
   // "reload" new transport (without init)
   delete transport;
 
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
+
 #ifdef DMDREADER
   transport = new LoopbackTransport();
 #elif defined(ZEDMD_WIFI_ONLY)
@@ -2034,9 +2037,6 @@ void setup() {
     dmdreader_loopback_init(renderBuffer[0], renderBuffer[1], Color::GREEN);
   }
 #endif
-
-  pinMode(LED_BUILTIN, OUTPUT);
-  if (transport->isLoopback()) digitalWrite(LED_BUILTIN, HIGH);
 
   transport->init();
 
