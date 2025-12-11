@@ -10,9 +10,6 @@ LoopbackTransport::LoopbackTransport() : Transport() { m_type = LOOPBACK; }
 LoopbackTransport::~LoopbackTransport() { deinit(); }
 
 bool LoopbackTransport::init() {
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, HIGH);
-
   m_active = true;
 
   xTaskCreatePinnedToCore(Task_DmdReader, "Task_DmdReader", 4096, this, 1,
