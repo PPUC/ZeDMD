@@ -37,6 +37,7 @@ void LoopbackTransport::Task_DmdReader(void* pvParameters) {
 #endif
 
   while (transport->isActive()) {
+    delay(10);
     // Avoid busy-waiting
     vTaskDelay(pdMS_TO_TICKS(1));
   }
