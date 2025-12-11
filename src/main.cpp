@@ -55,7 +55,7 @@
 // To save RAM only include the driver we want to use.
 #ifdef DISPLAY_RM67162_AMOLED
 #include "displays/Rm67162Amoled.h"
-#elif PICO_BUILD
+#elif defined(PICO_BUILD)
 #include "displays/PicoLedMatrix.h"
 #else
 #include "displays/Esp32LedMatrix.h"
@@ -259,7 +259,7 @@ void TransportCreate(const uint8_t type = Transport::USB) {
 
 #ifdef DMDREADER
   transport = new LoopbackTransport();
-#elif ZEDMD_WIFI_ONLY
+#elif defined(ZEDMD_WIFI_ONLY)
   transport = new WifiTransport();
 #else
   switch (type) {
