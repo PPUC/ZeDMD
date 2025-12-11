@@ -5,7 +5,9 @@
 #ifndef ZEDMD_PICO_H
 #define ZEDMD_PICO_H
 
+#ifndef DMDREADER
 #include <Adafruit_TinyUSB.h>
+#endif
 #include <RP2040Support.h>
 
 // in ram

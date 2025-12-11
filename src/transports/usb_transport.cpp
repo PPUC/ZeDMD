@@ -33,6 +33,7 @@ bool UsbTransport::deinit() {
 }
 
 void UsbTransport::Task_ReadSerial(void* pvParameters) {
+#if !defined(ZEDMD_WIFI_ONLY) && !defined(DMDREADER)
   const auto transport = static_cast<UsbTransport*>(pvParameters);
   const uint16_t usbPackageSize = usbPackageSizeMultiplier * 32;
   bool connected = false;
@@ -162,5 +163,6 @@ void UsbTransport::Task_ReadSerial(void* pvParameters) {
   heap_caps_free(pUsbBuffer);
 #else
   free(pUsbBuffer);
+#endif
 #endif
 }

@@ -7,7 +7,7 @@
 
 class Transport {
  public:
-  enum { USB = 0, WIFI_UDP = 1, WIFI_TCP = 2, SPI = 3 };
+  enum { USB = 0, WIFI_UDP = 1, WIFI_TCP = 2, SPI = 3, LOOPBACK = 5 };
 
   Transport() = default;
 
@@ -27,7 +27,8 @@ class Transport {
     return m_type == USB        ? "USB     "
            : m_type == WIFI_UDP ? "WiFi UDP"
            : m_type == WIFI_TCP ? "WiFi TCP"
-                                : "SPI     ";
+           : m_type == SPI      ? "SPI"
+                                : "LOOPBACK";
   }
 
   virtual bool loadConfig() { return true; }
@@ -51,6 +52,8 @@ class Transport {
   }
 
   bool isSpi() const { return m_type == SPI; }
+
+  bool isLoopback() const { return m_type == LOOPBACK; }
 
  protected:
   uint8_t m_type = USB;

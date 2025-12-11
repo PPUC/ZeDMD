@@ -1,11 +1,34 @@
+#ifdef PICO_RP2350
+// Set the official 200 MHz system clock
+// For RP2350, PLL parameters must be provided
+#define PLL_SYS_VCO_FREQ_HZ (1600ul * 1000ul * 1000ul)
+#define PLL_SYS_POSTDIV1 4
+#define PLL_SYS_POSTDIV2 2
+#endif
+
+// set to officially supported 200MHz clock
+// @see SYS_CLK_MHZ https://github.com/raspberrypi/pico-sdk/releases/tag/2.1.1
+#define SYS_CLK_MHZ 200
+
 #include <Arduino.h>
 #include <Bounce2.h>
+
+#ifdef PICO_RP2350
+#include "hardware/clocks.h"
+#endif
+
 #ifdef PICO_BUILD
 #include "pico/zedmd_pico.h"
 #endif
 #include <LittleFS.h>
 
+#ifndef DMDREADER
 #include "transports/usb_transport.h"
+#else
+#include <dmdreader.h>
+
+#include "transports/loopback_transport.h"
+#endif
 #ifndef ZEDMD_NO_NETWORKING
 #include "transports/wifi_transport.h"
 #endif
@@ -167,7 +190,11 @@ void DoRestart(int sec) {
   esp_deep_sleep_start();  // Enter deep sleep (ESP32 reboots on wake)
 #endif
 #else
+#ifdef PICO_BUILD
+  rp2040.reboot();
+#else
   esp_restart();
+#endif
 #endif
 }
 
@@ -230,6 +257,11 @@ void TransportCreate(const uint8_t type = Transport::USB) {
   // "reload" new transport (without init)
   delete transport;
 
+#ifdef DMDREADER
+  transport = new LoopbackTransport();
+#elif ZEDMD_WIFI_ONLY
+  transport = new WifiTransport();
+#else
   switch (type) {
     case Transport::USB: {
       transport = new UsbTransport();
@@ -247,6 +279,7 @@ void TransportCreate(const uint8_t type = Transport::USB) {
       transport = new Transport();
     }
   }
+#endif
 
   transport->loadConfig();
   transport->loadDelay();
@@ -1605,6 +1638,9 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
 void setup() {
 #ifndef PICO_BUILD
   esp_log_level_set("*", ESP_LOG_NONE);
+#else
+  // overclock to achieve higher SPI transfer speed
+  set_sys_clock_khz(SYS_CLK_MHZ * 1000, true);
 #endif
 
   // (Re-)Initialize global state variables that might have survived a restart
@@ -1646,7 +1682,7 @@ void setup() {
   bool fileSystemOK;
   if ((fileSystemOK = LittleFS.begin())) {
     LoadSettingsMenu();
-#ifndef ZEDMD_WIFI
+#if !defined(ZEDMD_WIFI_ONLY) && !defined(DMDREADER)
     LoadTransport();
 #endif
     LoadUsbPackageSizeMultiplier();
@@ -1993,6 +2029,10 @@ void setup() {
     }
   }
 
+  if (transport->isLoopback()) {
+    dmdreader_loopback_init(renderBuffer[0], renderBuffer[1], Color::GREEN);
+  }
+
   transport->init();
 
 #ifdef SPEAKER_LIGHTS
@@ -2225,9 +2265,23 @@ void loop() {
           }
         }
       }
+    } else if (transport->isLoopback()) {
+      uint8_t *buffer = dmdreader_loopback_render();
+      if (buffer != nullptr) {
+        if (buffer == renderBuffer[0]) {
+          currentRenderBuffer = 0;
+        } else {
+          currentRenderBuffer = 1;
+        }
+        Render();
+      } else {
+        // Avoid busy-waiting
+        vTaskDelay(pdMS_TO_TICKS(1));
+      }
     } else {
       // Avoid busy-waiting
       vTaskDelay(pdMS_TO_TICKS(1));
     }
+
   }
 }
