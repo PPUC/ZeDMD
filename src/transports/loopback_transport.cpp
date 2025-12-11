@@ -5,9 +5,6 @@
 #include <dmdreader.h>
 #endif
 
-
-extern uint8_t* renderBuffer;
-
 LoopbackTransport::LoopbackTransport() : Transport() { m_type = USB; }
 
 LoopbackTransport::~LoopbackTransport() { deinit(); }
