@@ -2043,12 +2043,12 @@ void setup() {
 
 #ifdef DMDREADER
   if (transport->isLoopback()) {
-    pinMode(LED_BUILTIN, OUTPUT);
-    digitalWrite(LED_BUILTIN, HIGH);
     dmdreader_loopback_init(renderBuffer[0], renderBuffer[1], Color::GREEN);
   }
 #endif
 
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
   transport->init();
 
 #ifdef SPEAKER_LIGHTS

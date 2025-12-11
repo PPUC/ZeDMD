@@ -33,12 +33,11 @@ void LoopbackTransport::Task_DmdReader(void* pvParameters) {
   const auto transport = static_cast<LoopbackTransport*>(pvParameters);
 
 #ifdef DMDREADER
-  // dmdreader_init(pio1);
+  dmdreader_init(pio1);
 #endif
 
   while (transport->isActive()) {
-    delay(10);
     // Avoid busy-waiting
-    vTaskDelay(pdMS_TO_TICKS(1));
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
 }
