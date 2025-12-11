@@ -5,15 +5,15 @@
 #include <dmdreader.h>
 #endif
 
-LoopbackTransport::LoopbackTransport() : Transport() { m_type = USB; }
+LoopbackTransport::LoopbackTransport() : Transport() { m_type = LOOPBACK; }
 
 LoopbackTransport::~LoopbackTransport() { deinit(); }
 
 bool LoopbackTransport::init() {
+  m_active = true;
+
   xTaskCreatePinnedToCore(Task_DmdReader, "Task_DmdReader", 4096, this, 1,
                           &m_task, 0);
-
-  m_active = true;
 
   return true;
 }
@@ -33,7 +33,7 @@ void LoopbackTransport::Task_DmdReader(void* pvParameters) {
   const auto transport = static_cast<LoopbackTransport*>(pvParameters);
 
 #ifdef DMDREADER
-  dmdreader_init(pio1);
+  // dmdreader_init(pio1);
 #endif
 
   while (transport->isActive()) {

@@ -2035,7 +2035,7 @@ void setup() {
   }
 #endif
 
-  transport->init();
+  //transport->init();
 
 #ifdef SPEAKER_LIGHTS
   if (speakerLightsLeftNumLeds > 0) {
