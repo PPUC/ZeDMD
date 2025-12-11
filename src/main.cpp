@@ -266,8 +266,12 @@ void TransportCreate(const uint8_t type =
   // "reload" new transport (without init)
   delete transport;
 
-#ifndef DMDREADER
   switch (type) {
+    case Transport::LOOPBACK: {
+      transport = new LoopbackTransport();
+      break;
+    }
+#ifndef DMDREADER
     case Transport::USB: {
       transport = new UsbTransport();
       break;
@@ -283,8 +287,8 @@ void TransportCreate(const uint8_t type =
     default: {
       transport = new Transport();
     }
-  }
 #endif
+  }
 
   transport->loadConfig();
   transport->loadDelay();
