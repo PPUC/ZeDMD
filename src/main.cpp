@@ -253,18 +253,20 @@ void DisplayRGB(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
 /// @brief Get DisplayDriver object, required for webserver
 DisplayDriver *GetDisplayDriver() { return display; }
 
-void TransportCreate(const uint8_t type = Transport::USB) {
+void TransportCreate(const uint8_t type =
+#ifdef DMDREADER
+                         Transport::LOOPBACK
+#elif defined(ZEDMD_WIFI_ONLY)
+                         Transport::WIFI_UDP
+#else
+                         Transport::USB
+#endif
+) {
+
   // "reload" new transport (without init)
   delete transport;
 
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, HIGH);
-
-#ifdef DMDREADER
-  transport = new LoopbackTransport();
-#elif defined(ZEDMD_WIFI_ONLY)
-  transport = new WifiTransport();
-#else
+#ifndef DMDREADER
   switch (type) {
     case Transport::USB: {
       transport = new UsbTransport();
@@ -1685,7 +1687,9 @@ void setup() {
   bool fileSystemOK;
   if ((fileSystemOK = LittleFS.begin())) {
     LoadSettingsMenu();
-#if !defined(ZEDMD_WIFI_ONLY) && !defined(DMDREADER)
+#if defined(ZEDMD_WIFI_ONLY) || defined(DMDREADER)
+    TransportCreate();
+#else
     LoadTransport();
 #endif
     LoadUsbPackageSizeMultiplier();
@@ -2034,6 +2038,8 @@ void setup() {
 
 #ifdef DMDREADER
   if (transport->isLoopback()) {
+    pinMode(LED_BUILTIN, OUTPUT);
+    digitalWrite(LED_BUILTIN, HIGH);
     dmdreader_loopback_init(renderBuffer[0], renderBuffer[1], Color::GREEN);
   }
 #endif
