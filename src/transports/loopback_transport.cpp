@@ -13,7 +13,7 @@ bool LoopbackTransport::init() {
   m_active = true;
 
   xTaskCreatePinnedToCore(Task_DmdReader, "Task_DmdReader", 4096, this, 1,
-                          &m_task, 0);
+                          &m_task, 1);
 
   return true;
 }
