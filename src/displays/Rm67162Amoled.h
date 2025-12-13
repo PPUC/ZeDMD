@@ -59,6 +59,7 @@ class Rm67162Amoled : public DisplayDriver {
   void FillZoneRaw565(uint8_t idx, uint8_t *pBuffer);
   void ClearZone(uint8_t idx);
   void FillPanelRaw(uint8_t *pBuffer);
+  void Render() override;
 
   ~Rm67162Amoled();
 };

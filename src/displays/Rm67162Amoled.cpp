@@ -371,6 +371,8 @@ void IRAM_ATTR Rm67162Amoled::FillPanelRaw(uint8_t *pBuffer) {
   lcd_PushColors(0, 0, 536, 240, (uint16_t *)sprite.getPointer());
 }
 
+void Rm67162Amoled::Render() {}
+
 Rm67162Amoled::~Rm67162Amoled() {
   // Clean up resources if necessary
 }
