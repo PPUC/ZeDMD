@@ -8,6 +8,7 @@
 #ifndef DMDREADER
 #include <Adafruit_TinyUSB.h>
 #endif
+#include <Arduino.h>
 #include <RP2040Support.h>
 
 // in ram
@@ -55,6 +56,7 @@ inline uint8_t esp_reset_reason() {
   }
 }
 
+#ifndef DMDREADER
 inline BaseType_t xTaskCreatePinnedToCore(const TaskFunction_t pxTaskCode,
                                           const char *const pcName,
                                           const uint32_t uxStackDepth,
@@ -65,5 +67,6 @@ inline BaseType_t xTaskCreatePinnedToCore(const TaskFunction_t pxTaskCode,
   return xTaskCreateAffinitySet(pxTaskCode, pcName, uxStackDepth, pvParameters,
                                 uxPriority, 1u << (xCoreID ^ 1), pxCreatedTask);
 }
+#endif
 
 #endif  // ZEDMD_PICO_H

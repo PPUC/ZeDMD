@@ -15,6 +15,7 @@ class PicoLedMatrix final : public LedMatrix {
 
   void ClearScreen() override;
   void SetBrightness(uint8_t level) override;
+  void Render() override;
 
  private:
   uint8_t color_order[6] = {

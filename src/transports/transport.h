@@ -27,8 +27,7 @@ class Transport {
     return m_type == USB        ? "USB     "
            : m_type == WIFI_UDP ? "WiFi UDP"
            : m_type == WIFI_TCP ? "WiFi TCP"
-           : m_type == SPI      ? "SPI"
-                                : "LOOPBACK";
+                                : "SPI";
   }
 
   virtual bool loadConfig() { return true; }
@@ -53,12 +52,13 @@ class Transport {
 
   bool isSpi() const { return m_type == SPI; }
 
-  bool isLoopback() const { return m_type == LOOPBACK; }
+  bool isLoopback() const { return m_loopback; }
 
  protected:
   uint8_t m_type = USB;
   bool m_active = false;
   uint8_t m_delay = 5;
+  bool m_loopback = false;
 };
 
 #endif  // ZEDMD_TRANSPORT_H

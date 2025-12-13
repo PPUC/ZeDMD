@@ -98,4 +98,5 @@ void PicoLedMatrix::SetBrightness(const uint8_t level) {
   s_hub75->brightness = b;
 }
 
+void PicoLedMatrix::Render() { s_hub75->render(); }
 #endif  // PICO_BUILD

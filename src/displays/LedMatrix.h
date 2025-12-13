@@ -28,6 +28,7 @@ class LedMatrix : public DisplayDriver {
   void FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) override;
   void ClearZone(uint8_t idx) override;
   void FillPanelRaw(uint8_t *pBuffer) override;
+  void Render() override;
 };
 
 #endif  // LEDMATRIX_H

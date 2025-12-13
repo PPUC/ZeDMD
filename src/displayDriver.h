@@ -83,6 +83,8 @@ class DisplayDriver {
   /// @return
   virtual void FillPanelRaw(uint8_t *pBuffer) = 0;
 
+  virtual void Render() = 0;
+
   virtual ~DisplayDriver() {}  // Virtual destructor
 };
 

@@ -1,4 +1,4 @@
-#ifdef PICO_RP2350
+#if defined(PICO_RP2350) || (RP2350)
 // Set the official 200 MHz system clock
 // For RP2350, PLL parameters must be provided
 #define PLL_SYS_VCO_FREQ_HZ (1600ul * 1000ul * 1000ul)
@@ -6,9 +6,11 @@
 #define PLL_SYS_POSTDIV2 2
 #endif
 
+#ifdef PICO_BUILD
 // set to officially supported 200MHz clock
 // @see SYS_CLK_MHZ https://github.com/raspberrypi/pico-sdk/releases/tag/2.1.1
 #define SYS_CLK_MHZ 200
+#endif
 
 #include <Arduino.h>
 #include <Bounce2.h>
@@ -26,9 +28,8 @@
 #include "transports/usb_transport.h"
 #else
 #include <dmdreader.h>
-
-#include "transports/loopback_transport.h"
 #endif
+#include "transports/spi_transport.h"
 #ifndef ZEDMD_NO_NETWORKING
 #include "transports/wifi_transport.h"
 #endif
@@ -45,10 +46,12 @@
 #include "esp_log.h"
 #include "esp_task_wdt.h"
 #endif
+#ifndef DMDREADER
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#endif
 #include "main.h"
 #include "utility/clock.h"
 
@@ -172,7 +175,11 @@ void DoRestart(int sec) {
   }
   display->ClearScreen();
   display->DisplayText("Restarting ...", 0, 0, 255, 0, 0);
+#ifndef DMDREADER
   vTaskDelay(pdMS_TO_TICKS(sec * 1000));
+#else
+  delay(1000);
+#endif
   display->ClearScreen();
   delay(20);
 
@@ -255,7 +262,7 @@ DisplayDriver *GetDisplayDriver() { return display; }
 
 void TransportCreate(const uint8_t type =
 #ifdef DMDREADER
-                         Transport::LOOPBACK
+                         Transport::SPI
 #elif defined(ZEDMD_WIFI_ONLY)
                          Transport::WIFI_UDP
 #else
@@ -268,8 +275,8 @@ void TransportCreate(const uint8_t type =
 
   switch (type) {
 #ifdef DMDREADER
-    case Transport::LOOPBACK: {
-      transport = new LoopbackTransport();
+    case Transport::SPI: {
+      transport = new SpiTransport();
       break;
     }
 #else
@@ -329,8 +336,15 @@ void SaveTransport(const uint8_t type = Transport::USB) {
 void LoadTransport() {
   File f = LittleFS.open("/transport.val", "r");
   if (!f) {
-    const uint8_t type =
-        transport != nullptr ? transport->getType() : Transport::USB;
+    const uint8_t type = transport != nullptr ? transport->getType() :
+#ifdef DMDREADER
+                                              Transport::SPI
+#elif defined(ZEDMD_WIFI_ONLY)
+                                              Transport::WIFI_UDP
+#else
+                                              Transport::USB
+#endif
+        ;
     SaveTransport(type);
     TransportCreate(type);
     return;
@@ -408,6 +422,7 @@ void LoadPanelSettings() {
   panelMinRefreshRate = f.read();
   f.close();
 }
+
 #endif
 
 void SaveLum() {
@@ -618,7 +633,11 @@ void AcquireNextBuffer() {
       return;
     }
     // Avoid busy-waiting
+#ifndef DMDREADER
     vTaskDelay(pdMS_TO_TICKS(1));
+#else
+    tight_loop_contents();
+#endif
   }
 }
 
@@ -1072,7 +1091,7 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
             return 1;
           }
 #endif
-#ifndef ZEDMD_NO_NETWORKING
+#if !defined(ZEDMD_NO_NETWORKING) && !defined(DMDREADER)
           case 26:  // set wifi power
           {
             wifiPower = pData[pos++];
@@ -1225,7 +1244,9 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
             SaveLum();
             SaveDebug();
             SaveTransport();
+#ifndef DMDREADER
             SaveUsbPackageSizeMultiplier();
+#endif
             transport->saveDelay();
             transport->saveConfig();
 #if defined(DISPLAY_LED_MATRIX)
@@ -1519,10 +1540,12 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
 #endif
 
           case 16: {
+#ifndef DMDREADER
             if (transport->getType() == Transport::USB) {
               Serial.write(CtrlChars, N_ACK_CHARS);
               Serial.flush();
             }
+#endif
             LedTester();
             Restart();
           }
@@ -1653,6 +1676,10 @@ void setup() {
   set_sys_clock_khz(SYS_CLK_MHZ * 1000, true);
 #endif
 
+#ifdef DMDREADER
+  pinMode(LED_BUILTIN, OUTPUT);
+#endif
+
   // (Re-)Initialize global state variables that might have survived a restart
   // and that don't get set by Load() functions below.
   currentRenderBuffer = 0;
@@ -1692,12 +1719,11 @@ void setup() {
   bool fileSystemOK;
   if ((fileSystemOK = LittleFS.begin())) {
     LoadSettingsMenu();
-#if defined(ZEDMD_WIFI_ONLY) || defined(DMDREADER)
-    TransportCreate();
-#else
     LoadTransport();
-#endif
+
+#ifndef DMDREADER
     LoadUsbPackageSizeMultiplier();
+#endif
 #if defined(DISPLAY_LED_MATRIX) || defined(DISPLAY_PICO_LED_MATRIX)
     LoadRgbOrder();
     LoadPanelSettings();
@@ -2041,14 +2067,6 @@ void setup() {
     }
   }
 
-#ifdef DMDREADER
-  if (transport->isLoopback()) {
-    dmdreader_loopback_init(renderBuffer[0], renderBuffer[1], Color::GREEN);
-  }
-#endif
-
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, HIGH);
   transport->init();
 
 #ifdef SPEAKER_LIGHTS
@@ -2160,7 +2178,12 @@ void loop() {
 
     transportWaitCounter = (transportWaitCounter + 1) % 8;
 
+#ifndef DMDREADER
     vTaskDelay(pdMS_TO_TICKS(200));
+#else
+    // Code is usding interrupts, so delay is fine.
+    delay(200);
+#endif
   } else {
     if (lastDataReceivedClock.getElapsedTime().asMilliseconds() >
         CONNECTION_TIMEOUT) {
@@ -2281,24 +2304,27 @@ void loop() {
           }
         }
       }
-#ifdef DMDREADER
-    } else if (transport->isLoopback()) {
-      uint8_t *buffer = dmdreader_loopback_render();
-      if (buffer != nullptr) {
-        if (buffer == renderBuffer[0]) {
-          currentRenderBuffer = 0;
-        } else {
-          currentRenderBuffer = 1;
-        }
-        Render();
-      } else {
-        // Avoid busy-waiting
-        vTaskDelay(pdMS_TO_TICKS(1));
-      }
-#endif
     } else {
+#ifndef DMDREADER
       // Avoid busy-waiting
       vTaskDelay(pdMS_TO_TICKS(1));
+#else
+      tight_loop_contents();
+#endif
     }
   }
 }
+
+#ifdef DMDREADER
+void loop1() {
+  if (transport->isLoopback()) {
+    uint8_t *buffer = dmdreader_loopback_render();
+    if (buffer != nullptr) {
+      memcpy(renderBuffer[currentRenderBuffer], buffer, TOTAL_BYTES);
+      Render();
+    } else {
+      tight_loop_contents();
+    }
+  }
+}
+#endif

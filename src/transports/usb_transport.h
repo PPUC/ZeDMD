@@ -19,7 +19,9 @@ class UsbTransport final : public Transport {
  private:
   static void Task_ReadSerial(void *pvParameters);
 
+#ifndef DMDREADER
   TaskHandle_t m_task{};
+#endif
 };
 
 #endif  // ZEDMD_USB_TRANSPORT_H

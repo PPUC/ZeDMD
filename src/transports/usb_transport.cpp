@@ -10,12 +10,14 @@ UsbTransport::~UsbTransport() { deinit(); }
 bool UsbTransport::init() {
   m_active = true;
 
+#ifndef DMDREADER
 #ifdef BOARD_HAS_PSRAM
   xTaskCreatePinnedToCore(Task_ReadSerial, "Task_ReadSerial", 8192, this, 1,
                           &m_task, 0);
 #else
   xTaskCreatePinnedToCore(Task_ReadSerial, "Task_ReadSerial", 4096, this, 1,
                           &m_task, 0);
+#endif
 #endif
 
   return true;
