@@ -798,6 +798,7 @@ void Render() {
 
 void ClearScreen() {
   display->ClearScreen();
+  display->Render();
   memset(renderBuffer[currentRenderBuffer], 0, TOTAL_BYTES);
 
   if (NUM_RENDER_BUFFERS > 1) {
