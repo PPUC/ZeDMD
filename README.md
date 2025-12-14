@@ -103,30 +103,30 @@ Download and install the [ZeDMD_Updater2](https://github.com/zesinger/ZeDMD_Upda
 
 ## ZeDMD pinout diagram
 ZeDMD utilizes HUB75 to display full-color content on your panels. To achieve this, the panels must be connected to specific GPIOs on your ESP32.
-| ESP32 Dev Board | ESP32-S3-N16R8 | HUB75 pins |
-| -------------   | -------------  | ---------- |
-| GPIO 25         | GPIO 4         | R1         |
-| GPIO 27         | GPIO 6         | B1         |
-| GPIO 14         | GPIO 7         | R2         |
-| GPIO 13         | GPIO 16        | B2         |
-| GPIO 23         | GPIO 18        | A          |
-| GPIO 5          | GPIO 3         | C          |
-| GPIO 16         | GPIO 41        | CLK        |
-| GPIO 15         | GPIO 2         | OE         |
-| GPIO 26         | GPIO 5         | G1         |
-| GPIO 12         | GPIO 15        | G2         |
-| GPIO 22         | GPIO 1         | E          |
-| GPIO 19         | GPIO 8         | B          |
-| GPIO 17         | GPIO 42        | D          |
-| GPIO 4          | GPIO 40        | LAT        |
+| ESP32 Dev Board | ESP32-S3-N16R8 | RP2040/RP2350  | HUB75 pin  |
+| -------------   | -------------  | -------------- | ---------- |
+| GPIO 25         | GPIO 4         | GPIO 0         | R1         |
+| GPIO 26         | GPIO 5         | GPIO 1         | G1         |
+| GPIO 27         | GPIO 6         | GPIO 2         | B1         |
+| GPIO 14         | GPIO 7         | GPIO 3         | R2         |
+| GPIO 12         | GPIO 15        | GPIO 4         | G2         |
+| GPIO 13         | GPIO 16        | GPIO 5         | B2         |
+| GPIO 23         | GPIO 18        | GPIO 6         | A          |
+| GPIO 19         | GPIO 8         | GPIO 7         | B          |
+| GPIO 5          | GPIO 3         | GPIO 8         | C          |
+| GPIO 17         | GPIO 42        | GPIO 9         | D          |
+| GPIO 22         | GPIO 1         | GPIO 10        | E          |
+| GPIO 16         | GPIO 41        | GPIO 11        | CLK        |
+| GPIO 4          | GPIO 40        | GPIO 12        | LAT        |
+| GPIO 15         | GPIO 2         | GPIO 13        | OE         |
 
 To navigate the menu and adjust settings, you'll need to configure a few buttons. However, only two buttons are essential to modify values and exit the menu. These two buttons are `Menu Left` and `Value +`.
-| ESP32 Dev Board | ESP32-S3-N16R8 | Menu Button |
-| -------------   | -------------  | ------------|
-| GPIO 33         | GPIO 48        | Menu Left   |
-| NOT USED        | GPIO 47        | Menu Right  |
-| GPIO 21         | GPIO 0         | Value +     |
-| NOT USED        | GPIO 45        | Value -     |
+| ESP32 Dev Board | ESP32-S3-N16R8 | RP2040/RP2350 | Menu Button |
+| -------------   | -------------  | ------------- | ------------|
+| GPIO 33         | GPIO 48        | GPIO 26       | Menu Left   |
+| NOT USED        | GPIO 47        | GPIO 29       | Menu Right  |
+| GPIO 21         | GPIO 0         | GPIO 28       | Value +     |
+| NOT USED        | GPIO 45        | GPIO 27       | Value -     |
 
 ## First start
 

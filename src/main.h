@@ -54,10 +54,10 @@
 #define FORWARD_BUTTON_PIN 48
 #define BACKWARD_BUTTON_PIN 47
 #elif defined(PICO_BUILD)
-#define UP_BUTTON_PIN 14
-#define DOWN_BUTTON_PIN 15
-#define FORWARD_BUTTON_PIN 26   // so we can use rp2040 / rp2350 zero
-#define BACKWARD_BUTTON_PIN 27  // so we can use rp2040 / rp2350 zero
+#define UP_BUTTON_PIN 27
+#define DOWN_BUTTON_PIN 28
+#define FORWARD_BUTTON_PIN 26
+#define BACKWARD_BUTTON_PIN 29
 #elif defined(DISPLAY_RM67162_AMOLED)
 #define UP_BUTTON_PIN 0
 #define FORWARD_BUTTON_PIN 21
