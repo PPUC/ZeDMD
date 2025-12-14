@@ -2187,7 +2187,7 @@ void loop() {
     delay(200);
 #endif
   } else {
-    if (lastDataReceivedClock.getElapsedTime().asMilliseconds() >
+    if (!transport->isLoopback() && lastDataReceivedClock.getElapsedTime().asMilliseconds() >
         CONNECTION_TIMEOUT) {
       transportActive = false;
       return;
