@@ -25,6 +25,8 @@
 #ifndef _TUSB_CONFIG_RP2040_H_
 #define _TUSB_CONFIG_RP2040_H_
 
+#ifndef DMDREADER
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -170,6 +172,8 @@ extern "C" {
 
 #ifdef __cplusplus
 }
+#endif
+
 #endif
 
 #endif /* _TUSB_CONFIG_RP2040_H_ */

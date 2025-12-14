@@ -57,6 +57,8 @@ void LedMatrix::DisplayText(const char *text, uint16_t x, uint16_t y, uint8_t r,
       }
     }
   }
+
+  Render();
 }
 
 void IRAM_ATTR LedMatrix::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
@@ -71,6 +73,8 @@ void IRAM_ATTR LedMatrix::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
                 pBuffer[pos + 1], pBuffer[pos + 2]);
     }
   }
+
+  Render();
 }
 
 void IRAM_ATTR LedMatrix::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
@@ -84,6 +88,8 @@ void IRAM_ATTR LedMatrix::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
                 (((uint16_t)pBuffer[pos + 1]) << 8) + pBuffer[pos]);
     }
   }
+
+  Render();
 }
 
 void IRAM_ATTR LedMatrix::ClearZone(uint8_t idx) {
@@ -95,6 +101,8 @@ void IRAM_ATTR LedMatrix::ClearZone(uint8_t idx) {
       DrawPixel(x + zoneXOffset, y + zoneYOffset, 0, 0, 0);
     }
   }
+
+  Render();
 }
 
 void IRAM_ATTR LedMatrix::FillPanelRaw(uint8_t *pBuffer) {
@@ -107,6 +115,10 @@ void IRAM_ATTR LedMatrix::FillPanelRaw(uint8_t *pBuffer) {
       DrawPixel(x, y, pBuffer[pos], pBuffer[pos + 1], pBuffer[pos + 2]);
     }
   }
+
+  Render();
 }
+
+void LedMatrix::Render() {}
 
 #endif

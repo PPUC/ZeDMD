@@ -21,8 +21,12 @@
 #define NUM_RENDER_BUFFERS 2
 #endif
 #define BUFFER_SIZE 1152
-#elif PICO_BUILD
-#define NUM_BUFFERS 12  // Number of buffers r of buffers
+#elif defined(DMDREADER)
+#define NUM_BUFFERS 2  // Number of buffers
+#define NUM_RENDER_BUFFERS 2
+#define BUFFER_SIZE TOTAL_BYTES
+#elif defined(PICO_BUILD)
+#define NUM_BUFFERS 12  // Number of buffers
 #define NUM_RENDER_BUFFERS 1
 #define BUFFER_SIZE 1152
 #else

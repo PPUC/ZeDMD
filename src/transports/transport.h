@@ -52,10 +52,13 @@ class Transport {
 
   bool isSpi() const { return m_type == SPI; }
 
+  bool isLoopback() const { return m_loopback; }
+
  protected:
   uint8_t m_type = USB;
   bool m_active = false;
   uint8_t m_delay = 5;
+  bool m_loopback = false;
 };
 
 #endif  // ZEDMD_TRANSPORT_H

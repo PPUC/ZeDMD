@@ -8,6 +8,9 @@ UsbTransport::UsbTransport() : Transport() { m_type = USB; }
 UsbTransport::~UsbTransport() { deinit(); }
 
 bool UsbTransport::init() {
+  m_active = true;
+
+#ifndef DMDREADER
 #ifdef BOARD_HAS_PSRAM
   xTaskCreatePinnedToCore(Task_ReadSerial, "Task_ReadSerial", 8192, this, 1,
                           &m_task, 0);
@@ -15,8 +18,7 @@ bool UsbTransport::init() {
   xTaskCreatePinnedToCore(Task_ReadSerial, "Task_ReadSerial", 4096, this, 1,
                           &m_task, 0);
 #endif
-
-  m_active = true;
+#endif
 
   return true;
 }
@@ -33,6 +35,7 @@ bool UsbTransport::deinit() {
 }
 
 void UsbTransport::Task_ReadSerial(void* pvParameters) {
+#if !defined(ZEDMD_WIFI_ONLY) && !defined(DMDREADER)
   const auto transport = static_cast<UsbTransport*>(pvParameters);
   const uint16_t usbPackageSize = usbPackageSizeMultiplier * 32;
   bool connected = false;
@@ -162,5 +165,6 @@ void UsbTransport::Task_ReadSerial(void* pvParameters) {
   heap_caps_free(pUsbBuffer);
 #else
   free(pUsbBuffer);
+#endif
 #endif
 }

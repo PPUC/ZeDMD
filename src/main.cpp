@@ -1,11 +1,35 @@
+#if defined(PICO_RP2350) || (RP2350)
+// Set the official 200 MHz system clock
+// For RP2350, PLL parameters must be provided
+#define PLL_SYS_VCO_FREQ_HZ (1600ul * 1000ul * 1000ul)
+#define PLL_SYS_POSTDIV1 4
+#define PLL_SYS_POSTDIV2 2
+#endif
+
+#ifdef PICO_BUILD
+// set to officially supported 200MHz clock
+// @see SYS_CLK_MHZ https://github.com/raspberrypi/pico-sdk/releases/tag/2.1.1
+#define SYS_CLK_MHZ 200
+#endif
+
 #include <Arduino.h>
 #include <Bounce2.h>
+
+#ifdef PICO_RP2350
+#include "hardware/clocks.h"
+#endif
+
 #ifdef PICO_BUILD
 #include "pico/zedmd_pico.h"
 #endif
 #include <LittleFS.h>
 
+#ifndef DMDREADER
 #include "transports/usb_transport.h"
+#else
+#include <dmdreader.h>
+#endif
+#include "transports/spi_transport.h"
 #ifndef ZEDMD_NO_NETWORKING
 #include "transports/wifi_transport.h"
 #endif
@@ -22,17 +46,19 @@
 #include "esp_log.h"
 #include "esp_task_wdt.h"
 #endif
+#ifndef DMDREADER
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#endif
 #include "main.h"
 #include "utility/clock.h"
 
 // To save RAM only include the driver we want to use.
 #ifdef DISPLAY_RM67162_AMOLED
 #include "displays/Rm67162Amoled.h"
-#elif PICO_BUILD
+#elif defined(PICO_BUILD)
 #include "displays/PicoLedMatrix.h"
 #else
 #include "displays/Esp32LedMatrix.h"
@@ -149,7 +175,11 @@ void DoRestart(int sec) {
   }
   display->ClearScreen();
   display->DisplayText("Restarting ...", 0, 0, 255, 0, 0);
+#ifndef DMDREADER
   vTaskDelay(pdMS_TO_TICKS(sec * 1000));
+#else
+  delay(1000);
+#endif
   display->ClearScreen();
   delay(20);
 
@@ -167,7 +197,11 @@ void DoRestart(int sec) {
   esp_deep_sleep_start();  // Enter deep sleep (ESP32 reboots on wake)
 #endif
 #else
+#ifdef PICO_BUILD
+  rp2040.reboot();
+#else
   esp_restart();
+#endif
 #endif
 }
 
@@ -226,11 +260,26 @@ void DisplayRGB(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
 /// @brief Get DisplayDriver object, required for webserver
 DisplayDriver *GetDisplayDriver() { return display; }
 
-void TransportCreate(const uint8_t type = Transport::USB) {
+void TransportCreate(const uint8_t type =
+#ifdef DMDREADER
+                         Transport::SPI
+#elif defined(ZEDMD_WIFI_ONLY)
+                         Transport::WIFI_UDP
+#else
+                         Transport::USB
+#endif
+) {
+
   // "reload" new transport (without init)
   delete transport;
 
   switch (type) {
+#ifdef DMDREADER
+    case Transport::SPI: {
+      transport = new SpiTransport();
+      break;
+    }
+#else
     case Transport::USB: {
       transport = new UsbTransport();
       break;
@@ -246,6 +295,7 @@ void TransportCreate(const uint8_t type = Transport::USB) {
     default: {
       transport = new Transport();
     }
+#endif
   }
 
   transport->loadConfig();
@@ -286,8 +336,15 @@ void SaveTransport(const uint8_t type = Transport::USB) {
 void LoadTransport() {
   File f = LittleFS.open("/transport.val", "r");
   if (!f) {
-    const uint8_t type =
-        transport != nullptr ? transport->getType() : Transport::USB;
+    const uint8_t type = transport != nullptr ? transport->getType() :
+#ifdef DMDREADER
+                                              Transport::SPI
+#elif defined(ZEDMD_WIFI_ONLY)
+                                              Transport::WIFI_UDP
+#else
+                                              Transport::USB
+#endif
+        ;
     SaveTransport(type);
     TransportCreate(type);
     return;
@@ -365,6 +422,7 @@ void LoadPanelSettings() {
   panelMinRefreshRate = f.read();
   f.close();
 }
+
 #endif
 
 void SaveLum() {
@@ -575,7 +633,11 @@ void AcquireNextBuffer() {
       return;
     }
     // Avoid busy-waiting
+#ifndef DMDREADER
     vTaskDelay(pdMS_TO_TICKS(1));
+#else
+    tight_loop_contents();
+#endif
   }
 }
 
@@ -684,6 +746,9 @@ void Render() {
 #endif
       }
     }
+
+    display->Render();
+
 #ifdef SPEAKER_LIGHTS
     if (FX_MODE_AMBILIGHT == speakerLightsLeftMode) {
       if (colorCountLeft == 0) {
@@ -733,6 +798,7 @@ void Render() {
 
 void ClearScreen() {
   display->ClearScreen();
+  display->Render();
   memset(renderBuffer[currentRenderBuffer], 0, TOTAL_BYTES);
 
   if (NUM_RENDER_BUFFERS > 1) {
@@ -1029,7 +1095,7 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
             return 1;
           }
 #endif
-#ifndef ZEDMD_NO_NETWORKING
+#if !defined(ZEDMD_NO_NETWORKING) && !defined(DMDREADER)
           case 26:  // set wifi power
           {
             wifiPower = pData[pos++];
@@ -1182,7 +1248,9 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
             SaveLum();
             SaveDebug();
             SaveTransport();
+#ifndef DMDREADER
             SaveUsbPackageSizeMultiplier();
+#endif
             transport->saveDelay();
             transport->saveConfig();
 #if defined(DISPLAY_LED_MATRIX)
@@ -1476,10 +1544,12 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
 #endif
 
           case 16: {
+#ifndef DMDREADER
             if (transport->getType() == Transport::USB) {
               Serial.write(CtrlChars, N_ACK_CHARS);
               Serial.flush();
             }
+#endif
             LedTester();
             Restart();
           }
@@ -1605,6 +1675,13 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
 void setup() {
 #ifndef PICO_BUILD
   esp_log_level_set("*", ESP_LOG_NONE);
+#else
+  // overclock to achieve higher SPI transfer speed
+  set_sys_clock_khz(SYS_CLK_MHZ * 1000, true);
+#endif
+
+#ifdef DMDREADER
+  pinMode(LED_BUILTIN, OUTPUT);
 #endif
 
   // (Re-)Initialize global state variables that might have survived a restart
@@ -1646,10 +1723,11 @@ void setup() {
   bool fileSystemOK;
   if ((fileSystemOK = LittleFS.begin())) {
     LoadSettingsMenu();
-#ifndef ZEDMD_WIFI
     LoadTransport();
-#endif
+
+#ifndef DMDREADER
     LoadUsbPackageSizeMultiplier();
+#endif
 #if defined(DISPLAY_LED_MATRIX) || defined(DISPLAY_PICO_LED_MATRIX)
     LoadRgbOrder();
     LoadPanelSettings();
@@ -2102,10 +2180,22 @@ void loop() {
         break;
     }
 
+    display->Render();
+
     transportWaitCounter = (transportWaitCounter + 1) % 8;
 
+#ifndef DMDREADER
     vTaskDelay(pdMS_TO_TICKS(200));
+#else
+    // Code is usding interrupts, so delay is fine.
+    delay(200);
+#endif
   } else {
+    if (transport->isLoopback()) {
+      delay(10);
+      return;
+    }
+
     if (lastDataReceivedClock.getElapsedTime().asMilliseconds() >
         CONNECTION_TIMEOUT) {
       transportActive = false;
@@ -2226,8 +2316,29 @@ void loop() {
         }
       }
     } else {
+#ifndef DMDREADER
       // Avoid busy-waiting
       vTaskDelay(pdMS_TO_TICKS(1));
+#else
+      tight_loop_contents();
+#endif
     }
   }
 }
+
+#ifdef DMDREADER
+void loop1() {
+  if (transport->isLoopback()) {
+    uint8_t *buffer = dmdreader_loopback_render();
+    if (buffer != nullptr) {
+      memcpy(renderBuffer[currentRenderBuffer], buffer, TOTAL_BYTES);
+      Render();
+    } else {
+      tight_loop_contents();
+    }
+  } else {
+    // @todo SPI
+    delay(100);
+  }
+}
+#endif
