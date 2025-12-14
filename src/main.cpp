@@ -2187,7 +2187,12 @@ void loop() {
     delay(200);
 #endif
   } else {
-    if (!transport->isLoopback() && lastDataReceivedClock.getElapsedTime().asMilliseconds() >
+    if (transport->isLoopback()) {
+      delay(10);
+      return;
+    }
+
+    if (lastDataReceivedClock.getElapsedTime().asMilliseconds() >
         CONNECTION_TIMEOUT) {
       transportActive = false;
       return;
@@ -2327,8 +2332,7 @@ void loop1() {
     } else {
       tight_loop_contents();
     }
-  }
-  else {
+  } else {
     // @todo SPI
     delay(100);
   }
