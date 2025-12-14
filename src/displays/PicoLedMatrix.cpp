@@ -69,7 +69,7 @@ PicoLedMatrix::PicoLedMatrix() {
   s_hub75 = new pimoroni::Hub75(
       TOTAL_WIDTH, PANEL_HEIGHT, nullptr, pimoroni::PANEL_FM6126A, false,
       static_cast<pimoroni::Hub75::COLOR_ORDER>(color_order[rgbMode]),
-      lut_table, pio1);
+      lut_table);
   s_hub75->start(dma_complete);
 }
 

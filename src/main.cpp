@@ -746,6 +746,9 @@ void Render() {
 #endif
       }
     }
+
+    display->Render();
+
 #ifdef SPEAKER_LIGHTS
     if (FX_MODE_AMBILIGHT == speakerLightsLeftMode) {
       if (colorCountLeft == 0) {
