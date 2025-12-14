@@ -548,61 +548,61 @@ void SaveSpeakerLightsSettings() {
 void LoadSpeakerLightsSettings() {
   File f = LittleFS.open("/speaker_lights_left_num.val", "r");
   if (!f) {
-    SavePanelSettings();
+    SaveSpeakerLightsSettings();
   }
   speakerLightsLeftNumLeds = f.read();
   f.close();
   f = LittleFS.open("/speaker_lights_right_num.val", "r");
   if (!f) {
-    SavePanelSettings();
+    SaveSpeakerLightsSettings();
   }
   speakerLightsRightNumLeds = f.read();
   f.close();
   f = LittleFS.open("/speaker_lights_left_type.val", "r");
   if (!f) {
-    SavePanelSettings();
+    SaveSpeakerLightsSettings();
   }
   speakerLightsLeftLedType = f.read();
   f.close();
   f = LittleFS.open("/speaker_lights_right_type.val", "r");
   if (!f) {
-    SavePanelSettings();
+    SaveSpeakerLightsSettings();
   }
   speakerLightsRightLedType = f.read();
   f.close();
   f = LittleFS.open("/speaker_lights_left_mode.val", "r");
   if (!f) {
-    SavePanelSettings();
+    SaveSpeakerLightsSettings();
   }
   speakerLightsLeftMode = f.read();
   f.close();
   f = LittleFS.open("/speaker_lights_right_mode.val", "r");
   if (!f) {
-    SavePanelSettings();
+    SaveSpeakerLightsSettings();
   }
   speakerLightsRightMode = f.read();
   f.close();
   f = LittleFS.open("/speaker_lights_left_color.val", "r");
   if (!f) {
-    SavePanelSettings();
+    SaveSpeakerLightsSettings();
   }
   speakerLightsLeftColor = f.read() + (f.read() << 8) + (f.read() << 16);
   f.close();
   f = LittleFS.open("/speaker_lights_right_color.val", "r");
   if (!f) {
-    SavePanelSettings();
+    SaveSpeakerLightsSettings();
   }
   speakerLightsRightColor = f.read() + (f.read() << 8) + (f.read() << 16);
   f.close();
   f = LittleFS.open("/speaker_lights_black_threshold.val", "r");
   if (!f) {
-    SavePanelSettings();
+    SaveSpeakerLightsSettings();
   }
   speakerLightsBlackThreshold = f.read();
   f.close();
   f = LittleFS.open("/speaker_lights_gamma_factor.val", "r");
   if (!f) {
-    SavePanelSettings();
+    SaveSpeakerLightsSettings();
   }
   speakerLightsGammaFactor = f.read();
   f.close();
