@@ -2176,6 +2176,8 @@ void loop() {
         break;
     }
 
+    display->Render();
+
     transportWaitCounter = (transportWaitCounter + 1) % 8;
 
 #ifndef DMDREADER
@@ -2325,6 +2327,10 @@ void loop1() {
     } else {
       tight_loop_contents();
     }
+  }
+  else {
+    // @todo SPI
+    delay(100);
   }
 }
 #endif

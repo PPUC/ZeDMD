@@ -20,6 +20,7 @@ bool SpiTransport::init() {
   #endif
 
   m_active = true;
+  transportActive = true;
 
   return true;
 }
