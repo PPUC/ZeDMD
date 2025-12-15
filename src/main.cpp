@@ -705,7 +705,8 @@ void Render() {
     for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
       for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
         pos = (y * TOTAL_WIDTH + x) * 3;
-        if (!(0 == memcmp(&renderBuffer[currentRenderBuffer][pos],
+        if (transport->isLoopback() ||
+            !(0 == memcmp(&renderBuffer[currentRenderBuffer][pos],
                           &renderBuffer[lastRenderBuffer][pos], 3))) {
           display->DrawPixel(x, y, renderBuffer[currentRenderBuffer][pos],
                              renderBuffer[currentRenderBuffer][pos + 1],
@@ -787,8 +788,10 @@ void Render() {
 #endif
     lastRenderBuffer = currentRenderBuffer;
     currentRenderBuffer = (currentRenderBuffer + 1) % NUM_RENDER_BUFFERS;
-    memcpy(renderBuffer[currentRenderBuffer], renderBuffer[lastRenderBuffer],
-           TOTAL_BYTES);
+    if (!transport->isLoopback()) {
+      memcpy(renderBuffer[currentRenderBuffer], renderBuffer[lastRenderBuffer],
+             TOTAL_BYTES);
+    }
   }
 
 #ifdef ZEDMD_CLIENT_DEBUG_FPS
