@@ -2332,7 +2332,7 @@ void loop() {
 #ifdef DMDREADER
 void loop1() {
   transport->SetupEnablePin();
-  
+
   if (transport->isLoopback()) {
     uint8_t *buffer = dmdreader_loopback_render();
     if (buffer != nullptr) {
@@ -2344,6 +2344,9 @@ void loop1() {
   } else {
     // SPI uses interrupts.
     delay(100);
+  }
+  elseif (!dmdreader_spi_send()) {
+    tight_loop_contents();
   }
 }
 #endif
