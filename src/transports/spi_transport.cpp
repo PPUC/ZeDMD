@@ -73,7 +73,6 @@ void SpiTransport::initPio() {
   pio_sm_config config =
       zedmd_spi_input_program_get_default_config(m_programOffset);
   sm_config_set_in_pins(&config, kDataPin);
-  sm_config_set_jmp_pin(&config, kClockPin);
   sm_config_set_in_shift(&config, false, true, 8);
   sm_config_set_fifo_join(&config, PIO_FIFO_JOIN_RX);
 

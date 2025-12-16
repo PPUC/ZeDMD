@@ -2341,11 +2341,8 @@ void loop1() {
     } else {
       tight_loop_contents();
     }
-  } else {
-    // SPI uses interrupts.
-    delay(100);
   }
-  elseif (!dmdreader_spi_send()) {
+  else if (!dmdreader_spi_send()) {
     tight_loop_contents();
   }
 }

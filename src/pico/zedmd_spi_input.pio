@@ -1,0 +1,10 @@
+.program zedmd_spi_input
+
+; Simple clocked input PIO program for ZeDMD SPI transport.
+; Samples data on GPIO 15 using GPIO 14 as the external clock.
+
+.wrap_target
+wait 1 gpio 14    ; wait for clock high
+in pins, 1        ; sample GPIO 15 (IN pin base)
+wait 0 gpio 14    ; wait for clock low
+.wrap
