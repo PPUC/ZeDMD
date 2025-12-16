@@ -949,7 +949,7 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
   bool headerCompleted = false;
 
   while (pos < len ||
-         (headerCompleted && command != 5 && command != 22 && command != 23 &&
+         (headerCompleted && command != 4 && command != 5 && command != 22 && command != 23 &&
           command != 27 && command != 28 && command != 29 && command != 40 &&
           command != 41 && command != 42 && command != 43 && command != 44 &&
           command != 45 && command != 46 && command != 47 && command != 48)) {
@@ -2331,6 +2331,8 @@ void loop() {
 
 #ifdef DMDREADER
 void loop1() {
+  transport->SetupEnablePin();
+  
   if (transport->isLoopback()) {
     uint8_t *buffer = dmdreader_loopback_render();
     if (buffer != nullptr) {
@@ -2340,7 +2342,7 @@ void loop1() {
       tight_loop_contents();
     }
   } else {
-    // @todo SPI
+    // SPI uses interrupts.
     delay(100);
   }
 }

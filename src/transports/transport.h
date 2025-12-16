@@ -54,6 +54,8 @@ class Transport {
 
   bool isLoopback() const { return m_loopback; }
 
+  void SetupEnablePin() {}
+
  protected:
   uint8_t m_type = USB;
   bool m_active = false;
