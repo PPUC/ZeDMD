@@ -137,6 +137,32 @@ uint8_t panelDriver = 0;
 uint8_t panelI2sspeed = 8;
 uint8_t panelLatchBlanking = 2;
 uint8_t panelMinRefreshRate = 60;
+#ifdef DMDREADER
+uint8_t loopbackColor = (uint8_t)Color::ORANGE;
+
+const char *ColorString(uint8_t color) {
+  switch ((Color)color) {
+    case Color::ORANGE:
+      return "orange";
+    case Color::RED:
+      return "red   ";
+    case Color::YELLOW:
+      return "yellow";
+    case Color::GREEN:
+      return "green ";
+    case Color::BLUE:
+      return "blue  ";
+    case Color::VIOLET:
+      return "violet";
+    case Color::PINK:
+      return "pink  ";
+    case Color::WHITE:
+      return "white ";
+    default:
+      return nullptr;
+  }
+}
+#endif
 
 // We needed to change these from RGB to RC (Red Color), BC, GC to prevent
 // conflicting with the TFT_SPI Library.
@@ -506,6 +532,28 @@ void LoadScale() {
   display->SetCurrentScalingMode(f.read());
   f.close();
 }
+
+#ifdef DMDREADER
+void SaveColor() {
+  File f = LittleFS.open("/color.val", "w");
+  f.write(loopbackColor);
+  f.close();
+}
+
+void LoadColor() {
+  File f = LittleFS.open("/color.val", "r");
+  if (!f) {
+    SaveColor();
+    return;
+  }
+  loopbackColor = f.read();
+  if (ColorString(loopbackColor) == nullptr) {
+    loopbackColor = (uint8_t)Color::ORANGE;
+    SaveColor();
+  }
+  f.close();
+}
+#endif
 
 #ifdef SPEAKER_LIGHTS
 void SaveSpeakerLightsSettings() {
@@ -929,13 +977,21 @@ void RefreshSetupScreen() {
     DisplayNumber(usbPackageSizeMultiplier * 32, 4,
                   7 * (TOTAL_WIDTH / 128) + (16 * 4), (TOTAL_HEIGHT / 2) + 4,
                   255, 191, 0);
-  }
-  if (transport->isWifi()) {
+  } else if (transport->isWifi()) {
     display->DisplayText("UDP Delay:", 7 * (TOTAL_WIDTH / 128),
                          (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
     DisplayNumber(transport->getDelay(), 1, 7 * (TOTAL_WIDTH / 128) + 10 * 4,
                   (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
   }
+#ifdef DMDREADER
+  else if (transport->isSpi()) {
+    display->DisplayText("Color:", 7 * (TOTAL_WIDTH / 128),
+                         (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
+    display->DisplayText(ColorString(loopbackColor),
+                         7 * (TOTAL_WIDTH / 128) + (6 * 4),
+                         (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
+  }
+#endif
 #ifdef ZEDMD_HD_HALF
   display->DisplayText("Y-Offset", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
@@ -949,10 +1005,11 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
   bool headerCompleted = false;
 
   while (pos < len ||
-         (headerCompleted && command != 4 && command != 5 && command != 22 && command != 23 &&
-          command != 27 && command != 28 && command != 29 && command != 40 &&
-          command != 41 && command != 42 && command != 43 && command != 44 &&
-          command != 45 && command != 46 && command != 47 && command != 48)) {
+         (headerCompleted && command != 4 && command != 5 && command != 22 &&
+          command != 23 && command != 27 && command != 28 && command != 29 &&
+          command != 40 && command != 41 && command != 42 && command != 43 &&
+          command != 44 && command != 45 && command != 46 && command != 47 &&
+          command != 48)) {
     headerCompleted = false;
     if (numCtrlCharsFound < N_CTRL_CHARS) {
       // Detect 5 consecutive start bits
@@ -1728,7 +1785,9 @@ void setup() {
     LoadSettingsMenu();
     LoadTransport();
 
-#ifndef DMDREADER
+#ifdef DMDREADER
+    LoadColor();
+#else
     LoadUsbPackageSizeMultiplier();
 #endif
 #if defined(DISPLAY_LED_MATRIX) || defined(DISPLAY_PICO_LED_MATRIX)
@@ -1872,7 +1931,7 @@ void setup() {
         if (transport->isUsb()) {
           if (position == 4) position = forward ? 5 : 3;
         } else if (transport->isSpi()) {
-          if (position == 3 || position == 4) position = forward ? 5 : 2;
+          if (position == 3) position = forward ? 4 : 2;
         } else {
           if (position == 3) position = forward ? 4 : 2;
         }
@@ -1896,12 +1955,21 @@ void setup() {
                                  (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
             break;
           }
+#ifdef DMDREADER
+          case 4: {  // Color
+            RefreshSetupScreen();
+            display->DisplayText("Color:", 7 * (TOTAL_WIDTH / 128),
+                                 TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
+            break;
+          }
+#else
           case 4: {  // UDP Delay
             RefreshSetupScreen();
             display->DisplayText("UDP Delay:", 7 * (TOTAL_WIDTH / 128),
                                  TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
             break;
           }
+#endif
           case 5: {  // Transport
             RefreshSetupScreen();
             display->DisplayText(transport->getTypeString(),
@@ -1968,6 +2036,23 @@ void setup() {
             SaveUsbPackageSizeMultiplier();
             break;
           }
+#ifdef DMDREADER
+          case 4: {  // Color
+            if (up && ++loopbackColor > ((uint8_t)Color::WHITE))
+              loopbackColor = ((uint8_t)Color::ORANGE);
+            else if (down &&
+                     --loopbackColor >
+                         ((uint8_t)Color::WHITE))  // underflow will result in
+                                                   // 255, set it to WHITE
+              loopbackColor = ((uint8_t)Color::WHITE);
+
+            display->DisplayText(ColorString(loopbackColor),
+                                 7 * (TOTAL_WIDTH / 128) + (6 * 4),
+                                 TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
+            SaveColor();
+            break;
+          }
+#else
           case 4: {  // UDP Delay
             uint8_t delay = transport->getDelay();
             if (up && ++delay > 9)
@@ -1982,6 +2067,7 @@ void setup() {
             transport->saveDelay();
             break;
           }
+#endif
           case 5: {  // Transport
 #ifdef ZEDMD_NO_NETWORKING
             const uint8_t type = transport->getType() == Transport::USB
@@ -2074,6 +2160,9 @@ void setup() {
     }
   }
 
+#ifdef DMDREADER
+  transport->SetColor(loopbackColor);
+#endif
   transport->init();
 
 #ifdef SPEAKER_LIGHTS
@@ -2331,7 +2420,7 @@ void loop() {
 
 #ifdef DMDREADER
 void loop1() {
-  transport->SetupEnablePin();
+  //transport->SetupEnablePin();
 
   if (transport->isLoopback()) {
     uint8_t *buffer = dmdreader_loopback_render();
@@ -2341,8 +2430,7 @@ void loop1() {
     } else {
       tight_loop_contents();
     }
-  }
-  else if (!dmdreader_spi_send()) {
+  } else if (!dmdreader_spi_send()) {
     tight_loop_contents();
   }
 }

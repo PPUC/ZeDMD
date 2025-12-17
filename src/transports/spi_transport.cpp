@@ -2,8 +2,6 @@
 
 #include "main.h"
 #ifdef DMDREADER
-#include <dmdreader.h>
-
 #include "pico/zedmd_spi_input.pio.h"
 #include "utility/clock.h"
 #endif
@@ -21,7 +19,7 @@ bool SpiTransport::init() {
   dmdreader_init(m_pio);
 
   // Start in loopback mode until the host enables SPI via GPIO 13.
-  dmdreader_loopback_init(buffers[0], buffers[1], Color::ORANGE);
+  dmdreader_loopback_init(buffers[0], buffers[1], m_color);
   m_loopback = true;
 
   pinMode(kEnablePin, INPUT_PULLDOWN);
@@ -44,8 +42,8 @@ bool SpiTransport::deinit() {
     m_active = false;
 #ifdef DMDREADER
     if (m_irqInitialized) {
-      gpio_set_irq_enabled(kEnablePin,
-                           GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, false);
+      gpio_set_irq_enabled(kEnablePin, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL,
+                           false);
       m_irqInitialized = false;
       s_instance = nullptr;
     }
@@ -183,11 +181,13 @@ void SpiTransport::gpio_irq_handler(uint gpio, uint32_t events) {
 void SpiTransport::SetupEnablePin() {
   // Initialize GPIO IRQ from core1 (loop1) so callbacks run on core1.
   if (!m_irqInitialized) {
-    gpio_set_irq_enabled_with_callback(
-        kEnablePin, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true,
-        &SpiTransport::gpio_irq_handler);
+    gpio_set_irq_enabled_with_callback(kEnablePin,
+                                       GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL,
+                                       true, &SpiTransport::gpio_irq_handler);
     m_irqInitialized = true;
   }
 }
+
+void SpiTransport::SetColor(uint8_t color) { m_color = (Color)color; }
 
 #endif

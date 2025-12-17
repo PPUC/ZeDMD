@@ -5,6 +5,8 @@
 #include "pico/zedmd_pico.h"
 #endif
 #ifdef DMDREADER
+#include <dmdreader.h>
+
 #include "hardware/dma.h"
 #include "hardware/gpio.h"
 #include "hardware/pio.h"
@@ -23,7 +25,8 @@ class SpiTransport final : public Transport {
   bool deinit() override;
 
 #ifdef DMDREADER
-  void SetupEnablePin();
+  void SetupEnablePin() override;
+  void SetColor(uint8_t color) override;
 #endif
 
  private:
@@ -56,6 +59,7 @@ class SpiTransport final : public Transport {
   bool m_irqInitialized = false;
   uint8_t m_rxBuffer[kRxBufferSize];
   size_t m_rxBufferPos = 0;
+  Color m_color = Color::ORANGE;
 #endif
 };
 
