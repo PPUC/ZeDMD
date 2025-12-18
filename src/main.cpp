@@ -153,8 +153,8 @@ const char *ColorString(uint8_t color) {
       return "green ";
     case Color::BLUE:
       return "blue  ";
-    case Color::VIOLET:
-      return "violet";
+    case Color::PURPLE:
+      return "purple";
     case Color::PINK:
       return "pink  ";
     case Color::WHITE:
@@ -202,12 +202,14 @@ void DoRestart(int sec) {
   }
   display->ClearScreen();
   display->DisplayText("Restarting ...", 0, 0, 255, 0, 0);
+  display->Render();
 #ifndef DMDREADER
   vTaskDelay(pdMS_TO_TICKS(sec * 1000));
 #else
   delay(1000);
 #endif
   display->ClearScreen();
+  display->Render();
   delay(20);
 
 #ifdef PICO_BUILD
@@ -661,15 +663,19 @@ void LoadSpeakerLightsSettings() {
 
 void LedTester(void) {
   display->FillScreen(255, 0, 0);
+  display->Render();
   delay(LED_CHECK_DELAY);
 
   display->FillScreen(0, 255, 0);
+  display->Render();
   delay(LED_CHECK_DELAY);
 
   display->FillScreen(0, 0, 255);
+  display->Render();
   delay(LED_CHECK_DELAY);
 
   display->ClearScreen();
+  display->Render();
 }
 
 void AcquireNextBuffer() {
@@ -720,7 +726,6 @@ uint16_t frames = 0;
 char fpsStr[3];
 
 void FpsUpdate() {
-  // if (debug) {
   frames++;
 
   if (fpsClock.getElapsedTime().asMilliseconds() >= 200) {
@@ -731,7 +736,7 @@ void FpsUpdate() {
 
   display->DisplayText(fpsStr, TOTAL_WIDTH - 7, TOTAL_HEIGHT - 5, 255, 0, 0,
                        false, false);
-  //}
+  display->Render();
 }
 #endif
 
@@ -739,7 +744,7 @@ uint8_t GetPixelBrightness(uint8_t r, uint8_t g, uint8_t b) {
   return (r * 77 + g * 150 + b * 29) >> 8;  // Optimized luminance calculation
 }
 
-void Render() {
+void Render(bool renderAll = true) {
   if (NUM_RENDER_BUFFERS == 1) {
     display->FillPanelRaw(renderBuffer[currentRenderBuffer]);
   } else if (currentRenderBuffer != lastRenderBuffer) {
@@ -797,7 +802,7 @@ void Render() {
       }
     }
 
-    display->Render();
+    if (renderAll) display->Render();
 
 #ifdef SPEAKER_LIGHTS
     if (FX_MODE_AMBILIGHT == speakerLightsLeftMode) {
@@ -859,7 +864,7 @@ void ClearScreen() {
   }
 }
 
-void DisplayLogo(void) {
+void DisplayLogo() {
   File f;
 
   if (TOTAL_HEIGHT == 64) {
@@ -893,7 +898,7 @@ void DisplayLogo(void) {
 #endif
   f.close();
 
-  Render();
+  Render(false);
   DisplayVersion(true);
 
   throbberColors[0] = 0;
@@ -1050,6 +1055,7 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
                                  0, 0);
             DisplayNumber(payloadSize, 5, 0, 19, 255, 0, 0);
             DisplayNumber(BUFFER_SIZE, 5, 0, 25, 255, 0, 0);
+            display->Render();
             while (1);
           }
           headerBytesReceived = 0;
@@ -1066,6 +1072,7 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
                                (TOTAL_HEIGHT / 2) - 4, 128, 128, 128);
           DisplayNumber(payloadSize, 2, 7 * (TOTAL_WIDTH / 128) + (8 * 4),
                         (TOTAL_HEIGHT / 2) - 4, 255, 191, 0);
+          display->Render();
         }
 
         bool rgb888ZoneStream = false;
@@ -1306,6 +1313,7 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
               Serial.flush();
             }
             display->DisplayText("Saving settings ...", 0, 0, 255, 0, 0);
+            display->Render();
             SaveLum();
             SaveDebug();
             SaveTransport();
@@ -1322,6 +1330,7 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
             SaveYOffset();
 #endif
             display->DisplayText("Saving settings ... done", 0, 0, 255, 0, 0);
+            display->Render();
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (transport->isWifiAndActive()) break;
@@ -1634,6 +1643,7 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
               display->DisplayText("KEEP ALIVE RECEIVED",
                                    7 * (TOTAL_WIDTH / 128),
                                    (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
+              display->Render();
             }
             lastDataReceivedClock.restart();
             headerBytesReceived = 0;
@@ -1737,6 +1747,15 @@ void setup() {
 #ifndef PICO_BUILD
   esp_log_level_set("*", ESP_LOG_NONE);
 #else
+  /*
+  // tested working on a lot of different devices
+  vreg_set_voltage(VREG_VOLTAGE_1_15);
+  busy_wait_at_least_cycles((SYS_CLK_VREG_VOLTAGE_AUTO_ADJUST_DELAY_US *
+                             static_cast<uint64_t>(XOSC_HZ)) /
+                            1000000);
+  set_sys_clock_khz(266000, false);
+  */
+
   // overclock to achieve higher SPI transfer speed
   set_sys_clock_khz(SYS_CLK_MHZ * 1000, true);
 #endif
@@ -1823,6 +1842,7 @@ void setup() {
   if (!fileSystemOK) {
     display->DisplayText("Error reading file system!", 0, 0, 255, 0, 0);
     display->DisplayText("Try to flash the firmware again.", 0, 6, 255, 0, 0);
+    display->Render();
     while (true);
   }
 
@@ -1839,9 +1859,11 @@ void setup() {
       DisplayNumber(esp_reset_reason(), 2, 16 * 4, 18, 255, 0, 0);
       if (debug) {
         display->DisplayText("Reboot in 30 seconds ...", 0, 24, 255, 0, 0);
+        display->Render();
         for (uint8_t i = 29; i > 0; i--) {
           delay(1000);
           DisplayNumber(i, 2, 40, 24, 255, 0, 0);
+          display->Render();
         }
         Restart();
       }
@@ -1853,9 +1875,11 @@ void setup() {
       display->DisplayText("Check your power supply and", 0, 6, 255, 0, 0);
       display->DisplayText("hardware.", 0, 12, 255, 0, 0);
       display->DisplayText("Reboot in 30 seconds ...", 0, 24, 255, 0, 0);
+      display->Render();
       for (uint8_t i = 29; i > 0; i--) {
         delay(1000);
         DisplayNumber(i, 2, 40, 24, 255, 0, 0);
+        display->Render();
       }
       Restart();
       break;
@@ -1874,6 +1898,7 @@ void setup() {
 #endif
     if (nullptr == renderBuffer[i]) {
       display->DisplayText("out of memory", 0, 0, 255, 0, 0);
+      display->Render();
       while (1);
     }
     memset(renderBuffer[i], 0, TOTAL_BYTES);
@@ -1915,6 +1940,7 @@ void setup() {
 #endif
 
     uint8_t position = 1;
+    bool firstMenuRendering = true;
     while (1) {
       forwardButton->update();
       const bool forward = forwardButton->pressed();
@@ -1923,7 +1949,8 @@ void setup() {
       backwardButton->update();
       backward = backwardButton->pressed();
 #endif
-      if (forward || backward) {
+      bool buttonPressed = forward || backward;
+      if (buttonPressed) {
         if (forward && ++position > MENU_ITEMS_COUNT)
           position = 1;
         else if (backward && --position < 1)
@@ -2008,6 +2035,7 @@ void setup() {
       downButton->update();
       down = downButton->pressed();
 #endif
+      buttonPressed = buttonPressed || up || down;
       if (up || down) {
         switch (position) {
           case 1: {  // Exit
@@ -2130,7 +2158,10 @@ void setup() {
 #endif
         }
       }
-
+      if (buttonPressed || firstMenuRendering) {
+        firstMenuRendering = false;
+        display->Render();
+      }
       delay(1);
     }
   }
@@ -2146,6 +2177,7 @@ void setup() {
 
   DisplayLogo();
   DisplayId();
+  display->Render();
 
   // Create synchronization primitives
   for (uint8_t i = 0; i < NUM_BUFFERS; i++) {
@@ -2157,6 +2189,7 @@ void setup() {
 #endif
     if (nullptr == buffers[i]) {
       display->DisplayText("out of memory", 0, 0, 255, 0, 0);
+      display->Render();
       while (1);
     }
   }
@@ -2328,6 +2361,7 @@ void loop() {
               display->DisplayText("miniz error: ", 0, 0, 255, 0, 0);
               DisplayNumber(minizStatus, 3, 13 * 4, 0, 255, 0, 0);
               display->DisplayText("free heap: ", 0, 6, 255, 0, 0);
+              display->Render();
 #ifdef PICO_BUILD
               DisplayNumber(rp2040.getFreeHeap(), 8, 11 * 4, 6, 255, 0, 0);
 #else
