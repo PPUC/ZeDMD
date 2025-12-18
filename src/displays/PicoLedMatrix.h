@@ -2,7 +2,7 @@
 #define PICO_LED_MATRIX_H
 
 #include "LedMatrix.h"
-#include "hub75.hpp"
+#include <hub75.hpp>
 
 class PicoLedMatrix final : public LedMatrix {
  public:
@@ -18,13 +18,16 @@ class PicoLedMatrix final : public LedMatrix {
   void Render() override;
 
  private:
-  uint8_t color_order[6] = {
-      static_cast<uint8_t>(pimoroni::Hub75::COLOR_ORDER::RGB),
-      static_cast<uint8_t>(pimoroni::Hub75::COLOR_ORDER::BRG),
-      static_cast<uint8_t>(pimoroni::Hub75::COLOR_ORDER::GBR),
-      static_cast<uint8_t>(pimoroni::Hub75::COLOR_ORDER::RBG),
-      static_cast<uint8_t>(pimoroni::Hub75::COLOR_ORDER::GRB),
-      static_cast<uint8_t>(pimoroni::Hub75::COLOR_ORDER::BGR)};
+  /*
+   uint8_t color_order[6] = {
+       static_cast<uint8_t>(pimoroni::Hub75::COLOR_ORDER::RGB),
+       static_cast<uint8_t>(pimoroni::Hub75::COLOR_ORDER::BRG),
+       static_cast<uint8_t>(pimoroni::Hub75::COLOR_ORDER::GBR),
+       static_cast<uint8_t>(pimoroni::Hub75::COLOR_ORDER::RBG),
+       static_cast<uint8_t>(pimoroni::Hub75::COLOR_ORDER::GRB),
+       static_cast<uint8_t>(pimoroni::Hub75::COLOR_ORDER::BGR)};
+ */
+  uint8_t drawBuffer[TOTAL_WIDTH * PANEL_HEIGHT * 3];
 };
 
 #endif  // PICO_LED_MATRIX_H
