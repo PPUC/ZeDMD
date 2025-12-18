@@ -22,7 +22,7 @@
 #endif
 #define BUFFER_SIZE 1152
 #elif defined(DMDREADER)
-#define NUM_BUFFERS 2  // Number of buffers
+#define NUM_BUFFERS 4  // Number of buffers
 #define NUM_RENDER_BUFFERS 1
 #define BUFFER_SIZE TOTAL_BYTES
 #elif defined(PICO_BUILD)

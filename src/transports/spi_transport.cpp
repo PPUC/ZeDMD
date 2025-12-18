@@ -32,7 +32,6 @@ bool SpiTransport::init() {
 #endif
 
   m_active = true;
-  transportActive = true;
 
   return true;
 }
@@ -87,7 +86,6 @@ void SpiTransport::disableSpiStateMachine() {
 
 void SpiTransport::flushRxBuffer() {
   if (m_rxBufferPos == 0) return;
-  transportActive = true;
   HandleData(m_rxBuffer, m_rxBufferPos);
   m_rxBufferPos = 0;
 }
@@ -135,7 +133,7 @@ void SpiTransport::switchToSpiMode() {
   payloadMissing = 0;
   headerBytesReceived = 0;
   numCtrlCharsFound = 0;
-  transportActive = false;
+  transportActive = true;
 }
 
 void SpiTransport::onEnableRise() {

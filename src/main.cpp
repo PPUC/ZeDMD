@@ -2233,6 +2233,12 @@ void setup() {
 void loop() {
   CheckMenuButton();
 
+  if (transport->isLoopback()) {
+    logoActive = false;
+    delay(10);
+    return;
+  }
+
 #ifdef SPEAKER_LIGHTS
   if (speakerLightsLeftNumLeds > 0) {
     speakerLightsLeft->service();
@@ -2323,11 +2329,6 @@ void loop() {
     delay(200);
 #endif
   } else {
-    if (transport->isLoopback()) {
-      delay(10);
-      return;
-    }
-
     if (lastDataReceivedClock.getElapsedTime().asMilliseconds() >
         CONNECTION_TIMEOUT) {
       transportActive = false;
