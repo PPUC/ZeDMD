@@ -745,9 +745,10 @@ uint8_t GetPixelBrightness(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 void Render(bool renderAll = true) {
-  if (NUM_RENDER_BUFFERS == 1) {
-    display->FillPanelRaw(renderBuffer[currentRenderBuffer]);
-  } else if (currentRenderBuffer != lastRenderBuffer) {
+#ifdef DISPLAY_RM67162_AMOLED
+  display->FillPanelRaw(renderBuffer[currentRenderBuffer]);
+#else
+  if (NUM_RENDER_BUFFERS == 1 || currentRenderBuffer != lastRenderBuffer) {
 #ifdef SPEAKER_LIGHTS
     uint32_t sumRLeft = 0, sumGLeft = 0, sumBLeft = 0, sumRRight = 0,
              sumGRight = 0, sumBRight = 0;
@@ -840,13 +841,14 @@ void Render(bool renderAll = true) {
       }
     }
 #endif
-    lastRenderBuffer = currentRenderBuffer;
-    currentRenderBuffer = (currentRenderBuffer + 1) % NUM_RENDER_BUFFERS;
-    if (!transport->isLoopback()) {
+    if (NUM_RENDER_BUFFERS > 1) {
+      lastRenderBuffer = currentRenderBuffer;
+      currentRenderBuffer = (currentRenderBuffer + 1) % NUM_RENDER_BUFFERS;
       memcpy(renderBuffer[currentRenderBuffer], renderBuffer[lastRenderBuffer],
              TOTAL_BYTES);
     }
   }
+#endif
 
 #ifdef ZEDMD_CLIENT_DEBUG_FPS
   FpsUpdate();
