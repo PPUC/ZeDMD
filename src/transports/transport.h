@@ -54,10 +54,6 @@ class Transport {
 
   bool isLoopback() const { return m_loopback; }
 
-  virtual void SetupEnablePin() {}
-
-  virtual void SetColor(uint8_t color) {}
-
  protected:
   uint8_t m_type = USB;
   bool m_active = false;

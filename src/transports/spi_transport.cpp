@@ -40,15 +40,6 @@ bool SpiTransport::init() {
 bool SpiTransport::deinit() {
   if (m_active) {
     m_active = false;
-#ifdef DMDREADER
-    if (m_irqInitialized) {
-      gpio_set_irq_enabled(kEnablePin, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL,
-                           false);
-      m_irqInitialized = false;
-      s_instance = nullptr;
-    }
-    disableSpiStateMachine();
-#endif
     // TODO ? clean exit ?
     // delay(500);
     // vTaskDelete(m_task);
@@ -145,15 +136,11 @@ void SpiTransport::switchToSpiMode() {
   headerBytesReceived = 0;
   numCtrlCharsFound = 0;
   transportActive = false;
-  enableSpiStateMachine();
 }
 
 void SpiTransport::onEnableRise() {
-  if (m_loopback) {
-    switchToSpiMode();
-    return;
-  }
-  if (m_transferActive) {
+  if (m_loopback) switchToSpiMode();
+  else if (m_transferActive) {
     stopDmaAndFlush();
     m_transferActive = false;
   }
@@ -161,33 +148,47 @@ void SpiTransport::onEnableRise() {
 
 void SpiTransport::onEnableFall() {
   if (m_loopback) return;
-  if (!m_transferActive) {
-    m_transferActive = true;
+  else if (!m_transferActive) {
     enableSpiStateMachine();
     startDma();
+    m_transferActive = true;
+  }
+}
+
+void SpiTransport::ProcessEnablePinEvents() {
+  if (m_enableRisePending) {
+    m_enableRisePending = false;
+    onEnableRise();
+  }
+
+  if (m_enableFallPending) {
+    m_enableFallPending = false;
+    onEnableFall();
   }
 }
 
 void SpiTransport::gpio_irq_handler(uint gpio, uint32_t events) {
   if (!s_instance || gpio != kEnablePin) return;
   if (events & GPIO_IRQ_EDGE_RISE) {
-    s_instance->onEnableRise();
+    s_instance->m_enableRisePending = true;
   }
   if (events & GPIO_IRQ_EDGE_FALL) {
-    s_instance->onEnableFall();
+    s_instance->m_enableFallPending = true;
   }
 }
 
 void SpiTransport::SetupEnablePin() {
+  m_enableRisePending = false;
+  m_enableFallPending = false;
+
   // Initialize GPIO IRQ from core1 (loop1) so callbacks run on core1.
-  if (!m_irqInitialized) {
-    gpio_set_irq_enabled_with_callback(kEnablePin,
-                                       GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL,
-                                       true, &SpiTransport::gpio_irq_handler);
-    m_irqInitialized = true;
-  }
+  gpio_acknowledge_irq(kEnablePin,
+                       GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL);  // clear stale
+  gpio_set_irq_enabled_with_callback(kEnablePin,
+                                     GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL,
+                                     true, &SpiTransport::gpio_irq_handler);
 }
 
-void SpiTransport::SetColor(uint8_t color) { m_color = (Color)color; }
+void SpiTransport::SetColor(Color color) { m_color = color; }
 
 #endif

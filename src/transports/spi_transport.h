@@ -25,12 +25,11 @@ class SpiTransport final : public Transport {
   bool deinit() override;
 
 #ifdef DMDREADER
-  void SetupEnablePin() override;
-  void SetColor(uint8_t color) override;
-#endif
+  void SetupEnablePin();
+  void SetColor(Color color);
+  void ProcessEnablePinEvents();
 
  private:
-#ifdef DMDREADER
   void initPio();
   void enableSpiStateMachine();
   void disableSpiStateMachine();
@@ -56,10 +55,11 @@ class SpiTransport final : public Transport {
   bool m_spiEnabled = false;
   bool m_transferActive = false;
   bool m_dmaRunning = false;
-  bool m_irqInitialized = false;
   uint8_t m_rxBuffer[kRxBufferSize];
   size_t m_rxBufferPos = 0;
   Color m_color = Color::ORANGE;
+  volatile bool m_enableRisePending = false;
+  volatile bool m_enableFallPending = false;
 #endif
 };
 
