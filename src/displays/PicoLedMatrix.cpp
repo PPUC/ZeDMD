@@ -2,8 +2,6 @@
 
 #include "PicoLedMatrix.h"
 
-#include <hardware/vreg.h>
-
 #include "pico/zedmd_pico.h"
 
 static pimoroni::Hub75 *s_hub75;

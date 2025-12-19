@@ -136,6 +136,7 @@ void SpiTransport::switchToSpiMode() {
   numCtrlCharsFound = 0;
 
   dmdreader_spi_init();
+  enableSpiStateMachine();
 
   transportActive = true;
 }
@@ -153,7 +154,6 @@ void SpiTransport::onEnableFall() {
   if (m_loopback)
     return;
   else if (!m_transferActive) {
-    enableSpiStateMachine();
     startDma();
     m_transferActive = true;
   }
