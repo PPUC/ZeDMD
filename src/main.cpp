@@ -1,15 +1,15 @@
 #if defined(PICO_RP2350) || (RP2350)
-// Set the official 200 MHz system clock
+// Set the official 266 MHz system clock
 // For RP2350, PLL parameters must be provided
-#define PLL_SYS_VCO_FREQ_HZ (1600ul * 1000ul * 1000ul)
-#define PLL_SYS_POSTDIV1 4
-#define PLL_SYS_POSTDIV2 2
+#define PLL_SYS_VCO_FREQ_HZ 1596000000ul
+#define PLL_SYS_POSTDIV1 6
+#define PLL_SYS_POSTDIV2 1
 #endif
 
 #ifdef PICO_BUILD
-// set to officially supported 200MHz clock
+// officially, 200MHz clock is supported, but 266MHz should fine as well
 // @see SYS_CLK_MHZ https://github.com/raspberrypi/pico-sdk/releases/tag/2.1.1
-#define SYS_CLK_MHZ 200
+#define SYS_CLK_MHZ 266
 #endif
 
 #include <Arduino.h>
@@ -1750,15 +1750,11 @@ void setup() {
 #ifndef PICO_BUILD
   esp_log_level_set("*", ESP_LOG_NONE);
 #else
-  /*
   // tested working on a lot of different devices
   vreg_set_voltage(VREG_VOLTAGE_1_15);
   busy_wait_at_least_cycles((SYS_CLK_VREG_VOLTAGE_AUTO_ADJUST_DELAY_US *
                              static_cast<uint64_t>(XOSC_HZ)) /
                             1000000);
-  set_sys_clock_khz(266000, false);
-  */
-
   // overclock to achieve higher SPI transfer speed
   set_sys_clock_khz(SYS_CLK_MHZ * 1000, true);
 #endif
