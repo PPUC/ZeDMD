@@ -2197,9 +2197,10 @@ void setup() {
     }
   }
 
-#ifndef DMDREADER
-  transport->init();
+#ifdef DMDREADER
+  static_cast<SpiTransport *>(transport)->SetColor((Color)loopbackColor);
 #endif
+  transport->init();
 
 #ifdef SPEAKER_LIGHTS
   if (speakerLightsLeftNumLeds > 0) {
@@ -2471,9 +2472,6 @@ void setup1() {
   while (!core_0_initialized) {
     tight_loop_contents();
   }
-
-  static_cast<SpiTransport *>(transport)->SetColor((Color)loopbackColor);
-  transport->init();
 
   core_1_initialized = true;
 }
