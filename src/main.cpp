@@ -20,6 +20,7 @@
 #endif
 
 #ifdef PICO_BUILD
+#include "hardware/vreg.h"
 #include "pico/zedmd_pico.h"
 #endif
 #include <LittleFS.h>
