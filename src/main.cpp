@@ -139,6 +139,7 @@ uint8_t panelLatchBlanking = 2;
 uint8_t panelMinRefreshRate = 60;
 #ifdef DMDREADER
 bool core_0_initialized = false;
+bool core_1_initialized = false;
 uint8_t loopbackColor = (uint8_t)Color::ORANGE;
 
 const char *ColorString(uint8_t color) {
@@ -2196,10 +2197,9 @@ void setup() {
     }
   }
 
-#ifdef DMDREADER
-  static_cast<SpiTransport *>(transport)->SetColor((Color)loopbackColor);
-#endif
+#ifndef DMDREADER
   transport->init();
+#endif
 
 #ifdef SPEAKER_LIGHTS
   if (speakerLightsLeftNumLeds > 0) {
@@ -2227,6 +2227,10 @@ void setup() {
 
 #ifdef DMDREADER
   core_0_initialized = true;
+
+  while (!core_1_initialized) {
+    tight_loop_contents();
+  }
 #endif
 }
 
@@ -2468,22 +2472,21 @@ void setup1() {
     tight_loop_contents();
   }
 
-  static_cast<SpiTransport *>(transport)->SetupEnablePin();
+  static_cast<SpiTransport *>(transport)->SetColor((Color)loopbackColor);
+  transport->init();
+
+  core_1_initialized = true;
 }
 
 void loop1() {
-  if (transport) {
-    static_cast<SpiTransport *>(transport)->ProcessEnablePinEvents();
-
-    if (transport->isLoopback()) {
-      uint8_t *buffer = dmdreader_loopback_render();
-      if (buffer != nullptr) {
-        memcpy(renderBuffer[currentRenderBuffer], buffer, TOTAL_BYTES);
-        Render();
-      }
-    } else {
-      dmdreader_spi_send();
+  if (transport->isLoopback()) {
+    uint8_t *buffer = dmdreader_loopback_render();
+    if (buffer != nullptr) {
+      memcpy(renderBuffer[currentRenderBuffer], buffer, TOTAL_BYTES);
+      Render();
     }
+  } else {
+    dmdreader_spi_send();
   }
   tight_loop_contents();
 }

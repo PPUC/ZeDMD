@@ -27,7 +27,6 @@ class SpiTransport final : public Transport {
   bool deinit() override;
 
 #ifdef DMDREADER
-  void SetupEnablePin();
   void SetColor(Color color);
   void ProcessEnablePinEvents();
 

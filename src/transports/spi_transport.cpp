@@ -10,7 +10,10 @@
 SpiTransport* SpiTransport::s_instance = nullptr;
 #endif
 
-SpiTransport::SpiTransport() : Transport() { m_type = SPI; }
+SpiTransport::SpiTransport() : Transport() {
+  m_type = SPI;
+  m_loopback = true;
+}
 
 SpiTransport::~SpiTransport() { deinit(); }
 
@@ -20,7 +23,6 @@ bool SpiTransport::init() {
 
   // Start in loopback mode until the host enables SPI via GPIO 13.
   dmdreader_loopback_init(buffers[0], buffers[1], m_color);
-  m_loopback = true;
 
   // Start SPI transfer, waiting in the background.
   dmdreader_spi_init();
@@ -32,6 +34,17 @@ bool SpiTransport::init() {
   initPio();
   m_dmaChannel = dma_claim_unused_channel(true);
   s_instance = this;
+
+  m_enableRisePending = false;
+  m_enableFallPending = false;
+
+  // Initialize GPIO IRQ from core1 (loop1) so callbacks run on core1.
+  gpio_acknowledge_irq(SPI_TRANSPORT_ENABLE_PIN,
+                       GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL);  // clear stale
+  gpio_set_irq_enabled_with_callback(SPI_TRANSPORT_ENABLE_PIN,
+                                     GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL,
+                                     true, &SpiTransport::gpio_irq_handler);
+
 #endif
 
   m_active = true;
@@ -181,18 +194,6 @@ void SpiTransport::gpio_irq_handler(uint gpio, uint32_t events) {
   if (events & GPIO_IRQ_EDGE_FALL) {
     s_instance->m_enableFallPending = true;
   }
-}
-
-void SpiTransport::SetupEnablePin() {
-  m_enableRisePending = false;
-  m_enableFallPending = false;
-
-  // Initialize GPIO IRQ from core1 (loop1) so callbacks run on core1.
-  gpio_acknowledge_irq(SPI_TRANSPORT_ENABLE_PIN,
-                       GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL);  // clear stale
-  gpio_set_irq_enabled_with_callback(SPI_TRANSPORT_ENABLE_PIN,
-                                     GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL,
-                                     true, &SpiTransport::gpio_irq_handler);
 }
 
 void SpiTransport::SetColor(Color color) { m_color = color; }
