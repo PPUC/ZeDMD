@@ -34,17 +34,6 @@ bool SpiTransport::init() {
   initPio();
   m_dmaChannel = dma_claim_unused_channel(true);
   s_instance = this;
-
-  m_enableRisePending = false;
-  m_enableFallPending = false;
-
-  // Initialize GPIO IRQ from core1 (loop1) so callbacks run on core1.
-  gpio_acknowledge_irq(SPI_TRANSPORT_ENABLE_PIN,
-                       GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL);  // clear stale
-  gpio_set_irq_enabled_with_callback(SPI_TRANSPORT_ENABLE_PIN,
-                                     GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL,
-                                     true, &SpiTransport::gpio_irq_handler);
-
 #endif
 
   m_active = true;
@@ -64,6 +53,17 @@ bool SpiTransport::deinit() {
 }
 
 #ifdef DMDREADER
+void SpiTransport::initInterrupt() {
+  m_enableRisePending = false;
+  m_enableFallPending = false;
+
+  // Initialize GPIO IRQ from core1 (loop1) so callbacks run on core1.
+  gpio_acknowledge_irq(SPI_TRANSPORT_ENABLE_PIN,
+                       GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL);  // clear stale
+  gpio_set_irq_enabled_with_callback(SPI_TRANSPORT_ENABLE_PIN,
+                                     GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL,
+                                     true, &SpiTransport::gpio_irq_handler);
+}
 
 void SpiTransport::initPio() {
   dmdreader_error_blink(pio_claim_free_sm_and_add_program_for_gpio_range(

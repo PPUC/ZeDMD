@@ -2467,6 +2467,8 @@ void setup1() {
     tight_loop_contents();
   }
 
+  static_cast<SpiTransport *>(transport)->initInterrupt();
+
   core_1_initialized = true;
 }
 
