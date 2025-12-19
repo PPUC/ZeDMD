@@ -16,7 +16,7 @@ SpiTransport::~SpiTransport() { deinit(); }
 
 bool SpiTransport::init() {
 #ifdef DMDREADER
-  dmdreader_init(m_pio);
+  dmdreader_init();
 
   // Start in loopback mode until the host enables SPI via GPIO 13.
   dmdreader_loopback_init(buffers[0], buffers[1], m_color);
@@ -50,8 +50,9 @@ bool SpiTransport::deinit() {
 #ifdef DMDREADER
 
 void SpiTransport::initPio() {
-  m_stateMachine = pio_claim_unused_sm(m_pio, true);
-  m_programOffset = pio_add_program(m_pio, &zedmd_spi_input_program);
+  pio_claim_free_sm_and_add_program_for_gpio_range(
+      &zedmd_spi_input_program, &m_pio, &m_stateMachine, &m_programOffset,
+      kClockPin, 2, true);
 
   pio_gpio_init(m_pio, kClockPin);
   pio_gpio_init(m_pio, kDataPin);
@@ -133,11 +134,15 @@ void SpiTransport::switchToSpiMode() {
   payloadMissing = 0;
   headerBytesReceived = 0;
   numCtrlCharsFound = 0;
+
+  dmdreader_spi_init();
+
   transportActive = true;
 }
 
 void SpiTransport::onEnableRise() {
-  if (m_loopback) switchToSpiMode();
+  if (m_loopback)
+    switchToSpiMode();
   else if (m_transferActive) {
     stopDmaAndFlush();
     m_transferActive = false;
@@ -145,7 +150,8 @@ void SpiTransport::onEnableRise() {
 }
 
 void SpiTransport::onEnableFall() {
-  if (m_loopback) return;
+  if (m_loopback)
+    return;
   else if (!m_transferActive) {
     enableSpiStateMachine();
     startDma();

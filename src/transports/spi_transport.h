@@ -6,9 +6,6 @@
 #endif
 #ifdef DMDREADER
 #include <dmdreader.h>
-
-#include "hardware/dma.h"
-#include "hardware/gpio.h"
 #include "hardware/pio.h"
 #endif
 #include "main.h"
@@ -48,10 +45,10 @@ class SpiTransport final : public Transport {
 
   static SpiTransport* s_instance;
 
-  PIO m_pio = pio1;
-  int m_stateMachine = -1;
-  int m_programOffset = -1;
-  int m_dmaChannel = -1;
+  PIO m_pio;
+  uint m_stateMachine;
+  uint m_programOffset;
+  uint m_dmaChannel;
   bool m_spiEnabled = false;
   bool m_transferActive = false;
   bool m_dmaRunning = false;
