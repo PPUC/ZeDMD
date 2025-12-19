@@ -6,10 +6,15 @@
 #endif
 #ifdef DMDREADER
 #include <dmdreader.h>
+
 #include "hardware/pio.h"
 #endif
 #include "main.h"
 #include "transport.h"
+
+#define SPI_TRANSPORT_ENABLE_PIN 13
+#define SPI_TRANSPORT_CLK_PIN 14
+#define SPI_TRANSPORT_DATA_PIN 15
 
 class SpiTransport final : public Transport {
  public:
@@ -38,11 +43,6 @@ class SpiTransport final : public Transport {
   void onEnableFall();
   static void gpio_irq_handler(uint gpio, uint32_t events);
 
-  static constexpr uint8_t kEnablePin = 13;
-  static constexpr uint8_t kClockPin = 14;
-  static constexpr uint8_t kDataPin = 15;
-  static constexpr size_t kRxBufferSize = BUFFER_SIZE;
-
   static SpiTransport* s_instance;
 
   PIO m_pio;
@@ -52,7 +52,7 @@ class SpiTransport final : public Transport {
   bool m_spiEnabled = false;
   bool m_transferActive = false;
   bool m_dmaRunning = false;
-  uint8_t m_rxBuffer[kRxBufferSize];
+  uint8_t m_rxBuffer[BUFFER_SIZE];
   size_t m_rxBufferPos = 0;
   Color m_color = Color::ORANGE;
   volatile bool m_enableRisePending = false;

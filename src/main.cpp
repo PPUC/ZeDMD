@@ -2234,8 +2234,9 @@ void loop() {
   CheckMenuButton();
 
   if (transport->isLoopback()) {
-    logoActive = false;
     delay(10);
+    logoActive = false;
+    lastDataReceivedClock.restart();
     return;
   }
 
