@@ -103,14 +103,8 @@ void SpiTransport::disableSpiStateMachine() {
   m_spiEnabled = false;
 }
 
-void SpiTransport::flushRxBuffer() {
-  if (m_rxBufferPos == 0) return;
-  HandleData(m_rxBuffer, m_rxBufferPos);
-  m_rxBufferPos = 0;
-}
-
 void SpiTransport::startDma() {
-  if (m_dmaChannel < 0 || m_stateMachine < 0) return;
+  if (m_dmaChannel < 0 || m_stateMachine < 0 || m_dmaRunning) return;
   m_rxBufferPos = 0;
   dma_channel_config cfg = dma_channel_get_default_config(m_dmaChannel);
   channel_config_set_transfer_data_size(&cfg, DMA_SIZE_8);
@@ -124,11 +118,10 @@ void SpiTransport::startDma() {
 }
 
 void SpiTransport::stopDmaAndFlush() {
-  if (m_dmaChannel < 0) return;
+  if (m_dmaChannel < 0 || !m_dmaRunning) return;
 
   uint32_t remaining = dma_channel_hw_addr(m_dmaChannel)->transfer_count;
   dma_channel_abort(m_dmaChannel);
-  m_dmaRunning = false;
 
   // Bytes already written by DMA
   m_rxBufferPos = BUFFER_SIZE - remaining;
@@ -141,7 +134,15 @@ void SpiTransport::stopDmaAndFlush() {
     m_rxBuffer[m_rxBufferPos++] = raw & 0xff;
   }
 
-  flushRxBuffer();
+  size_t length = m_rxBufferPos;
+  memcpy(m_dataBuffer, m_rxBuffer, length);
+
+  // Let interrupt handler start new transfer now.
+  m_rxBufferPos = 0;
+  m_dmaRunning = false;
+
+  // Process received data.
+  if (length > 0) HandleData(m_dataBuffer, length);
 }
 
 void SpiTransport::switchToSpiMode() {

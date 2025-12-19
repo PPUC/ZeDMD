@@ -34,7 +34,6 @@ class SpiTransport final : public Transport {
   void initPio();
   void enableSpiStateMachine();
   void disableSpiStateMachine();
-  void flushRxBuffer();
   void startDma();
   void stopDmaAndFlush();
   void switchToSpiMode();
@@ -53,6 +52,7 @@ class SpiTransport final : public Transport {
   bool m_dmaRunning = false;
   uint8_t m_rxBuffer[BUFFER_SIZE];
   size_t m_rxBufferPos = 0;
+  uint8_t m_dataBuffer[BUFFER_SIZE];
   Color m_color = Color::ORANGE;
   volatile bool m_enableRisePending = false;
   volatile bool m_enableFallPending = false;
