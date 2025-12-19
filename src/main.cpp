@@ -2191,11 +2191,6 @@ void setup() {
     }
   }
 
-#ifdef DMDREADER
-  static_cast<SpiTransport *>(transport)->SetColor((Color)loopbackColor);
-#endif
-  transport->init();
-
 #ifdef SPEAKER_LIGHTS
   if (speakerLightsLeftNumLeds > 0) {
     speakerLightsLeft =
@@ -2220,11 +2215,13 @@ void setup() {
   }
 #endif
 
-#ifdef DMDREADER
+#ifndef DMDREADER
+  transport->init();
+#else
   core_0_initialized = true;
 
   while (!core_1_initialized) {
-    tight_loop_contents();
+    delay(1);
   }
 #endif
 }
@@ -2464,15 +2461,18 @@ void loop() {
 
 void setup1() {
   while (!core_0_initialized) {
-    tight_loop_contents();
+    delay(1);
   }
 
-  static_cast<SpiTransport *>(transport)->initInterrupt();
+  static_cast<SpiTransport *>(transport)->SetColor((Color)loopbackColor);
+  transport->init();
 
   core_1_initialized = true;
 }
 
 void loop1() {
+  static_cast<SpiTransport *>(transport)->ProcessEnablePinEvents();
+
   if (transport->isLoopback()) {
     uint8_t *buffer = dmdreader_loopback_render();
     if (buffer != nullptr) {

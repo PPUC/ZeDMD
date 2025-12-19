@@ -29,7 +29,6 @@ class SpiTransport final : public Transport {
 #ifdef DMDREADER
   void SetColor(Color color);
   void ProcessEnablePinEvents();
-  void initInterrupt();
 
  private:
   void initPio();
