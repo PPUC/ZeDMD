@@ -190,7 +190,10 @@ bool SpiTransport::ProcessEnablePinEvents() {
   return false;
 }
 
+bool toggle = true;
 void SpiTransport::gpio_irq_handler(uint gpio, uint32_t events) {
+  digitalWrite(LED_BUILTIN, toggle);
+  toggle = !toggle;
   if (!s_instance || gpio != SPI_TRANSPORT_ENABLE_PIN) return;
   if (events & GPIO_IRQ_EDGE_RISE) {
     s_instance->m_enableRisePending = true;
