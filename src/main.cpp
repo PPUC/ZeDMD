@@ -759,9 +759,12 @@ void Render(bool renderAll = true) {
     for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
       for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
         pos = (y * TOTAL_WIDTH + x) * 3;
-        if (transport->isLoopback() ||
-            !(0 == memcmp(&renderBuffer[currentRenderBuffer][pos],
-                          &renderBuffer[lastRenderBuffer][pos], 3))) {
+        // When only one render buffer is in use there is no previous frame to
+        // diff against, so always draw. Otherwise draw only on loopback or
+        // when the pixel actually changed.
+        if (NUM_RENDER_BUFFERS == 1 || transport->isLoopback() ||
+            memcmp(&renderBuffer[currentRenderBuffer][pos],
+                   &renderBuffer[lastRenderBuffer][pos], 3) != 0) {
           display->DrawPixel(x, y, renderBuffer[currentRenderBuffer][pos],
                              renderBuffer[currentRenderBuffer][pos + 1],
                              renderBuffer[currentRenderBuffer][pos + 2]);
@@ -2229,8 +2232,6 @@ void setup() {
 #endif
 }
 
-bool toggle = true;
-
 void loop() {
   CheckMenuButton();
 
@@ -2246,8 +2247,6 @@ void loop() {
 
 #ifdef DMDREADER
   if (static_cast<SpiTransport *>(transport)->ProcessEnablePinEvents()) {
-    digitalWrite(LED_BUILTIN, toggle);
-    toggle = !toggle;
     uint8_t *dataBuffer =
         static_cast<SpiTransport *>(transport)->GetDataBuffer();
     uint16_t pos = 0;
