@@ -106,43 +106,30 @@ void SpiTransport::disableSpiStateMachine() {
 
 void SpiTransport::startDma() {
   if (m_dmaChannel < 0 || m_stateMachine < 0 || m_dmaRunning) return;
-  m_rxBufferPos = 0;
   dma_channel_config cfg = dma_channel_get_default_config(m_dmaChannel);
   channel_config_set_transfer_data_size(&cfg, DMA_SIZE_8);
   channel_config_set_read_increment(&cfg, false);
   channel_config_set_write_increment(&cfg, true);
   channel_config_set_dreq(&cfg, pio_get_dreq(m_pio, m_stateMachine, false));
 
-  dma_channel_configure(m_dmaChannel, &cfg, m_rxBuffer,
-                        &m_pio->rxf[m_stateMachine], BUFFER_SIZE, true);
+  dma_channel_configure(m_dmaChannel, &cfg, m_dataBuffer,
+                        &m_pio->rxf[m_stateMachine], RGB565_TOTAL_BYTES, true);
   m_dmaRunning = true;
 }
 
 bool SpiTransport::stopDmaAndFlush() {
   if (m_dmaChannel < 0 || !m_dmaRunning) return false;
 
-  uint32_t remaining = dma_channel_hw_addr(m_dmaChannel)->transfer_count;
-  dma_channel_abort(m_dmaChannel);
+  dma_channel_wait_for_finish_blocking(m_dmaChannel);
 
-  // Bytes already written by DMA
-  m_rxBufferPos = BUFFER_SIZE - remaining;
-  if (m_rxBufferPos > BUFFER_SIZE) m_rxBufferPos = 0;
-
-  // Drain any residual FIFO bytes that arrived after the DMA stop.
-  while (!pio_sm_is_rx_fifo_empty(m_pio, m_stateMachine) &&
-         m_rxBufferPos < BUFFER_SIZE) {
-    const uint32_t raw = pio_sm_get(m_pio, m_stateMachine);
-    m_rxBuffer[m_rxBufferPos++] = raw & 0xff;
+  // Drain any unexpected residual bytes to leave the FIFO empty.
+  while (!pio_sm_is_rx_fifo_empty(m_pio, m_stateMachine)) {
+    (void)pio_sm_get(m_pio, m_stateMachine);
   }
 
-  m_dataBufferLength = m_rxBufferPos;
-  memcpy(m_dataBuffer, m_rxBuffer, m_dataBufferLength);
-
-  // Let interrupt handler start new transfer now.
-  m_rxBufferPos = 0;
   m_dmaRunning = false;
 
-  return (m_dataBufferLength > 0);
+  return true;
 }
 
 void SpiTransport::switchToSpiMode() {

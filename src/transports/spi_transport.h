@@ -31,7 +31,6 @@ class SpiTransport final : public Transport {
   void SetColor(Color color);
   bool ProcessEnablePinEvents();
   uint8_t* GetDataBuffer() { return m_dataBuffer; }
-  size_t GetDataBufferLength() { return m_dataBufferLength; }
 
  private:
   void initPio();
@@ -53,10 +52,7 @@ class SpiTransport final : public Transport {
   bool m_spiEnabled = false;
   bool m_transferActive = false;
   bool m_dmaRunning = false;
-  uint8_t m_rxBuffer[BUFFER_SIZE];
-  size_t m_rxBufferPos = 0;
-  uint8_t m_dataBuffer[BUFFER_SIZE];
-  size_t m_dataBufferLength = 0;
+  uint8_t m_dataBuffer[RGB565_TOTAL_BYTES] __attribute__((aligned(4)));
   Color m_color = Color::ORANGE;
   volatile bool m_enableRisePending = false;
   volatile bool m_enableFallPending = false;
