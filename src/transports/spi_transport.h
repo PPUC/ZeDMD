@@ -27,17 +27,20 @@ class SpiTransport final : public Transport {
   bool deinit() override;
 
 #ifdef DMDREADER
+  void initDmdReader();
   void SetColor(Color color);
-  void ProcessEnablePinEvents();
+  bool ProcessEnablePinEvents();
+  uint8_t* GetDataBuffer() { return m_dataBuffer; }
+  size_t GetDataBufferLength() { return m_dataBufferLength; }
 
  private:
   void initPio();
   void enableSpiStateMachine();
   void disableSpiStateMachine();
   void startDma();
-  void stopDmaAndFlush();
+  bool stopDmaAndFlush();
   void switchToSpiMode();
-  void onEnableRise();
+  bool onEnableRise();
   void onEnableFall();
   static void gpio_irq_handler(uint gpio, uint32_t events);
 
@@ -53,6 +56,7 @@ class SpiTransport final : public Transport {
   uint8_t m_rxBuffer[BUFFER_SIZE];
   size_t m_rxBufferPos = 0;
   uint8_t m_dataBuffer[BUFFER_SIZE];
+  size_t m_dataBufferLength = 0;
   Color m_color = Color::ORANGE;
   volatile bool m_enableRisePending = false;
   volatile bool m_enableFallPending = false;

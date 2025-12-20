@@ -16,7 +16,7 @@
 #if defined(DMDREADER)
 #define NUM_BUFFERS 4  // Number of buffers
 #define NUM_RENDER_BUFFERS 1
-#define BUFFER_SIZE (TOTAL_BYTES + 1024) // extra space for headers
+#define BUFFER_SIZE TOTAL_BYTES
 #elif defined(PICO_BUILD)
 #define NUM_BUFFERS 12  // Number of buffers
 #define NUM_RENDER_BUFFERS 1

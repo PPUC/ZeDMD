@@ -19,13 +19,8 @@ SpiTransport::~SpiTransport() { deinit(); }
 
 bool SpiTransport::init() {
 #ifdef DMDREADER
-  dmdreader_init();
-
   // Start in loopback mode until the host enables SPI via GPIO 13.
   dmdreader_loopback_init(buffers[0], buffers[1], m_color);
-
-  // Start SPI transfer, waiting in the background.
-  dmdreader_spi_init();
 
   pinMode(SPI_TRANSPORT_ENABLE_PIN, INPUT_PULLDOWN);
   pinMode(SPI_TRANSPORT_CLK_PIN, INPUT);
@@ -64,6 +59,12 @@ bool SpiTransport::deinit() {
 }
 
 #ifdef DMDREADER
+
+void SpiTransport::initDmdReader() {
+  dmdreader_init();
+  // Start SPI transfer, waiting in the background.
+  dmdreader_spi_init();
+}
 
 void SpiTransport::initPio() {
   dmdreader_error_blink(pio_claim_free_sm_and_add_program_for_gpio_range(
@@ -117,8 +118,8 @@ void SpiTransport::startDma() {
   m_dmaRunning = true;
 }
 
-void SpiTransport::stopDmaAndFlush() {
-  if (m_dmaChannel < 0 || !m_dmaRunning) return;
+bool SpiTransport::stopDmaAndFlush() {
+  if (m_dmaChannel < 0 || !m_dmaRunning) return false;
 
   uint32_t remaining = dma_channel_hw_addr(m_dmaChannel)->transfer_count;
   dma_channel_abort(m_dmaChannel);
@@ -134,15 +135,14 @@ void SpiTransport::stopDmaAndFlush() {
     m_rxBuffer[m_rxBufferPos++] = raw & 0xff;
   }
 
-  size_t length = m_rxBufferPos;
-  memcpy(m_dataBuffer, m_rxBuffer, length);
+  m_dataBufferLength = m_rxBufferPos;
+  memcpy(m_dataBuffer, m_rxBuffer, m_dataBufferLength);
 
   // Let interrupt handler start new transfer now.
   m_rxBufferPos = 0;
   m_dmaRunning = false;
 
-  // Process received data.
-  if (length > 0) HandleData(m_dataBuffer, length);
+  return (m_dataBufferLength > 0);
 }
 
 void SpiTransport::switchToSpiMode() {
@@ -157,13 +157,15 @@ void SpiTransport::switchToSpiMode() {
   enableSpiStateMachine();
 }
 
-void SpiTransport::onEnableRise() {
+bool SpiTransport::onEnableRise() {
+  bool new_data = false;
   if (m_loopback)
     switchToSpiMode();
   else if (m_transferActive) {
-    stopDmaAndFlush();
+    bool new_data = stopDmaAndFlush();
     m_transferActive = false;
   }
+  return new_data;
 }
 
 void SpiTransport::onEnableFall() {
@@ -175,16 +177,18 @@ void SpiTransport::onEnableFall() {
   }
 }
 
-void SpiTransport::ProcessEnablePinEvents() {
+bool SpiTransport::ProcessEnablePinEvents() {
   if (m_enableRisePending) {
     m_enableRisePending = false;
-    onEnableRise();
+    return onEnableRise();
   }
 
   if (m_enableFallPending) {
     m_enableFallPending = false;
     onEnableFall();
   }
+
+  return false;
 }
 
 void SpiTransport::gpio_irq_handler(uint gpio, uint32_t events) {

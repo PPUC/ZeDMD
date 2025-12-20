@@ -2215,9 +2215,12 @@ void setup() {
   }
 #endif
 
-#ifndef DMDREADER
+#ifdef DMDREADER
+  static_cast<SpiTransport *>(transport)->SetColor((Color)loopbackColor);
+#endif
   transport->init();
-#else
+
+#ifdef DMDREADER
   core_0_initialized = true;
 
   while (!core_1_initialized) {
@@ -2229,13 +2232,6 @@ void setup() {
 void loop() {
   CheckMenuButton();
 
-  if (transport->isLoopback()) {
-    delay(10);
-    logoActive = false;
-    lastDataReceivedClock.restart();
-    return;
-  }
-
 #ifdef SPEAKER_LIGHTS
   if (speakerLightsLeftNumLeds > 0) {
     speakerLightsLeft->service();
@@ -2245,6 +2241,43 @@ void loop() {
     speakerLightsRight->service();
   }
 #endif
+
+#ifdef DMDREADER
+  if (static_cast<SpiTransport *>(transport)->ProcessEnablePinEvents()) {
+    uint16_t length =
+        static_cast<SpiTransport *>(transport)->GetDataBufferLength();
+    memcpy(buffers[0],
+           static_cast<SpiTransport *>(transport)->GetDataBuffer(),
+           length);
+    uint16_t pos = 0;
+    for (uint16_t i = 0; i < length; i += 2) {
+      const uint16_t rgb565 =
+          buffers[0][i] + (((uint16_t)buffers[0][i + 1]) << 8);
+      uint8_t rgb888[3];
+      rgb888[0] = (rgb565 >> 8) & 0xf8;
+      rgb888[1] = (rgb565 >> 3) & 0xfc;
+      rgb888[2] = (rgb565 << 3);
+      rgb888[0] |= (rgb888[0] >> 5);
+      rgb888[1] |= (rgb888[1] >> 6);
+      rgb888[2] |= (rgb888[2] >> 5);
+      renderBuffer[currentRenderBuffer][pos++] = rgb888[0];
+      renderBuffer[currentRenderBuffer][pos++] = rgb888[1];
+      renderBuffer[currentRenderBuffer][pos++] = rgb888[2];
+    }
+    Render();
+  } else if (transport->isLoopback()) {
+    uint8_t *buffer = dmdreader_loopback_render();
+    if (buffer != nullptr) {
+      memcpy(renderBuffer[currentRenderBuffer], buffer, TOTAL_BYTES);
+      Render();
+    }
+  }
+
+  tight_loop_contents();
+
+  return;
+
+#else
 
   if (!transportActive) {
     if (!logoActive) logoActive = true;
@@ -2447,14 +2480,11 @@ void loop() {
         }
       }
     } else {
-#ifndef DMDREADER
       // Avoid busy-waiting
       vTaskDelay(pdMS_TO_TICKS(1));
-#else
-      tight_loop_contents();
-#endif
     }
   }
+#endif
 }
 
 #ifdef DMDREADER
@@ -2464,24 +2494,17 @@ void setup1() {
     delay(1);
   }
 
-  static_cast<SpiTransport *>(transport)->SetColor((Color)loopbackColor);
-  transport->init();
+  static_cast<SpiTransport *>(transport)->initDmdReader();
 
   core_1_initialized = true;
 }
 
 void loop1() {
-  static_cast<SpiTransport *>(transport)->ProcessEnablePinEvents();
-
-  if (transport->isLoopback()) {
-    uint8_t *buffer = dmdreader_loopback_render();
-    if (buffer != nullptr) {
-      memcpy(renderBuffer[currentRenderBuffer], buffer, TOTAL_BYTES);
-      Render();
-    }
-  } else {
+  if (!transport->isLoopback()) {
     dmdreader_spi_send();
+    tight_loop_contents();
+  } else {
+    delay(1);
   }
-  tight_loop_contents();
 }
 #endif
