@@ -10,6 +10,8 @@
 SpiTransport* SpiTransport::s_instance = nullptr;
 #endif
 
+bool toggle = true;
+
 SpiTransport::SpiTransport() : Transport() {
   m_type = SPI;
   m_loopback = true;
@@ -185,15 +187,15 @@ bool SpiTransport::ProcessEnablePinEvents() {
   if (m_enableFallPending) {
     m_enableFallPending = false;
     onEnableFall();
+      digitalWrite(LED_BUILTIN, toggle);
+  toggle = !toggle;
+
   }
 
   return false;
 }
 
-bool toggle = true;
 void SpiTransport::gpio_irq_handler(uint gpio, uint32_t events) {
-  digitalWrite(LED_BUILTIN, toggle);
-  toggle = !toggle;
   if (!s_instance || gpio != SPI_TRANSPORT_ENABLE_PIN) return;
   if (events & GPIO_IRQ_EDGE_RISE) {
     s_instance->m_enableRisePending = true;
