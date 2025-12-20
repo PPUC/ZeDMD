@@ -117,6 +117,10 @@ void SpiTransport::startDma() {
   dma_channel_configure(m_dmaChannel, &cfg, m_rxBuffer,
                         &m_pio->rxf[m_stateMachine], RGB565_TOTAL_BYTES, true);
   m_dmaRunning = true;
+
+        digitalWrite(LED_BUILTIN, toggle);
+  toggle = !toggle;
+
 }
 
 bool SpiTransport::stopDmaAndFlush() {
@@ -181,8 +185,6 @@ void SpiTransport::onEnableFall() {
 bool SpiTransport::ProcessEnablePinEvents() {
   if (m_enableRisePending) {
     m_enableRisePending = false;
-      digitalWrite(LED_BUILTIN, toggle);
-  toggle = !toggle;
     return onEnableRise();
   }
 
