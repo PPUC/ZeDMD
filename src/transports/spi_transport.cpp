@@ -181,15 +181,14 @@ void SpiTransport::onEnableFall() {
 bool SpiTransport::ProcessEnablePinEvents() {
   if (m_enableRisePending) {
     m_enableRisePending = false;
+      digitalWrite(LED_BUILTIN, toggle);
+  toggle = !toggle;
     return onEnableRise();
   }
 
   if (m_enableFallPending) {
     m_enableFallPending = false;
     onEnableFall();
-      digitalWrite(LED_BUILTIN, toggle);
-  toggle = !toggle;
-
   }
 
   return false;
