@@ -161,7 +161,7 @@ bool SpiTransport::onEnableRise() {
   if (m_loopback)
     switchToSpiMode();
   else if (m_transferActive) {
-    bool new_data = stopDmaAndFlush();
+    new_data = stopDmaAndFlush();
     m_transferActive = false;
   }
   return new_data;
