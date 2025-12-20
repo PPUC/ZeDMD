@@ -105,26 +105,34 @@ void SpiTransport::disableSpiStateMachine() {
 }
 
 void SpiTransport::startDma() {
-  if (m_dmaChannel < 0 || m_stateMachine < 0 || m_dmaRunning) return;
+  if (m_dmaRunning) return;
   dma_channel_config cfg = dma_channel_get_default_config(m_dmaChannel);
   channel_config_set_transfer_data_size(&cfg, DMA_SIZE_8);
   channel_config_set_read_increment(&cfg, false);
   channel_config_set_write_increment(&cfg, true);
   channel_config_set_dreq(&cfg, pio_get_dreq(m_pio, m_stateMachine, false));
 
-  dma_channel_configure(m_dmaChannel, &cfg, m_dataBuffer,
+  dma_channel_configure(m_dmaChannel, &cfg, m_rxBuffer,
                         &m_pio->rxf[m_stateMachine], RGB565_TOTAL_BYTES, true);
   m_dmaRunning = true;
 }
 
 bool SpiTransport::stopDmaAndFlush() {
-  if (m_dmaChannel < 0 || !m_dmaRunning) return false;
+  if (!m_dmaRunning) return false;
 
   dma_channel_wait_for_finish_blocking(m_dmaChannel);
 
   // Drain any unexpected residual bytes to leave the FIFO empty.
   while (!pio_sm_is_rx_fifo_empty(m_pio, m_stateMachine)) {
     (void)pio_sm_get(m_pio, m_stateMachine);
+  }
+
+  if (m_rxBuffer == buffers[0]) {
+    m_rxBuffer = buffers[1];
+    m_dataBuffer = buffers[0];
+  } else {
+    m_rxBuffer = buffers[0];
+    m_dataBuffer = buffers[1];
   }
 
   m_dmaRunning = false;
@@ -141,6 +149,10 @@ void SpiTransport::switchToSpiMode() {
   m_transferActive = false;
 
   dmdreader_loopback_stop();
+
+  m_rxBuffer = buffers[0];
+  m_dataBuffer = buffers[1];
+
   enableSpiStateMachine();
 }
 

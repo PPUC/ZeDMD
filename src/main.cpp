@@ -2244,6 +2244,7 @@ void loop() {
 
 #ifdef DMDREADER
   if (static_cast<SpiTransport *>(transport)->ProcessEnablePinEvents()) {
+    digitalWrite(LED_BUILTIN, HIGH);
     memcpy(buffers[0],
            static_cast<SpiTransport *>(transport)->GetDataBuffer(),
            RGB565_TOTAL_BYTES);
@@ -2272,8 +2273,6 @@ void loop() {
   }
 
   tight_loop_contents();
-
-  return;
 
 #else
 

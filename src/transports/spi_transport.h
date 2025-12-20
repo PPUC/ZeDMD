@@ -52,7 +52,8 @@ class SpiTransport final : public Transport {
   bool m_spiEnabled = false;
   bool m_transferActive = false;
   bool m_dmaRunning = false;
-  uint8_t m_dataBuffer[RGB565_TOTAL_BYTES] __attribute__((aligned(4)));
+  uint8_t* m_rxBuffer;
+  uint8_t* m_dataBuffer;
   Color m_color = Color::ORANGE;
   volatile bool m_enableRisePending = false;
   volatile bool m_enableFallPending = false;
