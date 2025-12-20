@@ -117,10 +117,6 @@ void SpiTransport::startDma() {
   dma_channel_configure(m_dmaChannel, &cfg, m_rxBuffer,
                         &m_pio->rxf[m_stateMachine], RGB565_TOTAL_BYTES, true);
   m_dmaRunning = true;
-
-        digitalWrite(LED_BUILTIN, toggle);
-  toggle = !toggle;
-
 }
 
 bool SpiTransport::stopDmaAndFlush() {
@@ -142,6 +138,9 @@ bool SpiTransport::stopDmaAndFlush() {
   }
 
   m_dmaRunning = false;
+
+          digitalWrite(LED_BUILTIN, toggle);
+  toggle = !toggle;
 
   return true;
 }
