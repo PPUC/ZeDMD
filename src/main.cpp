@@ -2229,6 +2229,8 @@ void setup() {
 #endif
 }
 
+bool toggle = true;
+
 void loop() {
   CheckMenuButton();
 
@@ -2244,13 +2246,14 @@ void loop() {
 
 #ifdef DMDREADER
   if (static_cast<SpiTransport *>(transport)->ProcessEnablePinEvents()) {
-    memcpy(buffers[0],
-           static_cast<SpiTransport *>(transport)->GetDataBuffer(),
-           RGB565_TOTAL_BYTES);
+    digitalWrite(LED_BUILTIN, toggle);
+    toggle = !toggle;
+    uint8_t *dataBuffer =
+        static_cast<SpiTransport *>(transport)->GetDataBuffer();
     uint16_t pos = 0;
     for (uint16_t i = 0; i < RGB565_TOTAL_BYTES; i += 2) {
       const uint16_t rgb565 =
-          buffers[0][i] + (((uint16_t)buffers[0][i + 1]) << 8);
+          dataBuffer[i] + (((uint16_t)dataBuffer[i + 1]) << 8);
       uint8_t rgb888[3];
       rgb888[0] = (rgb565 >> 8) & 0xf8;
       rgb888[1] = (rgb565 >> 3) & 0xfc;

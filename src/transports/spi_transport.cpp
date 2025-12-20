@@ -10,8 +10,6 @@
 SpiTransport* SpiTransport::s_instance = nullptr;
 #endif
 
-bool toggle = true;
-
 SpiTransport::SpiTransport() : Transport() {
   m_type = SPI;
   m_loopback = true;
@@ -138,9 +136,6 @@ bool SpiTransport::stopDmaAndFlush() {
   }
 
   m_dmaRunning = false;
-
-          digitalWrite(LED_BUILTIN, toggle);
-  toggle = !toggle;
 
   return true;
 }
