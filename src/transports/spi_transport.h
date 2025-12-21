@@ -36,6 +36,7 @@ class SpiTransport final : public Transport {
   void initPio();
   void enableSpiStateMachine();
   void disableSpiStateMachine();
+  void resetStateMachine();
   void startDma();
   bool stopDmaAndFlush();
   void switchToSpiMode();

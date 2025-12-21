@@ -118,6 +118,13 @@ void SpiTransport::startDma() {
   m_dmaRunning = true;
 }
 
+void SpiTranspport::resetStateMachine() {
+  pio_sm_set_enabled(m_pio, m_stateMachine, false);
+  pio_sm_clear_fifos(m_pio, m_stateMachine);
+  pio_sm_restart(m_pio, m_stateMachine);
+  pio_sm_set_enabled(m_pio, m_stateMachine, true);
+};
+
 bool SpiTransport::stopDmaAndFlush() {
   if (!m_dmaRunning) return false;
 
@@ -128,18 +135,25 @@ bool SpiTransport::stopDmaAndFlush() {
   dma_channel_abort(m_dmaChannel);
 
   // Drain any unexpected residual bytes to leave the FIFO empty.
+  uint32_t drainedBytes = 0;
   while (!pio_sm_is_rx_fifo_empty(m_pio, m_stateMachine)) {
     (void)pio_sm_get(m_pio, m_stateMachine);
+    ++drainedBytes;
   }
 
   // Ignore incomplete frames (shorter than RGB565_TOTAL_BYTES).
   if (received != RGB565_TOTAL_BYTES) {
     // Reset the state machine to clear any bit-shifted state before next frame.
-    pio_sm_set_enabled(m_pio, m_stateMachine, false);
-    pio_sm_clear_fifos(m_pio, m_stateMachine);
-    pio_sm_restart(m_pio, m_stateMachine);
-    pio_sm_set_enabled(m_pio, m_stateMachine, true);
+    resetStateMachine();
 
+    m_dmaRunning = false;
+    return false;
+  }
+
+  // If extra bytes were clocked in after DMA completed, reset to avoid
+  // misalignment on the next frame.
+  if (drainedBytes > 0) {
+    resetStateMachine();
     m_dmaRunning = false;
     return false;
   }
