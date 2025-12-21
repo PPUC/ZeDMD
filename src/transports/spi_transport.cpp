@@ -2,6 +2,7 @@
 
 #include "main.h"
 #ifdef DMDREADER
+#include "hardware/dma.h"
 #include "pico/zedmd_spi_input.pio.h"
 #include "utility/clock.h"
 #endif
@@ -120,9 +121,11 @@ void SpiTransport::startDma() {
 bool SpiTransport::stopDmaAndFlush() {
   if (!m_dmaRunning) return false;
 
-  dma_channel_wait_for_finish_blocking(m_dmaChannel);
-
   uint32_t remaining = dma_channel_hw_addr(m_dmaChannel)->transfer_count;
+  uint32_t received = RGB565_TOTAL_BYTES - remaining;
+
+  // Stop DMA now that the sender toggled ENABLE high.
+  dma_channel_abort(m_dmaChannel);
 
   // Drain any unexpected residual bytes to leave the FIFO empty.
   while (!pio_sm_is_rx_fifo_empty(m_pio, m_stateMachine)) {
@@ -130,7 +133,7 @@ bool SpiTransport::stopDmaAndFlush() {
   }
 
   // Ignore incomplete frames (shorter than RGB565_TOTAL_BYTES).
-  if (remaining != 0) {
+  if (received != RGB565_TOTAL_BYTES) {
     m_dmaRunning = false;
     return false;
   }
@@ -144,7 +147,6 @@ bool SpiTransport::stopDmaAndFlush() {
   }
 
   m_dmaRunning = false;
-
   return true;
 }
 
