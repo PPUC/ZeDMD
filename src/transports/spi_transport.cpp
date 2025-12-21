@@ -134,6 +134,12 @@ bool SpiTransport::stopDmaAndFlush() {
 
   // Ignore incomplete frames (shorter than RGB565_TOTAL_BYTES).
   if (received != RGB565_TOTAL_BYTES) {
+    // Reset the state machine to clear any bit-shifted state before next frame.
+    pio_sm_set_enabled(m_pio, m_stateMachine, false);
+    pio_sm_clear_fifos(m_pio, m_stateMachine);
+    pio_sm_restart(m_pio, m_stateMachine);
+    pio_sm_set_enabled(m_pio, m_stateMachine, true);
+
     m_dmaRunning = false;
     return false;
   }

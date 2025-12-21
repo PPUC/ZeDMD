@@ -162,6 +162,34 @@ const char *ColorString(uint8_t color) {
       return nullptr;
   }
 }
+
+// Simple nearest-neighbor 2x upscaler for RGB888 loopback frames.
+static void Scale2xLoopback(const uint8_t *src, uint8_t *dst,
+                            uint16_t srcWidth, uint16_t srcHeight) {
+  const uint16_t dstWidth = srcWidth * 2;
+  const uint32_t srcStride = srcWidth * 3;
+  const uint32_t dstStride = dstWidth * 3;
+
+  for (uint16_t y = 0; y < srcHeight; ++y) {
+    const uint8_t *srcRow = src + y * srcStride;
+    uint8_t *dstRow0 = dst + (y * 2) * dstStride;
+    uint8_t *dstRow1 = dstRow0 + dstStride;
+
+    for (uint16_t x = 0; x < srcWidth; ++x) {
+      const uint8_t *pixel = srcRow + x * 3;
+      const uint8_t r = pixel[0];
+      const uint8_t g = pixel[1];
+      const uint8_t b = pixel[2];
+
+      uint8_t *out0 = dstRow0 + (x * 2) * 3;
+      uint8_t *out1 = dstRow1 + (x * 2) * 3;
+
+      out0[0] = out0[3] = out1[0] = out1[3] = r;
+      out0[1] = out0[4] = out1[1] = out1[4] = g;
+      out0[2] = out0[5] = out1[2] = out1[5] = b;
+    }
+  }
+}
 #endif
 
 // We needed to change these from RGB to RC (Red Color), BC, GC to prevent
@@ -176,6 +204,7 @@ const uint8_t rgbOrder[3 * 6] = {
 };
 
 #endif
+
 uint8_t usbPackageSizeMultiplier = USB_PACKAGE_SIZE / 32;
 uint8_t settingsMenu = 0;
 uint8_t debug = 0;
@@ -2268,7 +2297,15 @@ void loop() {
   } else if (transport->isLoopback()) {
     uint8_t *buffer = dmdreader_loopback_render();
     if (buffer != nullptr) {
-      memcpy(renderBuffer[currentRenderBuffer], buffer, TOTAL_BYTES);
+      if (TOTAL_WIDTH == 256 && TOTAL_HEIGHT == 64 &&
+          dmdreader_get_source_width() * 2 == TOTAL_WIDTH &&
+          dmdreader_get_source_height() * 2 == TOTAL_HEIGHT) {
+        Scale2xLoopback(buffer, renderBuffer[currentRenderBuffer],
+                        dmdreader_get_source_width(),
+                        dmdreader_get_source_height());
+      } else {
+        memcpy(renderBuffer[currentRenderBuffer], buffer, TOTAL_BYTES);
+      }
       Render();
     }
   }
