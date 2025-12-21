@@ -122,9 +122,17 @@ bool SpiTransport::stopDmaAndFlush() {
 
   dma_channel_wait_for_finish_blocking(m_dmaChannel);
 
+  uint32_t remaining = dma_channel_hw_addr(m_dmaChannel)->transfer_count;
+
   // Drain any unexpected residual bytes to leave the FIFO empty.
   while (!pio_sm_is_rx_fifo_empty(m_pio, m_stateMachine)) {
     (void)pio_sm_get(m_pio, m_stateMachine);
+  }
+
+  // Ignore incomplete frames (shorter than RGB565_TOTAL_BYTES).
+  if (remaining != 0) {
+    m_dmaRunning = false;
+    return false;
   }
 
   if (m_rxBuffer == buffers[0]) {
