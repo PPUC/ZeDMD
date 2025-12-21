@@ -118,7 +118,7 @@ void SpiTransport::startDma() {
   m_dmaRunning = true;
 }
 
-void SpiTranspport::resetStateMachine() {
+void SpiTransport::resetStateMachine() {
   pio_sm_set_enabled(m_pio, m_stateMachine, false);
   pio_sm_clear_fifos(m_pio, m_stateMachine);
   pio_sm_restart(m_pio, m_stateMachine);
