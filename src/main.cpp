@@ -192,6 +192,18 @@ static void Scale2xLoopback(const uint8_t *src, uint8_t *dst,
 }
 #endif
 
+static uint8_t Expand5To8[32];
+static uint8_t Expand6To8[64];
+
+static inline void InitRgbLuts() {
+  for (uint8_t i = 0; i < 32; ++i) {
+    Expand5To8[i] = static_cast<uint8_t>((i << 3) | (i >> 2));
+  }
+  for (uint8_t i = 0; i < 64; ++i) {
+    Expand6To8[i] = static_cast<uint8_t>((i << 2) | (i >> 4));
+  }
+}
+
 // We needed to change these from RGB to RC (Red Color), BC, GC to prevent
 // conflicting with the TFT_SPI Library.
 const uint8_t rgbOrder[3 * 6] = {
@@ -2204,6 +2216,7 @@ void setup() {
   pinMode(DOWN_BUTTON_PIN, INPUT_PULLUP);
 #endif
 
+  InitRgbLuts();
   DisplayLogo();
   DisplayId();
   display->Render();
@@ -2276,22 +2289,17 @@ void loop() {
 
 #ifdef DMDREADER
   if (static_cast<SpiTransport *>(transport)->ProcessEnablePinEvents()) {
-    uint8_t *dataBuffer =
-        static_cast<SpiTransport *>(transport)->GetDataBuffer();
-    uint16_t pos = 0;
-    for (uint16_t i = 0; i < RGB565_TOTAL_BYTES; i += 2) {
-      const uint16_t rgb565 =
-          dataBuffer[i] + (((uint16_t)dataBuffer[i + 1]) << 8);
-      uint8_t rgb888[3];
-      rgb888[0] = (rgb565 >> 8) & 0xf8;
-      rgb888[1] = (rgb565 >> 3) & 0xfc;
-      rgb888[2] = (rgb565 << 3);
-      rgb888[0] |= (rgb888[0] >> 5);
-      rgb888[1] |= (rgb888[1] >> 6);
-      rgb888[2] |= (rgb888[2] >> 5);
-      renderBuffer[currentRenderBuffer][pos++] = rgb888[0];
-      renderBuffer[currentRenderBuffer][pos++] = rgb888[1];
-      renderBuffer[currentRenderBuffer][pos++] = rgb888[2];
+    auto *spiTransport = static_cast<SpiTransport *>(transport);
+    const uint16_t *src =
+        reinterpret_cast<const uint16_t *>(spiTransport->GetDataBuffer());
+    uint8_t *dst = renderBuffer[currentRenderBuffer];
+    const size_t pixelCount = RGB565_TOTAL_BYTES / 2;
+
+    for (size_t i = 0; i < pixelCount; ++i) {
+      const uint16_t rgb565 = src[i];
+      *dst++ = Expand5To8[rgb565 >> 11];
+      *dst++ = Expand6To8[(rgb565 >> 5) & 0x3f];
+      *dst++ = Expand5To8[rgb565 & 0x1f];
     }
     Render();
   } else if (transport->isLoopback()) {
@@ -2470,23 +2478,18 @@ void loop() {
 
             if (rgb565ZoneStream) {
               for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
+                uint8_t *dst =
+                    &renderBuffer[currentRenderBuffer]
+                                 [((yOffset + y) * TOTAL_WIDTH + xOffset) * 3];
                 for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
                   const uint16_t rgb565 =
                       uncompressBuffer[uncompressedBufferPosition++] +
                       (((uint16_t)
                             uncompressBuffer[uncompressedBufferPosition++])
                        << 8);
-                  uint8_t rgb888[3];
-                  rgb888[0] = (rgb565 >> 8) & 0xf8;
-                  rgb888[1] = (rgb565 >> 3) & 0xfc;
-                  rgb888[2] = (rgb565 << 3);
-                  rgb888[0] |= (rgb888[0] >> 5);
-                  rgb888[1] |= (rgb888[1] >> 6);
-                  rgb888[2] |= (rgb888[2] >> 5);
-                  memcpy(&renderBuffer
-                             [currentRenderBuffer]
-                             [((yOffset + y) * TOTAL_WIDTH + xOffset + x) * 3],
-                         rgb888, 3);
+                  *dst++ = Expand5To8[rgb565 >> 11];
+                  *dst++ = Expand6To8[(rgb565 >> 5) & 0x3f];
+                  *dst++ = Expand5To8[rgb565 & 0x1f];
                 }
               }
             } else {
