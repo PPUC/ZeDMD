@@ -12,28 +12,30 @@
 #define N_CTRL_CHARS 5
 #define N_ACK_CHARS (N_CTRL_CHARS + 1)
 #define N_INTERMEDIATE_CTR_CHARS 4
-#ifdef BOARD_HAS_PSRAM
-#define NUM_BUFFERS 128  // Number of buffers
-#ifdef DISPLAY_RM67162_AMOLED
-// @fixme double buffering doesn't work on Lilygo Amoled
-#define NUM_RENDER_BUFFERS 1
-#else
-#define NUM_RENDER_BUFFERS 2
-#endif
-#define BUFFER_SIZE 1152
-#elif defined(DMDREADER)
+
+#if defined(DMDREADER)
 #define NUM_BUFFERS 2  // Number of buffers
-#define NUM_RENDER_BUFFERS 2
+#define NUM_RENDER_BUFFERS 1
 #define BUFFER_SIZE TOTAL_BYTES
 #elif defined(PICO_BUILD)
 #define NUM_BUFFERS 12  // Number of buffers
 #define NUM_RENDER_BUFFERS 1
 #define BUFFER_SIZE 1152
+#elif defined(DISPLAY_RM67162_AMOLED)
+#define NUM_BUFFERS 128  // Number of buffers
+// @fixme double buffering doesn't work on Lilygo Amoled
+#define NUM_RENDER_BUFFERS 1
+#define BUFFER_SIZE 1152
+#elif defined(BOARD_HAS_PSRAM)
+#define NUM_BUFFERS 128  // Number of buffers
+#define NUM_RENDER_BUFFERS 2
+#define BUFFER_SIZE 1152
 #else
 #define NUM_BUFFERS 12  // Number of buffers
 #define NUM_RENDER_BUFFERS 1
 #define BUFFER_SIZE 1152
 #endif
+
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || \
     defined(PICO_BUILD)
 // USB CDC
@@ -94,6 +96,8 @@ extern const uint8_t CtrlChars[6];
 extern const uint8_t rgbOrder[];
 extern uint16_t shortId;
 extern uint8_t wifiPower;
+class Clock;
+extern Clock lastDataReceivedClock;
 extern uint8_t usbPackageSizeMultiplier;
 extern uint8_t rgbMode;
 extern uint8_t rgbModeLoaded;

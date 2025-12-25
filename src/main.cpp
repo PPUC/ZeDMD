@@ -1,15 +1,12 @@
-#if defined(PICO_RP2350) || (RP2350)
-// Set the official 200 MHz system clock
-// For RP2350, PLL parameters must be provided
-#define PLL_SYS_VCO_FREQ_HZ (1600ul * 1000ul * 1000ul)
-#define PLL_SYS_POSTDIV1 4
-#define PLL_SYS_POSTDIV2 2
-#endif
-
 #ifdef PICO_BUILD
-// set to officially supported 200MHz clock
+// Set the 266 MHz system clock
+// For RP2350/RP2040 custom clocks, PLL parameters must be provided
+#define PLL_SYS_VCO_FREQ_HZ 1596000000ul
+#define PLL_SYS_POSTDIV1 6
+#define PLL_SYS_POSTDIV2 1
+// officially, 200MHz clock is supported, but 266MHz should fine as well
 // @see SYS_CLK_MHZ https://github.com/raspberrypi/pico-sdk/releases/tag/2.1.1
-#define SYS_CLK_MHZ 200
+#define SYS_CLK_MHZ 266
 #endif
 
 #include <Arduino.h>
@@ -20,6 +17,7 @@
 #endif
 
 #ifdef PICO_BUILD
+#include "hardware/vreg.h"
 #include "pico/zedmd_pico.h"
 #endif
 #include <LittleFS.h>
@@ -137,6 +135,62 @@ uint8_t panelDriver = 0;
 uint8_t panelI2sspeed = 8;
 uint8_t panelLatchBlanking = 2;
 uint8_t panelMinRefreshRate = 60;
+#ifdef DMDREADER
+bool core_0_initialized = false;
+bool core_1_initialized = false;
+uint8_t loopbackColor = (uint8_t)Color::ORANGE;
+
+const char *ColorString(uint8_t color) {
+  switch ((Color)color) {
+    case Color::ORANGE:
+      return "orange";
+    case Color::RED:
+      return "red   ";
+    case Color::YELLOW:
+      return "yellow";
+    case Color::GREEN:
+      return "green ";
+    case Color::BLUE:
+      return "blue  ";
+    case Color::PURPLE:
+      return "purple";
+    case Color::PINK:
+      return "pink  ";
+    case Color::WHITE:
+      return "white ";
+    default:
+      return nullptr;
+  }
+}
+
+// Simple nearest-neighbor 2x upscaler for RGB888 loopback frames.
+static void Scale2xLoopback(const uint8_t *src, uint8_t *dst,
+                            uint16_t srcWidth, uint16_t srcHeight) {
+  const uint16_t dstWidth = srcWidth * 2;
+  const uint32_t srcStride = srcWidth * 3;
+  const uint32_t dstStride = dstWidth * 3;
+
+  for (uint16_t y = 0; y < srcHeight; ++y) {
+    const uint8_t *srcRow = src + y * srcStride;
+    uint8_t *dstRow0 = dst + (y * 2) * dstStride;
+    uint8_t *dstRow1 = dstRow0 + dstStride;
+
+    for (uint16_t x = 0; x < srcWidth; ++x) {
+      const uint8_t *pixel = srcRow + x * 3;
+      const uint8_t r = pixel[0];
+      const uint8_t g = pixel[1];
+      const uint8_t b = pixel[2];
+
+      uint8_t *out0 = dstRow0 + (x * 2) * 3;
+      uint8_t *out1 = dstRow1 + (x * 2) * 3;
+
+      out0[0] = out0[3] = out1[0] = out1[3] = r;
+      out0[1] = out0[4] = out1[1] = out1[4] = g;
+      out0[2] = out0[5] = out1[2] = out1[5] = b;
+    }
+  }
+}
+#endif
 
 // We needed to change these from RGB to RC (Red Color), BC, GC to prevent
 // conflicting with the TFT_SPI Library.
@@ -150,6 +204,7 @@ const uint8_t rgbOrder[3 * 6] = {
 };
 
 #endif
+
 uint8_t usbPackageSizeMultiplier = USB_PACKAGE_SIZE / 32;
 uint8_t settingsMenu = 0;
 uint8_t debug = 0;
@@ -175,12 +230,14 @@ void DoRestart(int sec) {
   }
   display->ClearScreen();
   display->DisplayText("Restarting ...", 0, 0, 255, 0, 0);
+  display->Render();
 #ifndef DMDREADER
   vTaskDelay(pdMS_TO_TICKS(sec * 1000));
 #else
   delay(1000);
 #endif
   display->ClearScreen();
+  display->Render();
   delay(20);
 
 #ifdef PICO_BUILD
@@ -507,6 +564,28 @@ void LoadScale() {
   f.close();
 }
 
+#ifdef DMDREADER
+void SaveColor() {
+  File f = LittleFS.open("/color.val", "w");
+  f.write(loopbackColor);
+  f.close();
+}
+
+void LoadColor() {
+  File f = LittleFS.open("/color.val", "r");
+  if (!f) {
+    SaveColor();
+    return;
+  }
+  loopbackColor = f.read();
+  if (ColorString(loopbackColor) == nullptr) {
+    loopbackColor = (uint8_t)Color::ORANGE;
+    SaveColor();
+  }
+  f.close();
+}
+#endif
+
 #ifdef SPEAKER_LIGHTS
 void SaveSpeakerLightsSettings() {
   File f = LittleFS.open("/speaker_lights_left_num.val", "w");
@@ -612,15 +691,19 @@ void LoadSpeakerLightsSettings() {
 
 void LedTester(void) {
   display->FillScreen(255, 0, 0);
+  display->Render();
   delay(LED_CHECK_DELAY);
 
   display->FillScreen(0, 255, 0);
+  display->Render();
   delay(LED_CHECK_DELAY);
 
   display->FillScreen(0, 0, 255);
+  display->Render();
   delay(LED_CHECK_DELAY);
 
   display->ClearScreen();
+  display->Render();
 }
 
 void AcquireNextBuffer() {
@@ -671,7 +754,6 @@ uint16_t frames = 0;
 char fpsStr[3];
 
 void FpsUpdate() {
-  // if (debug) {
   frames++;
 
   if (fpsClock.getElapsedTime().asMilliseconds() >= 200) {
@@ -682,7 +764,7 @@ void FpsUpdate() {
 
   display->DisplayText(fpsStr, TOTAL_WIDTH - 7, TOTAL_HEIGHT - 5, 255, 0, 0,
                        false, false);
-  //}
+  display->Render();
 }
 #endif
 
@@ -690,10 +772,11 @@ uint8_t GetPixelBrightness(uint8_t r, uint8_t g, uint8_t b) {
   return (r * 77 + g * 150 + b * 29) >> 8;  // Optimized luminance calculation
 }
 
-void Render() {
-  if (NUM_RENDER_BUFFERS == 1) {
-    display->FillPanelRaw(renderBuffer[currentRenderBuffer]);
-  } else if (currentRenderBuffer != lastRenderBuffer) {
+void Render(bool renderAll = true) {
+#ifdef DISPLAY_RM67162_AMOLED
+  display->FillPanelRaw(renderBuffer[currentRenderBuffer]);
+#else
+  if (NUM_RENDER_BUFFERS == 1 || currentRenderBuffer != lastRenderBuffer) {
 #ifdef SPEAKER_LIGHTS
     uint32_t sumRLeft = 0, sumGLeft = 0, sumBLeft = 0, sumRRight = 0,
              sumGRight = 0, sumBRight = 0;
@@ -705,9 +788,12 @@ void Render() {
     for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
       for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
         pos = (y * TOTAL_WIDTH + x) * 3;
-        if (transport->isLoopback() ||
-            !(0 == memcmp(&renderBuffer[currentRenderBuffer][pos],
-                          &renderBuffer[lastRenderBuffer][pos], 3))) {
+        // When only one render buffer is in use there is no previous frame to
+        // diff against, so always draw. Otherwise draw only on loopback or
+        // when the pixel actually changed.
+        if (NUM_RENDER_BUFFERS == 1 || transport->isLoopback() ||
+            memcmp(&renderBuffer[currentRenderBuffer][pos],
+                   &renderBuffer[lastRenderBuffer][pos], 3) != 0) {
           display->DrawPixel(x, y, renderBuffer[currentRenderBuffer][pos],
                              renderBuffer[currentRenderBuffer][pos + 1],
                              renderBuffer[currentRenderBuffer][pos + 2]);
@@ -748,7 +834,7 @@ void Render() {
       }
     }
 
-    display->Render();
+    if (renderAll) display->Render();
 
 #ifdef SPEAKER_LIGHTS
     if (FX_MODE_AMBILIGHT == speakerLightsLeftMode) {
@@ -786,13 +872,14 @@ void Render() {
       }
     }
 #endif
-    lastRenderBuffer = currentRenderBuffer;
-    currentRenderBuffer = (currentRenderBuffer + 1) % NUM_RENDER_BUFFERS;
-    if (!transport->isLoopback()) {
+    if (NUM_RENDER_BUFFERS > 1) {
+      lastRenderBuffer = currentRenderBuffer;
+      currentRenderBuffer = (currentRenderBuffer + 1) % NUM_RENDER_BUFFERS;
       memcpy(renderBuffer[currentRenderBuffer], renderBuffer[lastRenderBuffer],
              TOTAL_BYTES);
     }
   }
+#endif
 
 #ifdef ZEDMD_CLIENT_DEBUG_FPS
   FpsUpdate();
@@ -810,7 +897,7 @@ void ClearScreen() {
   }
 }
 
-void DisplayLogo(void) {
+void DisplayLogo() {
   File f;
 
   if (TOTAL_HEIGHT == 64) {
@@ -844,7 +931,7 @@ void DisplayLogo(void) {
 #endif
   f.close();
 
-  Render();
+  Render(false);
   DisplayVersion(true);
 
   throbberColors[0] = 0;
@@ -929,13 +1016,21 @@ void RefreshSetupScreen() {
     DisplayNumber(usbPackageSizeMultiplier * 32, 4,
                   7 * (TOTAL_WIDTH / 128) + (16 * 4), (TOTAL_HEIGHT / 2) + 4,
                   255, 191, 0);
-  }
-  if (transport->isWifi()) {
+  } else if (transport->isWifi()) {
     display->DisplayText("UDP Delay:", 7 * (TOTAL_WIDTH / 128),
                          (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
     DisplayNumber(transport->getDelay(), 1, 7 * (TOTAL_WIDTH / 128) + 10 * 4,
                   (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
   }
+#ifdef DMDREADER
+  else if (transport->isSpi()) {
+    display->DisplayText("Color:", 7 * (TOTAL_WIDTH / 128),
+                         (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
+    display->DisplayText(ColorString(loopbackColor),
+                         7 * (TOTAL_WIDTH / 128) + (6 * 4),
+                         (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
+  }
+#endif
 #ifdef ZEDMD_HD_HALF
   display->DisplayText("Y-Offset", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
@@ -949,10 +1044,11 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
   bool headerCompleted = false;
 
   while (pos < len ||
-         (headerCompleted && command != 5 && command != 22 && command != 23 &&
-          command != 27 && command != 28 && command != 29 && command != 40 &&
-          command != 41 && command != 42 && command != 43 && command != 44 &&
-          command != 45 && command != 46 && command != 47 && command != 48)) {
+         (headerCompleted && command != 4 && command != 5 && command != 22 &&
+          command != 23 && command != 27 && command != 28 && command != 29 &&
+          command != 40 && command != 41 && command != 42 && command != 43 &&
+          command != 44 && command != 45 && command != 46 && command != 47 &&
+          command != 48)) {
     headerCompleted = false;
     if (numCtrlCharsFound < N_CTRL_CHARS) {
       // Detect 5 consecutive start bits
@@ -992,6 +1088,7 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
                                  0, 0);
             DisplayNumber(payloadSize, 5, 0, 19, 255, 0, 0);
             DisplayNumber(BUFFER_SIZE, 5, 0, 25, 255, 0, 0);
+            display->Render();
             while (1);
           }
           headerBytesReceived = 0;
@@ -1008,6 +1105,7 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
                                (TOTAL_HEIGHT / 2) - 4, 128, 128, 128);
           DisplayNumber(payloadSize, 2, 7 * (TOTAL_WIDTH / 128) + (8 * 4),
                         (TOTAL_HEIGHT / 2) - 4, 255, 191, 0);
+          display->Render();
         }
 
         bool rgb888ZoneStream = false;
@@ -1248,6 +1346,7 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
               Serial.flush();
             }
             display->DisplayText("Saving settings ...", 0, 0, 255, 0, 0);
+            display->Render();
             SaveLum();
             SaveDebug();
             SaveTransport();
@@ -1264,6 +1363,7 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
             SaveYOffset();
 #endif
             display->DisplayText("Saving settings ... done", 0, 0, 255, 0, 0);
+            display->Render();
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (transport->isWifiAndActive()) break;
@@ -1576,6 +1676,7 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
               display->DisplayText("KEEP ALIVE RECEIVED",
                                    7 * (TOTAL_WIDTH / 128),
                                    (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
+              display->Render();
             }
             lastDataReceivedClock.restart();
             headerBytesReceived = 0;
@@ -1679,6 +1780,11 @@ void setup() {
 #ifndef PICO_BUILD
   esp_log_level_set("*", ESP_LOG_NONE);
 #else
+  // tested working on a lot of different devices
+  vreg_set_voltage(VREG_VOLTAGE_1_15);
+  busy_wait_at_least_cycles((SYS_CLK_VREG_VOLTAGE_AUTO_ADJUST_DELAY_US *
+                             static_cast<uint64_t>(XOSC_HZ)) /
+                            1000000);
   // overclock to achieve higher SPI transfer speed
   set_sys_clock_khz(SYS_CLK_MHZ * 1000, true);
 #endif
@@ -1728,7 +1834,9 @@ void setup() {
     LoadSettingsMenu();
     LoadTransport();
 
-#ifndef DMDREADER
+#ifdef DMDREADER
+    LoadColor();
+#else
     LoadUsbPackageSizeMultiplier();
 #endif
 #if defined(DISPLAY_LED_MATRIX) || defined(DISPLAY_PICO_LED_MATRIX)
@@ -1763,6 +1871,7 @@ void setup() {
   if (!fileSystemOK) {
     display->DisplayText("Error reading file system!", 0, 0, 255, 0, 0);
     display->DisplayText("Try to flash the firmware again.", 0, 6, 255, 0, 0);
+    display->Render();
     while (true);
   }
 
@@ -1779,9 +1888,11 @@ void setup() {
       DisplayNumber(esp_reset_reason(), 2, 16 * 4, 18, 255, 0, 0);
       if (debug) {
         display->DisplayText("Reboot in 30 seconds ...", 0, 24, 255, 0, 0);
+        display->Render();
         for (uint8_t i = 29; i > 0; i--) {
           delay(1000);
           DisplayNumber(i, 2, 40, 24, 255, 0, 0);
+          display->Render();
         }
         Restart();
       }
@@ -1793,9 +1904,11 @@ void setup() {
       display->DisplayText("Check your power supply and", 0, 6, 255, 0, 0);
       display->DisplayText("hardware.", 0, 12, 255, 0, 0);
       display->DisplayText("Reboot in 30 seconds ...", 0, 24, 255, 0, 0);
+      display->Render();
       for (uint8_t i = 29; i > 0; i--) {
         delay(1000);
         DisplayNumber(i, 2, 40, 24, 255, 0, 0);
+        display->Render();
       }
       Restart();
       break;
@@ -1814,6 +1927,7 @@ void setup() {
 #endif
     if (nullptr == renderBuffer[i]) {
       display->DisplayText("out of memory", 0, 0, 255, 0, 0);
+      display->Render();
       while (1);
     }
     memset(renderBuffer[i], 0, TOTAL_BYTES);
@@ -1855,6 +1969,7 @@ void setup() {
 #endif
 
     uint8_t position = 1;
+    bool firstMenuRendering = true;
     while (1) {
       forwardButton->update();
       const bool forward = forwardButton->pressed();
@@ -1863,7 +1978,8 @@ void setup() {
       backwardButton->update();
       backward = backwardButton->pressed();
 #endif
-      if (forward || backward) {
+      bool buttonPressed = forward || backward;
+      if (buttonPressed) {
         if (forward && ++position > MENU_ITEMS_COUNT)
           position = 1;
         else if (backward && --position < 1)
@@ -1872,7 +1988,7 @@ void setup() {
         if (transport->isUsb()) {
           if (position == 4) position = forward ? 5 : 3;
         } else if (transport->isSpi()) {
-          if (position == 3 || position == 4) position = forward ? 5 : 2;
+          if (position == 3) position = forward ? 4 : 2;
         } else {
           if (position == 3) position = forward ? 4 : 2;
         }
@@ -1896,12 +2012,21 @@ void setup() {
                                  (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
             break;
           }
+#ifdef DMDREADER
+          case 4: {  // Color
+            RefreshSetupScreen();
+            display->DisplayText("Color:", 7 * (TOTAL_WIDTH / 128),
+                                 TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
+            break;
+          }
+#else
           case 4: {  // UDP Delay
             RefreshSetupScreen();
             display->DisplayText("UDP Delay:", 7 * (TOTAL_WIDTH / 128),
                                  TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
             break;
           }
+#endif
           case 5: {  // Transport
             RefreshSetupScreen();
             display->DisplayText(transport->getTypeString(),
@@ -1939,6 +2064,7 @@ void setup() {
       downButton->update();
       down = downButton->pressed();
 #endif
+      buttonPressed = buttonPressed || up || down;
       if (up || down) {
         switch (position) {
           case 1: {  // Exit
@@ -1968,6 +2094,23 @@ void setup() {
             SaveUsbPackageSizeMultiplier();
             break;
           }
+#ifdef DMDREADER
+          case 4: {  // Color
+            if (up && ++loopbackColor > ((uint8_t)Color::WHITE))
+              loopbackColor = ((uint8_t)Color::ORANGE);
+            else if (down &&
+                     --loopbackColor >
+                         ((uint8_t)Color::WHITE))  // underflow will result in
+                                                   // 255, set it to WHITE
+              loopbackColor = ((uint8_t)Color::WHITE);
+
+            display->DisplayText(ColorString(loopbackColor),
+                                 7 * (TOTAL_WIDTH / 128) + (6 * 4),
+                                 TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
+            SaveColor();
+            break;
+          }
+#else
           case 4: {  // UDP Delay
             uint8_t delay = transport->getDelay();
             if (up && ++delay > 9)
@@ -1982,6 +2125,7 @@ void setup() {
             transport->saveDelay();
             break;
           }
+#endif
           case 5: {  // Transport
 #ifdef ZEDMD_NO_NETWORKING
             const uint8_t type = transport->getType() == Transport::USB
@@ -2043,7 +2187,10 @@ void setup() {
 #endif
         }
       }
-
+      if (buttonPressed || firstMenuRendering) {
+        firstMenuRendering = false;
+        display->Render();
+      }
       delay(1);
     }
   }
@@ -2059,6 +2206,7 @@ void setup() {
 
   DisplayLogo();
   DisplayId();
+  display->Render();
 
   // Create synchronization primitives
   for (uint8_t i = 0; i < NUM_BUFFERS; i++) {
@@ -2070,11 +2218,10 @@ void setup() {
 #endif
     if (nullptr == buffers[i]) {
       display->DisplayText("out of memory", 0, 0, 255, 0, 0);
+      display->Render();
       while (1);
     }
   }
-
-  transport->init();
 
 #ifdef SPEAKER_LIGHTS
   if (speakerLightsLeftNumLeds > 0) {
@@ -2099,6 +2246,19 @@ void setup() {
     speakerLightsRight->start();
   }
 #endif
+
+#ifdef DMDREADER
+  static_cast<SpiTransport *>(transport)->SetColor((Color)loopbackColor);
+#endif
+  transport->init();
+
+#ifdef DMDREADER
+  core_0_initialized = true;
+
+  while (!core_1_initialized) {
+    delay(1);
+  }
+#endif
 }
 
 void loop() {
@@ -2113,6 +2273,46 @@ void loop() {
     speakerLightsRight->service();
   }
 #endif
+
+#ifdef DMDREADER
+  if (static_cast<SpiTransport *>(transport)->ProcessEnablePinEvents()) {
+    uint8_t *dataBuffer =
+        static_cast<SpiTransport *>(transport)->GetDataBuffer();
+    uint16_t pos = 0;
+    for (uint16_t i = 0; i < RGB565_TOTAL_BYTES; i += 2) {
+      const uint16_t rgb565 =
+          dataBuffer[i] + (((uint16_t)dataBuffer[i + 1]) << 8);
+      uint8_t rgb888[3];
+      rgb888[0] = (rgb565 >> 8) & 0xf8;
+      rgb888[1] = (rgb565 >> 3) & 0xfc;
+      rgb888[2] = (rgb565 << 3);
+      rgb888[0] |= (rgb888[0] >> 5);
+      rgb888[1] |= (rgb888[1] >> 6);
+      rgb888[2] |= (rgb888[2] >> 5);
+      renderBuffer[currentRenderBuffer][pos++] = rgb888[0];
+      renderBuffer[currentRenderBuffer][pos++] = rgb888[1];
+      renderBuffer[currentRenderBuffer][pos++] = rgb888[2];
+    }
+    Render();
+  } else if (transport->isLoopback()) {
+    uint8_t *buffer = dmdreader_loopback_render();
+    if (buffer != nullptr) {
+      if (TOTAL_WIDTH == 256 && TOTAL_HEIGHT == 64 &&
+          dmdreader_get_source_width() * 2 == TOTAL_WIDTH &&
+          dmdreader_get_source_height() * 2 == TOTAL_HEIGHT) {
+        Scale2xLoopback(buffer, renderBuffer[currentRenderBuffer],
+                        dmdreader_get_source_width(),
+                        dmdreader_get_source_height());
+      } else {
+        memcpy(renderBuffer[currentRenderBuffer], buffer, TOTAL_BYTES);
+      }
+      Render();
+    }
+  }
+
+  tight_loop_contents();
+
+#else
 
   if (!transportActive) {
     if (!logoActive) logoActive = true;
@@ -2194,11 +2394,6 @@ void loop() {
     delay(200);
 #endif
   } else {
-    if (transport->isLoopback()) {
-      delay(10);
-      return;
-    }
-
     if (lastDataReceivedClock.getElapsedTime().asMilliseconds() >
         CONNECTION_TIMEOUT) {
       transportActive = false;
@@ -2234,6 +2429,7 @@ void loop() {
               display->DisplayText("miniz error: ", 0, 0, 255, 0, 0);
               DisplayNumber(minizStatus, 3, 13 * 4, 0, 255, 0, 0);
               display->DisplayText("free heap: ", 0, 6, 255, 0, 0);
+              display->Render();
 #ifdef PICO_BUILD
               DisplayNumber(rp2040.getFreeHeap(), 8, 11 * 4, 6, 255, 0, 0);
 #else
@@ -2319,29 +2515,31 @@ void loop() {
         }
       }
     } else {
-#ifndef DMDREADER
       // Avoid busy-waiting
       vTaskDelay(pdMS_TO_TICKS(1));
-#else
-      tight_loop_contents();
-#endif
     }
   }
+#endif
 }
 
 #ifdef DMDREADER
+
+void setup1() {
+  while (!core_0_initialized) {
+    delay(1);
+  }
+
+  static_cast<SpiTransport *>(transport)->initDmdReader();
+
+  core_1_initialized = true;
+}
+
 void loop1() {
-  if (transport->isLoopback()) {
-    uint8_t *buffer = dmdreader_loopback_render();
-    if (buffer != nullptr) {
-      memcpy(renderBuffer[currentRenderBuffer], buffer, TOTAL_BYTES);
-      Render();
-    } else {
-      tight_loop_contents();
-    }
+  if (!transport->isLoopback()) {
+    dmdreader_spi_send();
+    tight_loop_contents();
   } else {
-    // @todo SPI
-    delay(100);
+    delay(1);
   }
 }
 #endif
