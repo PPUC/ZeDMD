@@ -164,8 +164,8 @@ const char *ColorString(uint8_t color) {
 }
 
 // Simple nearest-neighbor 2x upscaler for RGB888 loopback frames.
-static void Scale2xLoopback(const uint8_t *src, uint8_t *dst,
-                            uint16_t srcWidth, uint16_t srcHeight) {
+static void Scale2xLoopback(const uint8_t *src, uint8_t *dst, uint16_t srcWidth,
+                            uint16_t srcHeight) {
   const uint16_t dstWidth = srcWidth * 2;
   const uint32_t srcStride = srcWidth * 3;
   const uint32_t dstStride = dstWidth * 3;
@@ -2267,10 +2267,6 @@ void setup() {
 
 #ifdef DMDREADER
   core_0_initialized = true;
-
-  while (!core_1_initialized) {
-    delay(1);
-  }
 #endif
 }
 
@@ -2288,6 +2284,11 @@ void loop() {
 #endif
 
 #ifdef DMDREADER
+  if (!core_1_initialized) {
+    delay(1);
+    return
+  }
+
   if (static_cast<SpiTransport *>(transport)->ProcessEnablePinEvents()) {
     auto *spiTransport = static_cast<SpiTransport *>(transport);
     const uint16_t *src =
