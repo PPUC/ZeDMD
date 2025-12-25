@@ -192,18 +192,6 @@ static void Scale2xLoopback(const uint8_t *src, uint8_t *dst,
 }
 #endif
 
-static uint8_t Expand5To8[32];
-static uint8_t Expand6To8[64];
-
-static inline void InitRgbLuts() {
-  for (uint8_t i = 0; i < 32; ++i) {
-    Expand5To8[i] = static_cast<uint8_t>((i << 3) | (i >> 2));
-  }
-  for (uint8_t i = 0; i < 64; ++i) {
-    Expand6To8[i] = static_cast<uint8_t>((i << 2) | (i >> 4));
-  }
-}
-
 // We needed to change these from RGB to RC (Red Color), BC, GC to prevent
 // conflicting with the TFT_SPI Library.
 const uint8_t rgbOrder[3 * 6] = {
@@ -216,6 +204,18 @@ const uint8_t rgbOrder[3 * 6] = {
 };
 
 #endif
+
+static uint8_t Expand5To8[32];
+static uint8_t Expand6To8[64];
+
+static inline void InitRgbLuts() {
+  for (uint8_t i = 0; i < 32; ++i) {
+    Expand5To8[i] = static_cast<uint8_t>((i << 3) | (i >> 2));
+  }
+  for (uint8_t i = 0; i < 64; ++i) {
+    Expand6To8[i] = static_cast<uint8_t>((i << 2) | (i >> 4));
+  }
+}
 
 uint8_t usbPackageSizeMultiplier = USB_PACKAGE_SIZE / 32;
 uint8_t settingsMenu = 0;
