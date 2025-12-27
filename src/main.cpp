@@ -2545,8 +2545,6 @@ void loop1() {
   } else {
     delay(1);
   }
-
-  static_cast<SpiTransport *>(transport)->SetupEnablePin();
 }
 
 #endif
