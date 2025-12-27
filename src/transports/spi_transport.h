@@ -7,12 +7,14 @@
 #ifdef DMDREADER
 #include <dmdreader.h>
 
-#include "hardware/dma.h"
-#include "hardware/gpio.h"
 #include "hardware/pio.h"
 #endif
 #include "main.h"
 #include "transport.h"
+
+#define SPI_TRANSPORT_ENABLE_PIN 13
+#define SPI_TRANSPORT_CLK_PIN 14
+#define SPI_TRANSPORT_DATA_PIN 15
 
 class SpiTransport final : public Transport {
  public:
@@ -25,38 +27,34 @@ class SpiTransport final : public Transport {
   bool deinit() override;
 
 #ifdef DMDREADER
-  void SetupEnablePin();
+  void initDmdReader();
   void SetColor(Color color);
-  void ProcessEnablePinEvents();
+  bool ProcessEnablePinEvents();
+  uint8_t* GetDataBuffer() { return m_dataBuffer; }
 
  private:
   void initPio();
   void enableSpiStateMachine();
   void disableSpiStateMachine();
-  void flushRxBuffer();
+  void resetStateMachine();
   void startDma();
-  void stopDmaAndFlush();
+  bool stopDmaAndFlush();
   void switchToSpiMode();
-  void onEnableRise();
+  bool onEnableRise();
   void onEnableFall();
   static void gpio_irq_handler(uint gpio, uint32_t events);
 
-  static constexpr uint8_t kEnablePin = 13;
-  static constexpr uint8_t kClockPin = 14;
-  static constexpr uint8_t kDataPin = 15;
-  static constexpr size_t kRxBufferSize = BUFFER_SIZE;
-
   static SpiTransport* s_instance;
 
-  PIO m_pio = pio1;
-  int m_stateMachine = -1;
-  int m_programOffset = -1;
-  int m_dmaChannel = -1;
+  PIO m_pio;
+  uint m_stateMachine;
+  uint m_programOffset;
+  uint m_dmaChannel;
   bool m_spiEnabled = false;
   bool m_transferActive = false;
   bool m_dmaRunning = false;
-  uint8_t m_rxBuffer[kRxBufferSize];
-  size_t m_rxBufferPos = 0;
+  uint8_t* m_rxBuffer;
+  uint8_t* m_dataBuffer;
   Color m_color = Color::ORANGE;
   volatile bool m_enableRisePending = false;
   volatile bool m_enableFallPending = false;

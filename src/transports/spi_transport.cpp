@@ -2,6 +2,7 @@
 
 #include "main.h"
 #ifdef DMDREADER
+#include "hardware/dma.h"
 #include "pico/zedmd_spi_input.pio.h"
 #include "utility/clock.h"
 #endif
@@ -10,29 +11,39 @@
 SpiTransport* SpiTransport::s_instance = nullptr;
 #endif
 
-SpiTransport::SpiTransport() : Transport() { m_type = SPI; }
+SpiTransport::SpiTransport() : Transport() {
+  m_type = SPI;
+  m_loopback = true;
+}
 
 SpiTransport::~SpiTransport() { deinit(); }
 
 bool SpiTransport::init() {
 #ifdef DMDREADER
-  dmdreader_init(m_pio);
-
   // Start in loopback mode until the host enables SPI via GPIO 13.
   dmdreader_loopback_init(buffers[0], buffers[1], m_color);
-  m_loopback = true;
 
-  pinMode(kEnablePin, INPUT_PULLDOWN);
-  pinMode(kClockPin, INPUT);
-  pinMode(kDataPin, INPUT);
+  pinMode(SPI_TRANSPORT_ENABLE_PIN, INPUT_PULLDOWN);
+  pinMode(SPI_TRANSPORT_CLK_PIN, INPUT);
+  pinMode(SPI_TRANSPORT_DATA_PIN, INPUT);
 
   initPio();
   m_dmaChannel = dma_claim_unused_channel(true);
   s_instance = this;
+
+  m_enableRisePending = false;
+  m_enableFallPending = false;
+
+  // Initialize GPIO IRQ from core1 (loop1) so callbacks run on core1.
+  gpio_acknowledge_irq(SPI_TRANSPORT_ENABLE_PIN,
+                       GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL);  // clear stale
+  gpio_set_irq_enabled_with_callback(SPI_TRANSPORT_ENABLE_PIN,
+                                     GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL,
+                                     true, &SpiTransport::gpio_irq_handler);
+
 #endif
 
   m_active = true;
-  transportActive = true;
 
   return true;
 }
@@ -50,18 +61,27 @@ bool SpiTransport::deinit() {
 
 #ifdef DMDREADER
 
-void SpiTransport::initPio() {
-  m_stateMachine = pio_claim_unused_sm(m_pio, true);
-  m_programOffset = pio_add_program(m_pio, &zedmd_spi_input_program);
+void SpiTransport::initDmdReader() {
+  dmdreader_init();
+  // Start SPI transfer, waiting in the background.
+  dmdreader_spi_init();
+}
 
-  pio_gpio_init(m_pio, kClockPin);
-  pio_gpio_init(m_pio, kDataPin);
-  pio_sm_set_consecutive_pindirs(m_pio, m_stateMachine, kClockPin, 1, false);
-  pio_sm_set_consecutive_pindirs(m_pio, m_stateMachine, kDataPin, 1, false);
+void SpiTransport::initPio() {
+  dmdreader_error_blink(pio_claim_free_sm_and_add_program_for_gpio_range(
+      &zedmd_spi_input_program, &m_pio, &m_stateMachine, &m_programOffset,
+      SPI_TRANSPORT_CLK_PIN, 2, true));
+
+  pio_gpio_init(m_pio, SPI_TRANSPORT_CLK_PIN);
+  pio_gpio_init(m_pio, SPI_TRANSPORT_DATA_PIN);
+  pio_sm_set_consecutive_pindirs(m_pio, m_stateMachine, SPI_TRANSPORT_CLK_PIN,
+                                 1, false);
+  pio_sm_set_consecutive_pindirs(m_pio, m_stateMachine, SPI_TRANSPORT_DATA_PIN,
+                                 1, false);
 
   pio_sm_config config =
       zedmd_spi_input_program_get_default_config(m_programOffset);
-  sm_config_set_in_pins(&config, kDataPin);
+  sm_config_set_in_pins(&config, SPI_TRANSPORT_DATA_PIN);
   sm_config_set_in_shift(&config, false, true, 8);
   sm_config_set_fifo_join(&config, PIO_FIFO_JOIN_RX);
 
@@ -85,16 +105,8 @@ void SpiTransport::disableSpiStateMachine() {
   m_spiEnabled = false;
 }
 
-void SpiTransport::flushRxBuffer() {
-  if (m_rxBufferPos == 0) return;
-  transportActive = true;
-  HandleData(m_rxBuffer, m_rxBufferPos);
-  m_rxBufferPos = 0;
-}
-
 void SpiTransport::startDma() {
-  if (m_dmaChannel < 0 || m_stateMachine < 0) return;
-  m_rxBufferPos = 0;
+  if (m_dmaRunning) return;
   dma_channel_config cfg = dma_channel_get_default_config(m_dmaChannel);
   channel_config_set_transfer_data_size(&cfg, DMA_SIZE_8);
   channel_config_set_read_increment(&cfg, false);
@@ -102,91 +114,120 @@ void SpiTransport::startDma() {
   channel_config_set_dreq(&cfg, pio_get_dreq(m_pio, m_stateMachine, false));
 
   dma_channel_configure(m_dmaChannel, &cfg, m_rxBuffer,
-                        &m_pio->rxf[m_stateMachine], kRxBufferSize, true);
+                        &m_pio->rxf[m_stateMachine], RGB565_TOTAL_BYTES, true);
   m_dmaRunning = true;
 }
 
-void SpiTransport::stopDmaAndFlush() {
-  if (m_dmaChannel < 0) return;
+void SpiTransport::resetStateMachine() {
+  pio_sm_set_enabled(m_pio, m_stateMachine, false);
+  pio_sm_clear_fifos(m_pio, m_stateMachine);
+  pio_sm_restart(m_pio, m_stateMachine);
+  pio_sm_set_enabled(m_pio, m_stateMachine, true);
+};
+
+bool SpiTransport::stopDmaAndFlush() {
+  if (!m_dmaRunning) return false;
 
   uint32_t remaining = dma_channel_hw_addr(m_dmaChannel)->transfer_count;
+  uint32_t received = RGB565_TOTAL_BYTES - remaining;
+
+  // Stop DMA now that the sender toggled ENABLE high.
   dma_channel_abort(m_dmaChannel);
-  m_dmaRunning = false;
 
-  // Bytes already written by DMA
-  m_rxBufferPos = kRxBufferSize - remaining;
-  if (m_rxBufferPos > kRxBufferSize) m_rxBufferPos = 0;
-
-  // Drain any residual FIFO bytes that arrived after the DMA stop.
-  while (!pio_sm_is_rx_fifo_empty(m_pio, m_stateMachine) &&
-         m_rxBufferPos < kRxBufferSize) {
-    const uint32_t raw = pio_sm_get(m_pio, m_stateMachine);
-    m_rxBuffer[m_rxBufferPos++] = raw & 0xff;
+  // Drain any unexpected residual bytes to leave the FIFO empty.
+  uint32_t drainedBytes = 0;
+  while (!pio_sm_is_rx_fifo_empty(m_pio, m_stateMachine)) {
+    (void)pio_sm_get(m_pio, m_stateMachine);
+    ++drainedBytes;
   }
 
-  flushRxBuffer();
+  // Ignore incomplete frames (shorter than RGB565_TOTAL_BYTES).
+  if (received != RGB565_TOTAL_BYTES) {
+    // Reset the state machine to clear any bit-shifted state before next frame.
+    resetStateMachine();
+
+    m_dmaRunning = false;
+    return false;
+  }
+
+  // If extra bytes were clocked in after DMA completed, reset to avoid
+  // misalignment on the next frame.
+  if (drainedBytes > 0) {
+    resetStateMachine();
+    m_dmaRunning = false;
+    return false;
+  }
+
+  if (m_rxBuffer == buffers[0]) {
+    m_rxBuffer = buffers[1];
+    m_dataBuffer = buffers[0];
+  } else {
+    m_rxBuffer = buffers[0];
+    m_dataBuffer = buffers[1];
+  }
+
+  m_dmaRunning = false;
+  return true;
 }
 
 void SpiTransport::switchToSpiMode() {
   if (!m_loopback) return;
+
+  // Turn on transport active flag immediately to avoid a logo to be displayed.
+  transportActive = true;
   m_loopback = false;
   m_transferActive = false;
-  m_rxBufferPos = 0;
-  payloadMissing = 0;
-  headerBytesReceived = 0;
-  numCtrlCharsFound = 0;
-  transportActive = false;
+
+  dmdreader_loopback_stop();
+
+  m_rxBuffer = buffers[0];
+  m_dataBuffer = buffers[1];
+
+  enableSpiStateMachine();
 }
 
-void SpiTransport::onEnableRise() {
-  if (m_loopback) switchToSpiMode();
+bool SpiTransport::onEnableRise() {
+  bool new_data = false;
+  if (m_loopback)
+    switchToSpiMode();
   else if (m_transferActive) {
-    stopDmaAndFlush();
+    new_data = stopDmaAndFlush();
     m_transferActive = false;
   }
+  return new_data;
 }
 
 void SpiTransport::onEnableFall() {
-  if (m_loopback) return;
+  if (m_loopback)
+    return;
   else if (!m_transferActive) {
-    enableSpiStateMachine();
     startDma();
     m_transferActive = true;
   }
 }
 
-void SpiTransport::ProcessEnablePinEvents() {
+bool SpiTransport::ProcessEnablePinEvents() {
   if (m_enableRisePending) {
     m_enableRisePending = false;
-    onEnableRise();
+    return onEnableRise();
   }
 
   if (m_enableFallPending) {
     m_enableFallPending = false;
     onEnableFall();
   }
+
+  return false;
 }
 
 void SpiTransport::gpio_irq_handler(uint gpio, uint32_t events) {
-  if (!s_instance || gpio != kEnablePin) return;
+  if (!s_instance || gpio != SPI_TRANSPORT_ENABLE_PIN) return;
   if (events & GPIO_IRQ_EDGE_RISE) {
     s_instance->m_enableRisePending = true;
   }
   if (events & GPIO_IRQ_EDGE_FALL) {
     s_instance->m_enableFallPending = true;
   }
-}
-
-void SpiTransport::SetupEnablePin() {
-  m_enableRisePending = false;
-  m_enableFallPending = false;
-
-  // Initialize GPIO IRQ from core1 (loop1) so callbacks run on core1.
-  gpio_acknowledge_irq(kEnablePin,
-                       GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL);  // clear stale
-  gpio_set_irq_enabled_with_callback(kEnablePin,
-                                     GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL,
-                                     true, &SpiTransport::gpio_irq_handler);
 }
 
 void SpiTransport::SetColor(Color color) { m_color = color; }

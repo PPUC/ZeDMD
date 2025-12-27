@@ -1,15 +1,12 @@
-#if defined(PICO_RP2350) || (RP2350)
-// Set the official 200 MHz system clock
-// For RP2350, PLL parameters must be provided
-#define PLL_SYS_VCO_FREQ_HZ (1600ul * 1000ul * 1000ul)
-#define PLL_SYS_POSTDIV1 4
-#define PLL_SYS_POSTDIV2 2
-#endif
-
 #ifdef PICO_BUILD
-// set to officially supported 200MHz clock
+// Set the 266 MHz system clock
+// For RP2350/RP2040 custom clocks, PLL parameters must be provided
+#define PLL_SYS_VCO_FREQ_HZ 1596000000ul
+#define PLL_SYS_POSTDIV1 6
+#define PLL_SYS_POSTDIV2 1
+// officially, 200MHz clock is supported, but 266MHz should fine as well
 // @see SYS_CLK_MHZ https://github.com/raspberrypi/pico-sdk/releases/tag/2.1.1
-#define SYS_CLK_MHZ 200
+#define SYS_CLK_MHZ 266
 #endif
 
 #include <Arduino.h>
@@ -20,6 +17,7 @@
 #endif
 
 #ifdef PICO_BUILD
+#include "hardware/vreg.h"
 #include "pico/zedmd_pico.h"
 #endif
 #include <LittleFS.h>
@@ -139,6 +137,7 @@ uint8_t panelLatchBlanking = 2;
 uint8_t panelMinRefreshRate = 60;
 #ifdef DMDREADER
 bool core_0_initialized = false;
+bool core_1_initialized = false;
 uint8_t loopbackColor = (uint8_t)Color::ORANGE;
 
 const char *ColorString(uint8_t color) {
@@ -163,6 +162,34 @@ const char *ColorString(uint8_t color) {
       return nullptr;
   }
 }
+
+// Simple nearest-neighbor 2x upscaler for RGB888 loopback frames.
+static void Scale2xLoopback(const uint8_t *src, uint8_t *dst, uint16_t srcWidth,
+                            uint16_t srcHeight) {
+  const uint16_t dstWidth = srcWidth * 2;
+  const uint32_t srcStride = srcWidth * 3;
+  const uint32_t dstStride = dstWidth * 3;
+
+  for (uint16_t y = 0; y < srcHeight; ++y) {
+    const uint8_t *srcRow = src + y * srcStride;
+    uint8_t *dstRow0 = dst + (y * 2) * dstStride;
+    uint8_t *dstRow1 = dstRow0 + dstStride;
+
+    for (uint16_t x = 0; x < srcWidth; ++x) {
+      const uint8_t *pixel = srcRow + x * 3;
+      const uint8_t r = pixel[0];
+      const uint8_t g = pixel[1];
+      const uint8_t b = pixel[2];
+
+      uint8_t *out0 = dstRow0 + (x * 2) * 3;
+      uint8_t *out1 = dstRow1 + (x * 2) * 3;
+
+      out0[0] = out0[3] = out1[0] = out1[3] = r;
+      out0[1] = out0[4] = out1[1] = out1[4] = g;
+      out0[2] = out0[5] = out1[2] = out1[5] = b;
+    }
+  }
+}
 #endif
 
 // We needed to change these from RGB to RC (Red Color), BC, GC to prevent
@@ -177,6 +204,19 @@ const uint8_t rgbOrder[3 * 6] = {
 };
 
 #endif
+
+static uint8_t Expand5To8[32];
+static uint8_t Expand6To8[64];
+
+static inline void InitRgbLuts() {
+  for (uint8_t i = 0; i < 32; ++i) {
+    Expand5To8[i] = static_cast<uint8_t>((i << 3) | (i >> 2));
+  }
+  for (uint8_t i = 0; i < 64; ++i) {
+    Expand6To8[i] = static_cast<uint8_t>((i << 2) | (i >> 4));
+  }
+}
+
 uint8_t usbPackageSizeMultiplier = USB_PACKAGE_SIZE / 32;
 uint8_t settingsMenu = 0;
 uint8_t debug = 0;
@@ -745,9 +785,10 @@ uint8_t GetPixelBrightness(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 void Render(bool renderAll = true) {
-  if (NUM_RENDER_BUFFERS == 1) {
-    display->FillPanelRaw(renderBuffer[currentRenderBuffer]);
-  } else if (currentRenderBuffer != lastRenderBuffer) {
+#ifdef DISPLAY_RM67162_AMOLED
+  display->FillPanelRaw(renderBuffer[currentRenderBuffer]);
+#else
+  if (NUM_RENDER_BUFFERS == 1 || currentRenderBuffer != lastRenderBuffer) {
 #ifdef SPEAKER_LIGHTS
     uint32_t sumRLeft = 0, sumGLeft = 0, sumBLeft = 0, sumRRight = 0,
              sumGRight = 0, sumBRight = 0;
@@ -759,9 +800,12 @@ void Render(bool renderAll = true) {
     for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
       for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
         pos = (y * TOTAL_WIDTH + x) * 3;
-        if (transport->isLoopback() ||
-            !(0 == memcmp(&renderBuffer[currentRenderBuffer][pos],
-                          &renderBuffer[lastRenderBuffer][pos], 3))) {
+        // When only one render buffer is in use there is no previous frame to
+        // diff against, so always draw. Otherwise draw only on loopback or
+        // when the pixel actually changed.
+        if (NUM_RENDER_BUFFERS == 1 || transport->isLoopback() ||
+            memcmp(&renderBuffer[currentRenderBuffer][pos],
+                   &renderBuffer[lastRenderBuffer][pos], 3) != 0) {
           display->DrawPixel(x, y, renderBuffer[currentRenderBuffer][pos],
                              renderBuffer[currentRenderBuffer][pos + 1],
                              renderBuffer[currentRenderBuffer][pos + 2]);
@@ -840,13 +884,14 @@ void Render(bool renderAll = true) {
       }
     }
 #endif
-    lastRenderBuffer = currentRenderBuffer;
-    currentRenderBuffer = (currentRenderBuffer + 1) % NUM_RENDER_BUFFERS;
-    if (!transport->isLoopback()) {
+    if (NUM_RENDER_BUFFERS > 1) {
+      lastRenderBuffer = currentRenderBuffer;
+      currentRenderBuffer = (currentRenderBuffer + 1) % NUM_RENDER_BUFFERS;
       memcpy(renderBuffer[currentRenderBuffer], renderBuffer[lastRenderBuffer],
              TOTAL_BYTES);
     }
   }
+#endif
 
 #ifdef ZEDMD_CLIENT_DEBUG_FPS
   FpsUpdate();
@@ -1747,15 +1792,11 @@ void setup() {
 #ifndef PICO_BUILD
   esp_log_level_set("*", ESP_LOG_NONE);
 #else
-  /*
   // tested working on a lot of different devices
   vreg_set_voltage(VREG_VOLTAGE_1_15);
   busy_wait_at_least_cycles((SYS_CLK_VREG_VOLTAGE_AUTO_ADJUST_DELAY_US *
                              static_cast<uint64_t>(XOSC_HZ)) /
                             1000000);
-  set_sys_clock_khz(266000, false);
-  */
-
   // overclock to achieve higher SPI transfer speed
   set_sys_clock_khz(SYS_CLK_MHZ * 1000, true);
 #endif
@@ -2175,6 +2216,7 @@ void setup() {
   pinMode(DOWN_BUTTON_PIN, INPUT_PULLUP);
 #endif
 
+  InitRgbLuts();
   DisplayLogo();
   DisplayId();
   display->Render();
@@ -2193,11 +2235,6 @@ void setup() {
       while (1);
     }
   }
-
-#ifdef DMDREADER
-  static_cast<SpiTransport *>(transport)->SetColor((Color)loopbackColor);
-#endif
-  transport->init();
 
 #ifdef SPEAKER_LIGHTS
   if (speakerLightsLeftNumLeds > 0) {
@@ -2224,6 +2261,11 @@ void setup() {
 #endif
 
 #ifdef DMDREADER
+  static_cast<SpiTransport *>(transport)->SetColor((Color)loopbackColor);
+#endif
+  transport->init();
+
+#ifdef DMDREADER
   core_0_initialized = true;
 #endif
 }
@@ -2240,6 +2282,46 @@ void loop() {
     speakerLightsRight->service();
   }
 #endif
+
+#ifdef DMDREADER
+  if (!core_1_initialized) {
+    delay(1);
+    return
+  }
+
+  if (static_cast<SpiTransport *>(transport)->ProcessEnablePinEvents()) {
+    auto *spiTransport = static_cast<SpiTransport *>(transport);
+    const uint16_t *src =
+        reinterpret_cast<const uint16_t *>(spiTransport->GetDataBuffer());
+    uint8_t *dst = renderBuffer[currentRenderBuffer];
+    const size_t pixelCount = RGB565_TOTAL_BYTES / 2;
+
+    for (size_t i = 0; i < pixelCount; ++i) {
+      const uint16_t rgb565 = src[i];
+      *dst++ = Expand5To8[rgb565 >> 11];
+      *dst++ = Expand6To8[(rgb565 >> 5) & 0x3f];
+      *dst++ = Expand5To8[rgb565 & 0x1f];
+    }
+    Render();
+  } else if (transport->isLoopback()) {
+    uint8_t *buffer = dmdreader_loopback_render();
+    if (buffer != nullptr) {
+      if (TOTAL_WIDTH == 256 && TOTAL_HEIGHT == 64 &&
+          dmdreader_get_source_width() * 2 == TOTAL_WIDTH &&
+          dmdreader_get_source_height() * 2 == TOTAL_HEIGHT) {
+        Scale2xLoopback(buffer, renderBuffer[currentRenderBuffer],
+                        dmdreader_get_source_width(),
+                        dmdreader_get_source_height());
+      } else {
+        memcpy(renderBuffer[currentRenderBuffer], buffer, TOTAL_BYTES);
+      }
+      Render();
+    }
+  }
+
+  tight_loop_contents();
+
+#else
 
   if (!transportActive) {
     if (!logoActive) logoActive = true;
@@ -2321,11 +2403,6 @@ void loop() {
     delay(200);
 #endif
   } else {
-    if (transport->isLoopback()) {
-      delay(10);
-      return;
-    }
-
     if (lastDataReceivedClock.getElapsedTime().asMilliseconds() >
         CONNECTION_TIMEOUT) {
       transportActive = false;
@@ -2402,23 +2479,18 @@ void loop() {
 
             if (rgb565ZoneStream) {
               for (uint8_t y = 0; y < ZONE_HEIGHT; y++) {
+                uint8_t *dst =
+                    &renderBuffer[currentRenderBuffer]
+                                 [((yOffset + y) * TOTAL_WIDTH + xOffset) * 3];
                 for (uint8_t x = 0; x < ZONE_WIDTH; x++) {
                   const uint16_t rgb565 =
                       uncompressBuffer[uncompressedBufferPosition++] +
                       (((uint16_t)
                             uncompressBuffer[uncompressedBufferPosition++])
                        << 8);
-                  uint8_t rgb888[3];
-                  rgb888[0] = (rgb565 >> 8) & 0xf8;
-                  rgb888[1] = (rgb565 >> 3) & 0xfc;
-                  rgb888[2] = (rgb565 << 3);
-                  rgb888[0] |= (rgb888[0] >> 5);
-                  rgb888[1] |= (rgb888[1] >> 6);
-                  rgb888[2] |= (rgb888[2] >> 5);
-                  memcpy(&renderBuffer
-                             [currentRenderBuffer]
-                             [((yOffset + y) * TOTAL_WIDTH + xOffset + x) * 3],
-                         rgb888, 3);
+                  *dst++ = Expand5To8[rgb565 >> 11];
+                  *dst++ = Expand6To8[(rgb565 >> 5) & 0x3f];
+                  *dst++ = Expand5To8[rgb565 & 0x1f];
                 }
               }
             } else {
@@ -2447,21 +2519,31 @@ void loop() {
         }
       }
     } else {
-#ifndef DMDREADER
       // Avoid busy-waiting
       vTaskDelay(pdMS_TO_TICKS(1));
-#else
-      tight_loop_contents();
-#endif
     }
   }
+#endif
 }
 
 #ifdef DMDREADER
 
 void setup1() {
   while (!core_0_initialized) {
+    delay(1);
+  }
+
+  static_cast<SpiTransport *>(transport)->initDmdReader();
+
+  core_1_initialized = true;
+}
+
+void loop1() {
+  if (!transport->isLoopback()) {
+    dmdreader_spi_send();
     tight_loop_contents();
+  } else {
+    delay(1);
   }
 
   static_cast<SpiTransport *>(transport)->SetupEnablePin();
