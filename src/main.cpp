@@ -2286,7 +2286,7 @@ void loop() {
 #ifdef DMDREADER
   if (!core_1_initialized) {
     delay(1);
-    return
+    return;
   }
 
   if (static_cast<SpiTransport *>(transport)->ProcessEnablePinEvents()) {
