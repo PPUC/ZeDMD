@@ -2549,20 +2549,4 @@ void loop1() {
   static_cast<SpiTransport *>(transport)->SetupEnablePin();
 }
 
-void loop1() {
-  if (transport) {
-    static_cast<SpiTransport *>(transport)->ProcessEnablePinEvents();
-
-    if (transport->isLoopback()) {
-      uint8_t *buffer = dmdreader_loopback_render();
-      if (buffer != nullptr) {
-        memcpy(renderBuffer[currentRenderBuffer], buffer, TOTAL_BYTES);
-        Render();
-      }
-    } else {
-      dmdreader_spi_send();
-    }
-  }
-  tight_loop_contents();
-}
 #endif
