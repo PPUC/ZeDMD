@@ -132,7 +132,10 @@ void SpiTransport::resetStateMachine() {
 };
 
 bool SpiTransport::stopDmaAndFlush(bool abortChannel) {
-  if (!m_dmaRunning) return false;
+  if (!m_dmaRunning) {
+    m_transferActive = false;
+    return false;
+  }
 
   uint32_t remaining = dma_channel_hw_addr(m_dmaChannel)->transfer_count;
   uint32_t received = RGB565_TOTAL_BYTES - remaining;
@@ -155,6 +158,7 @@ bool SpiTransport::stopDmaAndFlush(bool abortChannel) {
     resetStateMachine();
 
     m_dmaRunning = false;
+    m_transferActive = false;
     return false;
   }
 
@@ -163,6 +167,7 @@ bool SpiTransport::stopDmaAndFlush(bool abortChannel) {
   if (drainedBytes > 0) {
     resetStateMachine();
     m_dmaRunning = false;
+    m_transferActive = false;
     return false;
   }
 
@@ -172,7 +177,6 @@ bool SpiTransport::stopDmaAndFlush(bool abortChannel) {
 
   m_dmaRunning = false;
   m_transferActive = false;
-  m_dmaCompletePending = false;
   return true;
 }
 
@@ -214,7 +218,9 @@ void SpiTransport::onEnableFall() {
 bool SpiTransport::ProcessEnablePinEvents() {
   if (m_dmaCompletePending) {
     m_dmaCompletePending = false;
-    return stopDmaAndFlush(false);
+    if (m_transferActive) {
+      return stopDmaAndFlush(false);
+    }
   }
 
   if (m_enableRisePending) {
@@ -252,7 +258,6 @@ void SpiTransport::dma_irq_handler() {
   if (!s_instance) return;
   if (dma_irqn_get_channel_status(kSpiDmaIrqIndex, s_instance->m_dmaChannel)) {
     dma_irqn_acknowledge_channel(kSpiDmaIrqIndex, s_instance->m_dmaChannel);
-    s_instance->m_transferActive = false;
     s_instance->m_dmaCompletePending = true;
   }
 }
