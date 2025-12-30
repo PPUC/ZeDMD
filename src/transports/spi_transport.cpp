@@ -113,7 +113,7 @@ void SpiTransport::startDma() {
   channel_config_set_write_increment(&cfg, true);
   channel_config_set_dreq(&cfg, pio_get_dreq(m_pio, m_stateMachine, false));
 
-  dma_channel_configure(m_dmaChannel, &cfg, m_rxBuffer,
+  dma_channel_configure(m_dmaChannel, &cfg, buffers[m_rxBuffer],
                         &m_pio->rxf[m_stateMachine], RGB565_TOTAL_BYTES, true);
   m_dmaRunning = true;
 }
@@ -158,12 +158,8 @@ bool SpiTransport::stopDmaAndFlush() {
     return false;
   }
 
-  if (m_rxBuffer == buffers[0]) {
-    m_rxBuffer = buffers[1];
-    m_dataBuffer = buffers[0];
-  } else {
-    m_rxBuffer = buffers[0];
-    m_dataBuffer = buffers[1];
+  if (++m_rxBuffer >= NUM_BUFFERS) {
+    m_rxBuffer = 0;
   }
 
   m_dmaRunning = false;
@@ -180,8 +176,8 @@ void SpiTransport::switchToSpiMode() {
 
   dmdreader_loopback_stop();
 
-  m_rxBuffer = buffers[0];
-  m_dataBuffer = buffers[1];
+  m_rxBuffer = 0;
+  m_dataBuffer = NUM_BUFFERS - 1;
 
   enableSpiStateMachine();
 }
@@ -218,6 +214,14 @@ bool SpiTransport::ProcessEnablePinEvents() {
   }
 
   return false;
+}
+
+uint8_t* SpiTransport::GetDataBuffer() {
+  if (++m_dataBuffer >= NUM_BUFFERS) {
+    m_dataBuffer = 0;
+  }
+
+  return buffers[m_dataBuffer];
 }
 
 void SpiTransport::gpio_irq_handler(uint gpio, uint32_t events) {

@@ -30,7 +30,7 @@ class SpiTransport final : public Transport {
   void initDmdReader();
   void SetColor(Color color);
   bool ProcessEnablePinEvents();
-  uint8_t* GetDataBuffer() { return m_dataBuffer; }
+  uint8_t* GetDataBuffer();
 
  private:
   void initPio();
@@ -53,8 +53,8 @@ class SpiTransport final : public Transport {
   bool m_spiEnabled = false;
   bool m_transferActive = false;
   bool m_dmaRunning = false;
-  uint8_t* m_rxBuffer;
-  uint8_t* m_dataBuffer;
+  uint8_t m_rxBuffer;
+  uint8_t m_dataBuffer;
   Color m_color = Color::ORANGE;
   volatile bool m_enableRisePending = false;
   volatile bool m_enableFallPending = false;

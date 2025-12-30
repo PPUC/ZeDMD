@@ -14,7 +14,7 @@
 #define N_INTERMEDIATE_CTR_CHARS 4
 
 #if defined(DMDREADER)
-#define NUM_BUFFERS 2  // Number of buffers
+#define NUM_BUFFERS 4  // Number of buffers
 #define NUM_RENDER_BUFFERS 1
 #define BUFFER_SIZE TOTAL_BYTES
 #elif defined(PICO_BUILD)
