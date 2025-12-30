@@ -38,9 +38,9 @@ class SpiTransport final : public Transport {
   void disableSpiStateMachine();
   void resetStateMachine();
   void startDma();
-  bool stopDmaAndFlush();
+  bool stopDmaAndFlush(bool abortChannel);
   void switchToSpiMode();
-  void onEnableRise();
+  bool onEnableRise();
   void onEnableFall();
   static void gpio_irq_handler(uint gpio, uint32_t events);
   static void dma_irq_handler();

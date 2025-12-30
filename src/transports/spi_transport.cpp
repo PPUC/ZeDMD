@@ -131,14 +131,16 @@ void SpiTransport::resetStateMachine() {
   pio_sm_set_enabled(m_pio, m_stateMachine, true);
 };
 
-bool SpiTransport::stopDmaAndFlush() {
+bool SpiTransport::stopDmaAndFlush(bool abortChannel) {
   if (!m_dmaRunning) return false;
 
   uint32_t remaining = dma_channel_hw_addr(m_dmaChannel)->transfer_count;
   uint32_t received = RGB565_TOTAL_BYTES - remaining;
 
-  // Stop DMA.
-  // dma_channel_abort(m_dmaChannel);
+  // Stop DMA if we're aborting before transfer completion.
+  if (abortChannel) {
+    dma_channel_abort(m_dmaChannel);
+  }
 
   // Drain any unexpected residual bytes to leave the FIFO empty.
   uint32_t drainedBytes = 0;
@@ -190,8 +192,14 @@ void SpiTransport::switchToSpiMode() {
   enableSpiStateMachine();
 }
 
-void SpiTransport::onEnableRise() {
-  if (m_loopback) switchToSpiMode();
+bool SpiTransport::onEnableRise() {
+  bool new_data = false;
+  if (m_loopback) {
+    switchToSpiMode();
+  } else if (m_transferActive) {
+    new_data = stopDmaAndFlush(true);
+  }
+  return new_data;
 }
 
 void SpiTransport::onEnableFall() {
@@ -206,12 +214,12 @@ void SpiTransport::onEnableFall() {
 bool SpiTransport::ProcessEnablePinEvents() {
   if (m_dmaCompletePending) {
     m_dmaCompletePending = false;
-    return stopDmaAndFlush();
+    return stopDmaAndFlush(false);
   }
 
   if (m_enableRisePending) {
     m_enableRisePending = false;
-    onEnableRise();
+    return onEnableRise();
   }
 
   if (m_enableFallPending) {
