@@ -40,11 +40,14 @@ class SpiTransport final : public Transport {
   void startDma();
   bool stopDmaAndFlush();
   void switchToSpiMode();
-  bool onEnableRise();
+  void onEnableRise();
   void onEnableFall();
   static void gpio_irq_handler(uint gpio, uint32_t events);
+  static void dma_irq_handler();
 
   static SpiTransport* s_instance;
+  static constexpr uint kSpiDmaIrqIndex = 2;
+  static constexpr uint kSpiDmaIrq = DMA_IRQ_2;
 
   PIO m_pio;
   uint m_stateMachine;
@@ -58,6 +61,7 @@ class SpiTransport final : public Transport {
   Color m_color = Color::ORANGE;
   volatile bool m_enableRisePending = false;
   volatile bool m_enableFallPending = false;
+  volatile bool m_dmaCompletePending = false;
 #endif
 };
 

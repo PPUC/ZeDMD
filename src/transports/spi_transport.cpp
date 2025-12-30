@@ -3,6 +3,7 @@
 #include "main.h"
 #ifdef DMDREADER
 #include "hardware/dma.h"
+#include "hardware/irq.h"
 #include "pico/zedmd_spi_input.pio.h"
 #include "utility/clock.h"
 #endif
@@ -40,6 +41,9 @@ bool SpiTransport::init() {
   gpio_set_irq_enabled_with_callback(SPI_TRANSPORT_ENABLE_PIN,
                                      GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL,
                                      true, &SpiTransport::gpio_irq_handler);
+  dma_irqn_set_channel_enabled(kSpiDmaIrqIndex, m_dmaChannel, true);
+  irq_set_exclusive_handler(kSpiDmaIrq, &SpiTransport::dma_irq_handler);
+  irq_set_enabled(kSpiDmaIrq, true);
 
 #endif
 
@@ -107,6 +111,8 @@ void SpiTransport::disableSpiStateMachine() {
 
 void SpiTransport::startDma() {
   if (m_dmaRunning) return;
+  dma_irqn_acknowledge_channel(kSpiDmaIrqIndex, m_dmaChannel);
+  m_dmaCompletePending = false;
   dma_channel_config cfg = dma_channel_get_default_config(m_dmaChannel);
   channel_config_set_transfer_data_size(&cfg, DMA_SIZE_8);
   channel_config_set_read_increment(&cfg, false);
@@ -131,8 +137,8 @@ bool SpiTransport::stopDmaAndFlush() {
   uint32_t remaining = dma_channel_hw_addr(m_dmaChannel)->transfer_count;
   uint32_t received = RGB565_TOTAL_BYTES - remaining;
 
-  // Stop DMA now that the sender toggled ENABLE high.
-  dma_channel_abort(m_dmaChannel);
+  // Stop DMA.
+  // dma_channel_abort(m_dmaChannel);
 
   // Drain any unexpected residual bytes to leave the FIFO empty.
   uint32_t drainedBytes = 0;
@@ -163,6 +169,8 @@ bool SpiTransport::stopDmaAndFlush() {
   }
 
   m_dmaRunning = false;
+  m_transferActive = false;
+  m_dmaCompletePending = false;
   return true;
 }
 
@@ -182,15 +190,8 @@ void SpiTransport::switchToSpiMode() {
   enableSpiStateMachine();
 }
 
-bool SpiTransport::onEnableRise() {
-  bool new_data = false;
-  if (m_loopback)
-    switchToSpiMode();
-  else if (m_transferActive) {
-    new_data = stopDmaAndFlush();
-    m_transferActive = false;
-  }
-  return new_data;
+void SpiTransport::onEnableRise() {
+  if (m_loopback) switchToSpiMode();
 }
 
 void SpiTransport::onEnableFall() {
@@ -203,9 +204,14 @@ void SpiTransport::onEnableFall() {
 }
 
 bool SpiTransport::ProcessEnablePinEvents() {
+  if (m_dmaCompletePending) {
+    m_dmaCompletePending = false;
+    return stopDmaAndFlush();
+  }
+
   if (m_enableRisePending) {
     m_enableRisePending = false;
-    return onEnableRise();
+    onEnableRise();
   }
 
   if (m_enableFallPending) {
@@ -231,6 +237,15 @@ void SpiTransport::gpio_irq_handler(uint gpio, uint32_t events) {
   }
   if (events & GPIO_IRQ_EDGE_FALL) {
     s_instance->m_enableFallPending = true;
+  }
+}
+
+void SpiTransport::dma_irq_handler() {
+  if (!s_instance) return;
+  if (dma_irqn_get_channel_status(kSpiDmaIrqIndex, s_instance->m_dmaChannel)) {
+    dma_irqn_acknowledge_channel(kSpiDmaIrqIndex, s_instance->m_dmaChannel);
+    s_instance->m_transferActive = false;
+    s_instance->m_dmaCompletePending = true;
   }
 }
 
