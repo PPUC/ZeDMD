@@ -6,9 +6,7 @@
 #include "hardware/irq.h"
 #include "pico/zedmd_spi_input.pio.h"
 #include "utility/clock.h"
-#endif
 
-#ifdef DMDREADER
 SpiTransport* SpiTransport::s_instance = nullptr;
 #endif
 

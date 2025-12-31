@@ -907,6 +907,15 @@ void ClearScreen() {
     lastRenderBuffer = currentRenderBuffer;
     currentRenderBuffer = (currentRenderBuffer + 1) % NUM_RENDER_BUFFERS;
   }
+
+#ifdef SPEAKER_LIGHTS
+  if (FX_MODE_AMBILIGHT == speakerLightsLeftMode) {
+    speakerLightsLeft->setColor(0);  // All black → Turn off LEDs
+  }
+  if (FX_MODE_AMBILIGHT == speakerLightsRightMode) {
+    speakerLightsRight->setColor(0);  // All black → Turn off LEDs
+  }
+#endif
 }
 
 void DisplayLogo() {
@@ -1759,14 +1768,12 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
           }
 
           case 6: {  // Render
-#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
             AcquireNextBuffer();
             bufferCompressed[currentBuffer] = false;
             bufferSizes[currentBuffer] = 2;
             buffers[currentBuffer][0] = 255;
             buffers[currentBuffer][1] = 255;
             MarkCurrentBufferDone();
-#endif
             lastDataReceivedClock.restart();
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
@@ -2418,9 +2425,7 @@ void loop() {
       if (2 == bufferSizes[processingBuffer] &&
           255 == buffers[processingBuffer][0] &&
           255 == buffers[processingBuffer][1]) {
-#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
         Render();
-#endif
       } else if (2 == bufferSizes[processingBuffer] &&
                  0 == buffers[processingBuffer][0] &&
                  0 == buffers[processingBuffer][1]) {
