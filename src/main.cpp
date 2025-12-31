@@ -2465,7 +2465,8 @@ void loop() {
         uint16_t uncompressedBufferPosition = 0;
         while (uncompressedBufferPosition < uncompressedBufferSize) {
           if (uncompressBuffer[uncompressedBufferPosition] >= 128) {
-#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
+#if (defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)) || \
+    defined(PICO_BUILD)
             const uint8_t idx =
                 uncompressBuffer[uncompressedBufferPosition++] - 128;
             const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
@@ -2480,7 +2481,8 @@ void loop() {
                                128);
 #endif
           } else {
-#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
+#if (defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)) || \
+    defined(PICO_BUILD)
             uint8_t idx = uncompressBuffer[uncompressedBufferPosition++];
             const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
             const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
