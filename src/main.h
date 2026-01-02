@@ -15,7 +15,7 @@
 
 #if defined(DMDREADER)
 #ifdef ZEDMD_HD
-#define NUM_BUFFERS 3  // Number of buffers
+#define NUM_BUFFERS 2  // Number of buffers
 #else
 #define NUM_BUFFERS 4  // Number of buffers
 #endif
