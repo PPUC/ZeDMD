@@ -141,6 +141,8 @@ uint8_t panelMinRefreshRate = 60;
 bool core_0_initialized = false;
 bool core_1_initialized = false;
 uint8_t loopbackColor = (uint8_t)Color::ORANGE;
+bool warningShown = false;
+uint32_t spiStartMs = 0;
 
 const char *ColorString(uint8_t color) {
   switch ((Color)color) {
@@ -191,6 +193,32 @@ static void Scale2xLoopback(const uint8_t *src, uint8_t *dst, uint16_t srcWidth,
       out0[2] = out0[5] = out1[2] = out1[5] = b;
     }
   }
+}
+
+constexpr uint32_t kDmdreaderNoDataTimeoutMs = 20000;
+static const char *kDmdreaderNoDataLines[] = {"The colorization module is",
+                                              "not sending anything. Check",
+                                              "if the serum.cROMc",
+                                              "colorization file is the right",
+                                              "one for your game, the ROM",
+                                              "version and the selected",
+                                              "language."};
+
+static void DrawDmdreaderNoDataWarning() {
+  display->ClearScreen();
+
+  const uint8_t lineHeight = 6;
+  const uint8_t totalLines =
+      sizeof(kDmdreaderNoDataLines) / sizeof(kDmdreaderNoDataLines[0]);
+  const uint8_t maxLines = TOTAL_HEIGHT / lineHeight;
+  const uint8_t linesToShow = (totalLines < maxLines) ? totalLines : maxLines;
+
+  for (uint8_t i = 0; i < linesToShow; ++i) {
+    display->DisplayText(kDmdreaderNoDataLines[i], 0, i * lineHeight, 255, 0,
+                         0);
+  }
+
+  display->Render();
 }
 #endif
 
@@ -2301,8 +2329,8 @@ void loop() {
     return;
   }
 
-  if (static_cast<SpiTransport *>(transport)->ProcessEnablePinEvents()) {
-    auto *spiTransport = static_cast<SpiTransport *>(transport);
+  auto *spiTransport = static_cast<SpiTransport *>(transport);
+  if (spiTransport->ProcessEnablePinEvents()) {
     const uint16_t *src =
         reinterpret_cast<const uint16_t *>(spiTransport->GetDataBuffer());
     uint8_t *dst = renderBuffer[currentRenderBuffer];
@@ -2315,6 +2343,7 @@ void loop() {
       *dst++ = Expand5To8[rgb565 & 0x1f];
     }
     Render();
+    warningShown = true;
   } else if (transport->isLoopback()) {
     uint8_t *buffer = dmdreader_loopback_render();
     if (buffer != nullptr) {
@@ -2329,8 +2358,14 @@ void loop() {
       }
       Render();
     }
+  } else if (!warningShown) {
+    if (spiStartMs == 0) {
+      spiStartMs = millis();
+    } else if ((millis() - spiStartMs) >= kDmdreaderNoDataTimeoutMs) {
+      DrawDmdreaderNoDataWarning();
+      warningShown = true;
+    }
   }
-
   tight_loop_contents();
 
 #else
