@@ -105,8 +105,10 @@ uint8_t *buffers[NUM_BUFFERS];
 mz_ulong bufferSizes[NUM_BUFFERS] __attribute__((aligned(4))) = {0};
 bool bufferCompressed[NUM_BUFFERS] __attribute__((aligned(4))) = {0};
 
+#ifndef DMDREADER
 // The uncompress buffer should be big enough
 uint8_t uncompressBuffer[2048] __attribute__((aligned(4)));
+#endif
 uint8_t *renderBuffer[NUM_RENDER_BUFFERS];
 uint8_t currentRenderBuffer __attribute__((aligned(4)));
 uint8_t lastRenderBuffer __attribute__((aligned(4)));
