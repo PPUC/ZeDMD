@@ -141,7 +141,7 @@ uint8_t panelMinRefreshRate = 60;
 bool core_0_initialized = false;
 bool core_1_initialized = false;
 uint8_t loopbackColor = (uint8_t)Color::ORANGE;
-bool warningShown = false;
+uint8_t warningShown = 0;
 uint32_t spiStartMs = 0;
 
 const char *ColorString(uint8_t color) {
@@ -2343,7 +2343,7 @@ void loop() {
       *dst++ = Expand5To8[rgb565 & 0x1f];
     }
     Render();
-    warningShown = true;
+    if (warningShown < 30) warningShown++;
   } else if (transport->isLoopback()) {
     uint8_t *buffer = dmdreader_loopback_render();
     if (buffer != nullptr) {
@@ -2358,12 +2358,12 @@ void loop() {
       }
       Render();
     }
-  } else if (!warningShown) {
+  } else if (warningShown < 30) {
     if (spiStartMs == 0) {
       spiStartMs = millis();
     } else if ((millis() - spiStartMs) >= kDmdreaderNoDataTimeoutMs) {
       DrawDmdreaderNoDataWarning();
-      warningShown = true;
+      warningShown = 30;
     }
   }
   tight_loop_contents();
