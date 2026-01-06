@@ -161,12 +161,10 @@ bool SpiTransport::stopDmaAndFlush(bool abortChannel) {
   }
 
   // If extra bytes were clocked in after DMA completed, reset to avoid
-  // misalignment on the next frame.
+  // misalignment on the next frame. Keep the frame since the DMA buffer is
+  // complete.
   if (drainedBytes > 0) {
     resetStateMachine();
-    m_dmaRunning = false;
-    m_transferActive = false;
-    return false;
   }
 
   if (++m_rxBuffer >= NUM_BUFFERS) {
