@@ -196,11 +196,10 @@ static void Scale2xLoopback(const uint8_t *src, uint8_t *dst, uint16_t srcWidth,
 }
 
 constexpr uint32_t kDmdreaderNoDataTimeoutMs = 20000;
-static const char *kDmdreaderNoDataLines[] = {"The colorization module is not",
-                                              "sending anything. Check if the",
-                                              "serum.cROMc file is the right",
-                                              "one for your game, the ROM",
-                                              "version and the language."};
+static const char *kDmdreaderNoDataLines[] = {
+    "The colorization module is not", "sending anything. Check if the",
+    "serum.cROMc file is the right", "one for your game, the ROM",
+    "version and the language."};
 
 static void DrawDmdreaderNoDataWarning() {
   display->ClearScreen();

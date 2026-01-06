@@ -135,10 +135,13 @@ bool SpiTransport::stopDmaAndFlush(bool abortChannel) {
     return false;
   }
 
+  m_dmaCompletePending = false;
+
   uint32_t remaining = dma_channel_hw_addr(m_dmaChannel)->transfer_count;
   uint32_t received = RGB565_TOTAL_BYTES - remaining;
 
-  // Stop DMA if we're aborting before transfer completion.
+  // Stop DMA if we're aborting before transfer completion. The rasing edge
+  // happens bfore the DMA completed a full frame.
   if (abortChannel) {
     dma_channel_abort(m_dmaChannel);
   }
@@ -161,10 +164,12 @@ bool SpiTransport::stopDmaAndFlush(bool abortChannel) {
   }
 
   // If extra bytes were clocked in after DMA completed, reset to avoid
-  // misalignment on the next frame. Keep the frame since the DMA buffer is
-  // complete.
+  // misalignment on the next frame.
   if (drainedBytes > 0) {
     resetStateMachine();
+    m_dmaRunning = false;
+    m_transferActive = false;
+    return false;
   }
 
   if (++m_rxBuffer >= NUM_BUFFERS) {
@@ -187,7 +192,6 @@ void SpiTransport::switchToSpiMode() {
   dmdreader_loopback_stop();
 
   m_rxBuffer = 0;
-  m_dataBuffer = NUM_BUFFERS - 1;
 
   enableSpiStateMachine();
 }
@@ -213,10 +217,7 @@ void SpiTransport::onEnableFall() {
 
 bool SpiTransport::ProcessEnablePinEvents() {
   if (m_dmaCompletePending) {
-    m_dmaCompletePending = false;
-    if (m_transferActive) {
-      return stopDmaAndFlush(false);
-    }
+    return stopDmaAndFlush(false);
   }
 
   if (m_enableRisePending) {
@@ -233,11 +234,7 @@ bool SpiTransport::ProcessEnablePinEvents() {
 }
 
 uint8_t* SpiTransport::GetDataBuffer() {
-  if (++m_dataBuffer >= NUM_BUFFERS) {
-    m_dataBuffer = 0;
-  }
-
-  return buffers[m_dataBuffer];
+  return buffers[(0 == m_rxBuffer) ? NUM_BUFFERS - 1 : m_rxBuffer - 1];
 }
 
 void SpiTransport::gpio_irq_handler(uint gpio, uint32_t events) {
