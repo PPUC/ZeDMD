@@ -8,6 +8,7 @@
 #include <dmdreader.h>
 
 #include "hardware/dma.h"
+#include "hardware/irq.h"
 #include "hardware/pio.h"
 #endif
 #include "main.h"
@@ -37,6 +38,8 @@ class SpiTransport final : public Transport {
  private:
   void initPio();
   void SetAndEnableNewDmaTarget();
+  void ResyncOnEnableLow();
+  static void gpioIrqHandler(uint gpio, uint32_t events);
   static void dmaHandler();
 
   static SpiTransport* s_instance;
@@ -51,6 +54,7 @@ class SpiTransport final : public Transport {
   uint8_t m_rxBuffer;
   Color m_color = Color::ORANGE;
   volatile bool m_frameReceived = false;
+  volatile bool m_resyncPending = false;
 #endif
 };
 

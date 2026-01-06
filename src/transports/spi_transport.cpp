@@ -23,6 +23,11 @@ bool SpiTransport::init() {
   pinMode(SPI_TRANSPORT_CLK_PIN, INPUT);
   pinMode(SPI_TRANSPORT_DATA_PIN, INPUT);
 
+  gpio_acknowledge_irq(SPI_TRANSPORT_ENABLE_PIN, GPIO_IRQ_EDGE_FALL);
+  gpio_set_irq_enabled_with_callback(SPI_TRANSPORT_ENABLE_PIN,
+                                     GPIO_IRQ_EDGE_FALL, true,
+                                     &SpiTransport::gpioIrqHandler);
+
   dmdreader_error_blink(pio_claim_free_sm_and_add_program_for_gpio_range(
       &zedmd_spi_input_program, &m_pio, &m_stateMachine, &m_programOffset,
       SPI_TRANSPORT_CLK_PIN, 2, true));
@@ -96,11 +101,31 @@ void SpiTransport::SetAndEnableNewDmaTarget() {
 void SpiTransport::initPio() {
   m_rxBuffer = NUM_BUFFERS;
   m_frameReceived = false;
+  m_resyncPending = false;
   SetAndEnableNewDmaTarget();
   pio_sm_set_enabled(m_pio, m_stateMachine, false);
   pio_sm_clear_fifos(m_pio, m_stateMachine);
   pio_sm_restart(m_pio, m_stateMachine);
   pio_sm_set_enabled(m_pio, m_stateMachine, true);
+}
+
+void SpiTransport::ResyncOnEnableLow() {
+  m_frameReceived = false;
+  dma_channel_abort(m_dmaChannel);
+  dma_irqn_acknowledge_channel(kSpiDmaIrqIndex, m_dmaChannel);
+  pio_sm_set_enabled(m_pio, m_stateMachine, false);
+  pio_sm_clear_fifos(m_pio, m_stateMachine);
+  pio_sm_restart(m_pio, m_stateMachine);
+  pio_sm_set_enabled(m_pio, m_stateMachine, true);
+  SetAndEnableNewDmaTarget();
+}
+
+void SpiTransport::gpioIrqHandler(uint gpio, uint32_t events) {
+  if (!s_instance || gpio != SPI_TRANSPORT_ENABLE_PIN) return;
+  if ((events & GPIO_IRQ_EDGE_FALL) &&
+      dma_channel_is_busy(s_instance->m_dmaChannel)) {
+    s_instance->m_resyncPending = true;
+  }
 }
 
 void SpiTransport::dmaHandler() {
@@ -110,19 +135,26 @@ void SpiTransport::dmaHandler() {
 }
 
 bool SpiTransport::GetFrameReceived() {
+  if (m_resyncPending) {
+    if (m_loopback) {
+      // Turn on transport active flag immediately to avoid a logo to be
+      // displayed.
+      transportActive = true;
+      m_loopback = false;
+
+      dmdreader_loopback_stop();
+      initPio();
+    } else {
+      m_resyncPending = false;
+      ResyncOnEnableLow();
+    }
+
+    return false;
+  }
+
   if (m_frameReceived) {
     m_frameReceived = false;
     return true;
-  }
-
-  if (m_loopback && digitalRead(SPI_TRANSPORT_ENABLE_PIN)) {
-    // Turn on transport active flag immediately to avoid a logo to be
-    // displayed.
-    transportActive = true;
-    m_loopback = false;
-
-    dmdreader_loopback_stop();
-    initPio();
   }
 
   return false;
