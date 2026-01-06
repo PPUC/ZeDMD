@@ -2327,7 +2327,7 @@ void loop() {
   }
 
   auto *spiTransport = static_cast<SpiTransport *>(transport);
-  if (spiTransport->ProcessEnablePinEvents()) {
+  if (spiTransport->GetFrameReceived()) {
     const uint16_t *src =
         reinterpret_cast<const uint16_t *>(spiTransport->GetDataBuffer());
     uint8_t *dst = renderBuffer[currentRenderBuffer];
