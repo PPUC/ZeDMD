@@ -50,7 +50,7 @@ class SpiTransport final : public Transport {
   dma_channel_config m_dmaChannelConfig;
   uint8_t m_rxBuffer;
   Color m_color = Color::ORANGE;
-  bool m_frameReceived = false;
+  volatile bool m_frameReceived = false;
 #endif
 };
 

@@ -44,6 +44,7 @@ bool SpiTransport::init() {
 
   m_dmaChannel = dma_claim_unused_channel(true);
   m_dmaChannelConfig = dma_channel_get_default_config(m_dmaChannel);
+  channel_config_set_transfer_data_size(&m_dmaChannelConfig, DMA_SIZE_8);
   channel_config_set_read_increment(&m_dmaChannelConfig, false);
   channel_config_set_write_increment(&m_dmaChannelConfig, true);
   channel_config_set_dreq(&m_dmaChannelConfig,
@@ -86,24 +87,31 @@ void SpiTransport::SetAndEnableNewDmaTarget() {
     m_rxBuffer = 0;
   }
 
-  dma_channel_set_write_addr(m_dmaChannel, buffers[m_rxBuffer], true);
-
   // Clear the interrupt request, enable a new transfer
   dma_irqn_acknowledge_channel(kSpiDmaIrqIndex, m_dmaChannel);
+  dma_channel_set_write_addr(m_dmaChannel, buffers[m_rxBuffer], false);
+  dma_channel_set_trans_count(m_dmaChannel, RGB565_TOTAL_BYTES, true);
 }
 
 void SpiTransport::initPio() {
+  m_rxBuffer = NUM_BUFFERS;
+  m_frameReceived = false;
   SetAndEnableNewDmaTarget();
   pio_sm_set_enabled(m_pio, m_stateMachine, false);
+  pio_sm_clear_fifos(m_pio, m_stateMachine);
+  pio_sm_restart(m_pio, m_stateMachine);
+  pio_sm_set_enabled(m_pio, m_stateMachine, true);
 }
 
 void SpiTransport::dmaHandler() {
+  if (!s_instance) return;
   s_instance->SetAndEnableNewDmaTarget();
   s_instance->SetFrameReceived();
 }
 
 bool SpiTransport::GetFrameReceived() {
   if (m_frameReceived) {
+    m_frameReceived = false;
     return true;
   }
 
@@ -114,9 +122,6 @@ bool SpiTransport::GetFrameReceived() {
     m_loopback = false;
 
     dmdreader_loopback_stop();
-
-    m_rxBuffer = NUM_BUFFERS;
-
     initPio();
   }
 
