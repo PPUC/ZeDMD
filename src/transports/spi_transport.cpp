@@ -123,7 +123,8 @@ void SpiTransport::ResyncOnEnableLow() {
 void SpiTransport::gpioIrqHandler(uint gpio, uint32_t events) {
   if (!s_instance || gpio != SPI_TRANSPORT_ENABLE_PIN) return;
   if ((events & GPIO_IRQ_EDGE_FALL) &&
-      dma_channel_is_busy(s_instance->m_dmaChannel)) {
+      (dma_channel_is_busy(s_instance->m_dmaChannel) ||
+       s_instance->isLoopback())) {
     s_instance->m_resyncPending = true;
   }
 }
