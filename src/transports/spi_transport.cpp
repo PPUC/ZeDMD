@@ -20,13 +20,19 @@ bool SpiTransport::init() {
   dmdreader_loopback_init(buffers[0], buffers[1], m_color);
 
   pinMode(SPI_TRANSPORT_ENABLE_PIN, INPUT_PULLDOWN);
+  pinMode(SPI_TRANSPORT_CS_PIN, INPUT_PULLDOWN);
   pinMode(SPI_TRANSPORT_CLK_PIN, INPUT);
   pinMode(SPI_TRANSPORT_DATA_PIN, INPUT);
 
+  gpio_acknowledge_irq(SPI_TRANSPORT_CS_PIN, GPIO_IRQ_EDGE_FALL);
+  gpio_set_irq_enabled_with_callback(SPI_TRANSPORT_CS_PIN, GPIO_IRQ_EDGE_FALL,
+                                     true, &SpiTransport::gpioIrqHandler);
+
+  // Backward compatibibilty to the the early SPI board prototypes.
   gpio_acknowledge_irq(SPI_TRANSPORT_ENABLE_PIN, GPIO_IRQ_EDGE_FALL);
-  gpio_set_irq_enabled_with_callback(SPI_TRANSPORT_ENABLE_PIN,
-                                     GPIO_IRQ_EDGE_FALL, true,
-                                     &SpiTransport::gpioIrqHandler);
+  gpio_set_irq_enabled_with_callback(
+      SPI_TRANSPORT_ENABLE_PIN, GPIO_IRQ_EDGE_FALL, true,
+      &SpiTransport::gpioBackwardCompatibleIrqHandler);
 
   dmdreader_error_blink(pio_claim_free_sm_and_add_program_for_gpio_range(
       &zedmd_spi_input_program, &m_pio, &m_stateMachine, &m_programOffset,
@@ -121,10 +127,18 @@ void SpiTransport::ResyncOnEnableLow() {
 }
 
 void SpiTransport::gpioIrqHandler(uint gpio, uint32_t events) {
-  if (!s_instance || gpio != SPI_TRANSPORT_ENABLE_PIN) return;
+  if (!s_instance || gpio != SPI_TRANSPORT_CS_PIN) return;
   if ((events & GPIO_IRQ_EDGE_FALL) &&
       (dma_channel_is_busy(s_instance->m_dmaChannel) ||
        s_instance->isLoopback())) {
+    s_instance->m_resyncPending = true;
+  }
+}
+
+void SpiTransport::gpioBackwardCompatibleIrqHandler(uint gpio,
+                                                    uint32_t events) {
+  if (!s_instance || gpio != SPI_TRANSPORT_ENABLE_PIN) return;
+  if ((events & GPIO_IRQ_EDGE_FALL) && s_instance->isLoopback()) {
     s_instance->m_resyncPending = true;
   }
 }
