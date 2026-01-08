@@ -32,7 +32,7 @@
 #include "transports/wifi_transport.h"
 #endif
 
-#ifdef ARDUINO_ESP32_S3_N16R8
+#ifdef SPEAKER_LIGHTS
 #include <WS2812FX.h>
 #endif
 
@@ -62,11 +62,6 @@
 #include "displays/Esp32LedMatrix.h"
 #endif
 
-#ifdef ARDUINO_ESP32_S3_N16R8
-#define SPEAKER_LIGHTS_LEFT_PIN 9    // Left speaker LED strip
-#define SPEAKER_LIGHTS_RIGHT_PIN 10  // Right speaker LED strip
-#endif
-
 #define LED_CHECK_DELAY 1000  // ms per color
 
 #define RC 0
@@ -74,6 +69,14 @@
 #define BC 2
 
 #ifdef SPEAKER_LIGHTS
+#ifdef ARDUINO_ESP32_S3_N16R8
+#define SPEAKER_LIGHTS_LEFT_PIN 9    // Left speaker LED strip
+#define SPEAKER_LIGHTS_RIGHT_PIN 10  // Right speaker LED strip
+#elif defined(DMDREADER)
+#define SPEAKER_LIGHTS_LEFT_PIN 55   // Left speaker LED strip
+#define SPEAKER_LIGHTS_RIGHT_PIN 56  // Right speaker LED strip
+#endif
+
 #define FX_MODE_AMBILIGHT 200
 
 uint8_t speakerLightsLeftNumLeds;
@@ -140,27 +143,27 @@ uint8_t panelMinRefreshRate = 60;
 #ifdef DMDREADER
 bool core_0_initialized = false;
 bool core_1_initialized = false;
-uint8_t loopbackColor = (uint8_t)Color::ORANGE;
+uint8_t loopbackColor = (uint8_t)Color::DMD_ORANGE;
 uint8_t warningShown = 0;
 uint32_t spiStartMs = 0;
 
 const char *ColorString(uint8_t color) {
   switch ((Color)color) {
-    case Color::ORANGE:
+    case Color::DMD_ORANGE:
       return "orange";
-    case Color::RED:
+    case Color::DMD_RED:
       return "red   ";
-    case Color::YELLOW:
+    case Color::DMD_YELLOW:
       return "yellow";
-    case Color::GREEN:
+    case Color::DMD_GREEN:
       return "green ";
-    case Color::BLUE:
+    case Color::DMD_BLUE:
       return "blue  ";
-    case Color::PURPLE:
+    case Color::DMD_PURPLE:
       return "purple";
-    case Color::PINK:
+    case Color::DMD_PINK:
       return "pink  ";
-    case Color::WHITE:
+    case Color::DMD_WHITE:
       return "white ";
     default:
       return nullptr;
@@ -618,7 +621,7 @@ void LoadColor() {
   }
   loopbackColor = f.read();
   if (ColorString(loopbackColor) == nullptr) {
-    loopbackColor = (uint8_t)Color::ORANGE;
+    loopbackColor = (uint8_t)Color::DMD_ORANGE;
     SaveColor();
   }
   f.close();
@@ -646,14 +649,14 @@ void SaveSpeakerLightsSettings() {
   f.write(speakerLightsRightMode);
   f.close();
   f = LittleFS.open("/speaker_lights_left_color.val", "w");
-  f.write(speakerLightsLeftColor && 0xFF);
-  f.write((speakerLightsLeftColor >> 8) && 0xFF);
-  f.write((speakerLightsLeftColor >> 16) && 0xFF);
+  f.write(speakerLightsLeftColor & 0xFF);
+  f.write((speakerLightsLeftColor >> 8) & 0xFF);
+  f.write((speakerLightsLeftColor >> 16) & 0xFF);
   f.close();
   f = LittleFS.open("/speaker_lights_right_color.val", "w");
-  f.write(speakerLightsRightColor);
-  f.write((speakerLightsRightColor >> 8) && 0xFF);
-  f.write((speakerLightsRightColor >> 16) && 0xFF);
+  f.write(speakerLightsRightColor & 0xFF);
+  f.write((speakerLightsRightColor >> 8) & 0xFF);
+  f.write((speakerLightsRightColor >> 16) & 0xFF);
   f.close();
   f = LittleFS.open("/speaker_lights_black_threshold.val", "w");
   f.write(speakerLightsBlackThreshold);
@@ -2145,13 +2148,14 @@ void setup() {
           }
 #ifdef DMDREADER
           case 4: {  // Color
-            if (up && ++loopbackColor > ((uint8_t)Color::WHITE))
-              loopbackColor = ((uint8_t)Color::ORANGE);
+            if (up && ++loopbackColor > ((uint8_t)Color::DMD_WHITE))
+              loopbackColor = ((uint8_t)Color::DMD_ORANGE);
             else if (down &&
                      --loopbackColor >
-                         ((uint8_t)Color::WHITE))  // underflow will result in
-                                                   // 255, set it to WHITE
-              loopbackColor = ((uint8_t)Color::WHITE);
+                         ((uint8_t)
+                              Color::DMD_WHITE))  // underflow will result in
+                                                  // 255, set it to DMD_WHITE
+              loopbackColor = ((uint8_t)Color::DMD_WHITE);
 
             display->DisplayText(ColorString(loopbackColor),
                                  7 * (TOTAL_WIDTH / 128) + (6 * 4),
