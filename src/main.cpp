@@ -249,6 +249,9 @@ static inline void InitRgbLuts() {
 
 uint8_t usbPackageSizeMultiplier = USB_PACKAGE_SIZE / 32;
 uint8_t settingsMenu = 0;
+#ifdef SPEAKER_LIGHTS
+uint8_t speakerLightsMenu = 0;
+#endif
 uint8_t debug = 0;
 
 Transport *transport = nullptr;
@@ -420,6 +423,25 @@ void LoadSettingsMenu() {
   settingsMenu = f.read();
   f.close();
 }
+
+#ifdef SPEAKER_LIGHTS
+void SaveSpeakerLightsMenu() {
+  File f = LittleFS.open("/speaker_lights_menu.val", "w");
+  f.write(speakerLightsMenu);
+  f.close();
+}
+
+void LoadSpeakerLightsMenu() {
+  File f = LittleFS.open("/speaker_lights_menu.val", "r");
+  if (!f) {
+    speakerLightsMenu = 0;
+    SaveSpeakerLightsMenu();
+    return;
+  }
+  speakerLightsMenu = f.read();
+  f.close();
+}
+#endif
 
 void SaveTransport(const uint8_t type = Transport::USB) {
   if (!transport) return;
@@ -774,6 +796,16 @@ void CheckMenuButton() {
     delay(20);
     Restart();
   }
+#ifdef SPEAKER_LIGHTS
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(PICO_BUILD)
+  if (!digitalRead(BACKWARD_BUTTON_PIN)) {
+    speakerLightsMenu = true;
+    SaveSpeakerLightsMenu();
+    delay(20);
+    Restart();
+  }
+#endif
+#endif
 #endif
 }
 
@@ -1089,6 +1121,163 @@ void RefreshSetupScreen() {
   display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
                        (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
 }
+
+#ifdef SPEAKER_LIGHTS
+static void RefreshSpeakerLightsScreen() {
+  display->ClearScreen();
+  display->DisplayText("Speaker Lights", 0, 0, 128, 128, 128);
+}
+
+static void ReinitSpeakerLights() {
+  delete speakerLightsLeft;
+  speakerLightsLeft = nullptr;
+  delete speakerLightsRight;
+  speakerLightsRight = nullptr;
+
+  if (speakerLightsLeftNumLeds > 0) {
+    speakerLightsLeft =
+        new WS2812FX(speakerLightsLeftNumLeds, SPEAKER_LIGHTS_LEFT_PIN,
+                     speakerLightsLeftLedType);
+    speakerLightsLeft->init();
+    speakerLightsLeft->setBrightness(100);
+    speakerLightsLeft->setSpeed(200);
+    speakerLightsLeft->setMode(speakerLightsLeftMode);
+    speakerLightsLeft->setColor(speakerLightsLeftColor);
+    speakerLightsLeft->start();
+  }
+
+  if (speakerLightsRightNumLeds > 0) {
+    speakerLightsRight =
+        new WS2812FX(speakerLightsRightNumLeds, SPEAKER_LIGHTS_RIGHT_PIN,
+                     speakerLightsRightLedType);
+    speakerLightsRight->init();
+    speakerLightsRight->setBrightness(100);
+    speakerLightsRight->setSpeed(200);
+    speakerLightsRight->setMode(speakerLightsRightMode);
+    speakerLightsRight->setColor(speakerLightsRightColor);
+    speakerLightsRight->start();
+  }
+}
+
+static void RenderSpeakerLightsMenuItem(uint8_t position) {
+  const uint16_t labelX = 7 * (TOTAL_WIDTH / 128);
+  const uint16_t labelY = (TOTAL_HEIGHT / 2) - 10;
+  const uint16_t valueY = (TOTAL_HEIGHT / 2) + 4;
+  const uint8_t highlightR = 255;
+  const uint8_t highlightG = 191;
+  const uint8_t highlightB = 0;
+
+  RefreshSpeakerLightsScreen();
+
+  switch (position) {
+    case 1: {  // Exit
+      display->DisplayText("Exit", labelX, valueY, highlightR, highlightG,
+                           highlightB);
+      break;
+    }
+    case 2: {  // Left LEDs
+      display->DisplayText("Left LEDs", labelX, labelY, highlightR, highlightG,
+                           highlightB);
+      DisplayNumber(speakerLightsLeftNumLeds, 3, labelX, valueY, highlightR,
+                    highlightG, highlightB);
+      break;
+    }
+    case 3: {  // Right LEDs
+      display->DisplayText("Right LEDs", labelX, labelY, highlightR, highlightG,
+                           highlightB);
+      DisplayNumber(speakerLightsRightNumLeds, 3, labelX, valueY, highlightR,
+                    highlightG, highlightB);
+      break;
+    }
+    case 4: {  // Left LED type
+      display->DisplayText("Left Type", labelX, labelY, highlightR, highlightG,
+                           highlightB);
+      DisplayNumber(speakerLightsLeftLedType, 3, labelX, valueY, highlightR,
+                    highlightG, highlightB);
+      break;
+    }
+    case 5: {  // Right LED type
+      display->DisplayText("Right Type", labelX, labelY, highlightR, highlightG,
+                           highlightB);
+      DisplayNumber(speakerLightsRightLedType, 3, labelX, valueY, highlightR,
+                    highlightG, highlightB);
+      break;
+    }
+    case 6: {  // Left mode
+      display->DisplayText("Left Mode", labelX, labelY, highlightR, highlightG,
+                           highlightB);
+      DisplayNumber(speakerLightsLeftMode, 3, labelX, valueY, highlightR,
+                    highlightG, highlightB);
+      break;
+    }
+    case 7: {  // Right mode
+      display->DisplayText("Right Mode", labelX, labelY, highlightR, highlightG,
+                           highlightB);
+      DisplayNumber(speakerLightsRightMode, 3, labelX, valueY, highlightR,
+                    highlightG, highlightB);
+      break;
+    }
+    case 8: {  // Left color R
+      display->DisplayText("Left R", labelX, labelY, highlightR, highlightG,
+                           highlightB);
+      DisplayNumber((speakerLightsLeftColor >> 16) & 0xFF, 3, labelX, valueY,
+                    highlightR, highlightG, highlightB);
+      break;
+    }
+    case 9: {  // Left color G
+      display->DisplayText("Left G", labelX, labelY, highlightR, highlightG,
+                           highlightB);
+      DisplayNumber((speakerLightsLeftColor >> 8) & 0xFF, 3, labelX, valueY,
+                    highlightR, highlightG, highlightB);
+      break;
+    }
+    case 10: {  // Left color B
+      display->DisplayText("Left B", labelX, labelY, highlightR, highlightG,
+                           highlightB);
+      DisplayNumber(speakerLightsLeftColor & 0xFF, 3, labelX, valueY,
+                    highlightR, highlightG, highlightB);
+      break;
+    }
+    case 11: {  // Right color R
+      display->DisplayText("Right R", labelX, labelY, highlightR, highlightG,
+                           highlightB);
+      DisplayNumber((speakerLightsRightColor >> 16) & 0xFF, 3, labelX, valueY,
+                    highlightR, highlightG, highlightB);
+      break;
+    }
+    case 12: {  // Right color G
+      display->DisplayText("Right G", labelX, labelY, highlightR, highlightG,
+                           highlightB);
+      DisplayNumber((speakerLightsRightColor >> 8) & 0xFF, 3, labelX, valueY,
+                    highlightR, highlightG, highlightB);
+      break;
+    }
+    case 13: {  // Right color B
+      display->DisplayText("Right B", labelX, labelY, highlightR, highlightG,
+                           highlightB);
+      DisplayNumber(speakerLightsRightColor & 0xFF, 3, labelX, valueY,
+                    highlightR, highlightG, highlightB);
+      break;
+    }
+    case 14: {  // Black threshold
+      display->DisplayText("Black Thr", labelX, labelY, highlightR, highlightG,
+                           highlightB);
+      DisplayNumber(speakerLightsBlackThreshold, 3, labelX, valueY, highlightR,
+                    highlightG, highlightB);
+      break;
+    }
+    case 15: {  // Gamma factor
+      display->DisplayText("Gamma", labelX, labelY, highlightR, highlightG,
+                           highlightB);
+      DisplayNumber(speakerLightsGammaFactor, 3, labelX, valueY, highlightR,
+                    highlightG, highlightB);
+      break;
+    }
+    default:
+      break;
+  }
+}
+#endif
 
 uint8_t HandleData(uint8_t *pData, size_t len) {
   uint16_t pos = 0;
@@ -1884,6 +2073,9 @@ void setup() {
   bool fileSystemOK;
   if ((fileSystemOK = LittleFS.begin())) {
     LoadSettingsMenu();
+#ifdef SPEAKER_LIGHTS
+    LoadSpeakerLightsMenu();
+#endif
     LoadTransport();
 
 #ifdef DMDREADER
@@ -1986,6 +2178,321 @@ void setup() {
   }
 
 #ifndef DISPLAY_RM67162_AMOLED
+#ifdef SPEAKER_LIGHTS
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(PICO_BUILD)
+  if (speakerLightsMenu) {
+    speakerLightsMenu = false;
+    SaveSpeakerLightsMenu();
+
+    const auto forwardButton = new Bounce2::Button();
+    forwardButton->attach(FORWARD_BUTTON_PIN, INPUT_PULLUP);
+    forwardButton->interval(100);
+    forwardButton->setPressedState(LOW);
+
+    const auto backwardButton = new Bounce2::Button();
+    backwardButton->attach(BACKWARD_BUTTON_PIN, INPUT_PULLUP);
+    backwardButton->interval(100);
+    backwardButton->setPressedState(LOW);
+
+    const auto upButton = new Bounce2::Button();
+    upButton->attach(UP_BUTTON_PIN, INPUT_PULLUP);
+    upButton->interval(100);
+    upButton->setPressedState(LOW);
+
+    const auto downButton = new Bounce2::Button();
+    downButton->attach(DOWN_BUTTON_PIN, INPUT_PULLUP);
+    downButton->interval(100);
+    downButton->setPressedState(LOW);
+
+    const uint8_t menuItemsCount = 15;
+    uint8_t position = 1;
+    bool firstMenuRendering = true;
+    RenderSpeakerLightsMenuItem(position);
+    while (1) {
+      forwardButton->update();
+      const bool forward = forwardButton->pressed();
+      backwardButton->update();
+      const bool backward = backwardButton->pressed();
+      bool buttonPressed = forward || backward;
+      if (buttonPressed) {
+        if (forward && ++position > menuItemsCount)
+          position = 1;
+        else if (backward && --position < 1)
+          position = menuItemsCount;
+
+        RenderSpeakerLightsMenuItem(position);
+      }
+
+      upButton->update();
+      const bool up = upButton->pressed();
+      downButton->update();
+      const bool down = downButton->pressed();
+      if (up || down) {
+        switch (position) {
+          case 1: {  // Exit
+            Restart();
+            break;
+          }
+          case 2: {  // Left LEDs
+            if (up) {
+              if (speakerLightsLeftNumLeds == 255)
+                speakerLightsLeftNumLeds = 0;
+              else
+                speakerLightsLeftNumLeds++;
+            } else {
+              if (speakerLightsLeftNumLeds == 0)
+                speakerLightsLeftNumLeds = 255;
+              else
+                speakerLightsLeftNumLeds--;
+            }
+            ReinitSpeakerLights();
+            SaveSpeakerLightsSettings();
+            break;
+          }
+          case 3: {  // Right LEDs
+            if (up) {
+              if (speakerLightsRightNumLeds == 255)
+                speakerLightsRightNumLeds = 0;
+              else
+                speakerLightsRightNumLeds++;
+            } else {
+              if (speakerLightsRightNumLeds == 0)
+                speakerLightsRightNumLeds = 255;
+              else
+                speakerLightsRightNumLeds--;
+            }
+            ReinitSpeakerLights();
+            SaveSpeakerLightsSettings();
+            break;
+          }
+          case 4: {  // Left LED type
+            if (up) {
+              if (speakerLightsLeftLedType == 255)
+                speakerLightsLeftLedType = 0;
+              else
+                speakerLightsLeftLedType++;
+            } else {
+              if (speakerLightsLeftLedType == 0)
+                speakerLightsLeftLedType = 255;
+              else
+                speakerLightsLeftLedType--;
+            }
+            ReinitSpeakerLights();
+            SaveSpeakerLightsSettings();
+            break;
+          }
+          case 5: {  // Right LED type
+            if (up) {
+              if (speakerLightsRightLedType == 255)
+                speakerLightsRightLedType = 0;
+              else
+                speakerLightsRightLedType++;
+            } else {
+              if (speakerLightsRightLedType == 0)
+                speakerLightsRightLedType = 255;
+              else
+                speakerLightsRightLedType--;
+            }
+            ReinitSpeakerLights();
+            SaveSpeakerLightsSettings();
+            break;
+          }
+          case 6: {  // Left mode
+            if (up && ++speakerLightsLeftMode > FX_MODE_AMBILIGHT)
+              speakerLightsLeftMode = 0;
+            else if (down && speakerLightsLeftMode == 0)
+              speakerLightsLeftMode = FX_MODE_AMBILIGHT;
+            else if (down)
+              speakerLightsLeftMode--;
+            if (speakerLightsLeftNumLeds > 0 && speakerLightsLeft) {
+              speakerLightsLeft->setMode(speakerLightsLeftMode);
+            }
+            SaveSpeakerLightsSettings();
+            break;
+          }
+          case 7: {  // Right mode
+            if (up && ++speakerLightsRightMode > FX_MODE_AMBILIGHT)
+              speakerLightsRightMode = 0;
+            else if (down && speakerLightsRightMode == 0)
+              speakerLightsRightMode = FX_MODE_AMBILIGHT;
+            else if (down)
+              speakerLightsRightMode--;
+            if (speakerLightsRightNumLeds > 0 && speakerLightsRight) {
+              speakerLightsRight->setMode(speakerLightsRightMode);
+            }
+            SaveSpeakerLightsSettings();
+            break;
+          }
+          case 8: {  // Left color R
+            uint8_t r = (speakerLightsLeftColor >> 16) & 0xFF;
+            if (up) {
+              if (r == 255)
+                r = 0;
+              else
+                r++;
+            } else {
+              if (r == 0)
+                r = 255;
+              else
+                r--;
+            }
+            speakerLightsLeftColor = (static_cast<uint32_t>(r) << 16) |
+                                     (speakerLightsLeftColor & 0x00FFFF);
+            if (speakerLightsLeftNumLeds > 0 && speakerLightsLeft) {
+              speakerLightsLeft->setColor(speakerLightsLeftColor);
+            }
+            SaveSpeakerLightsSettings();
+            break;
+          }
+          case 9: {  // Left color G
+            uint8_t g = (speakerLightsLeftColor >> 8) & 0xFF;
+            if (up) {
+              if (g == 255)
+                g = 0;
+              else
+                g++;
+            } else {
+              if (g == 0)
+                g = 255;
+              else
+                g--;
+            }
+            speakerLightsLeftColor = (speakerLightsLeftColor & 0xFF00FF) |
+                                     (static_cast<uint32_t>(g) << 8);
+            if (speakerLightsLeftNumLeds > 0 && speakerLightsLeft) {
+              speakerLightsLeft->setColor(speakerLightsLeftColor);
+            }
+            SaveSpeakerLightsSettings();
+            break;
+          }
+          case 10: {  // Left color B
+            uint8_t b = speakerLightsLeftColor & 0xFF;
+            if (up) {
+              if (b == 255)
+                b = 0;
+              else
+                b++;
+            } else {
+              if (b == 0)
+                b = 255;
+              else
+                b--;
+            }
+            speakerLightsLeftColor = (speakerLightsLeftColor & 0xFFFF00) | b;
+            if (speakerLightsLeftNumLeds > 0 && speakerLightsLeft) {
+              speakerLightsLeft->setColor(speakerLightsLeftColor);
+            }
+            SaveSpeakerLightsSettings();
+            break;
+          }
+          case 11: {  // Right color R
+            uint8_t r = (speakerLightsRightColor >> 16) & 0xFF;
+            if (up) {
+              if (r == 255)
+                r = 0;
+              else
+                r++;
+            } else {
+              if (r == 0)
+                r = 255;
+              else
+                r--;
+            }
+            speakerLightsRightColor = (static_cast<uint32_t>(r) << 16) |
+                                      (speakerLightsRightColor & 0x00FFFF);
+            if (speakerLightsRightNumLeds > 0 && speakerLightsRight) {
+              speakerLightsRight->setColor(speakerLightsRightColor);
+            }
+            SaveSpeakerLightsSettings();
+            break;
+          }
+          case 12: {  // Right color G
+            uint8_t g = (speakerLightsRightColor >> 8) & 0xFF;
+            if (up) {
+              if (g == 255)
+                g = 0;
+              else
+                g++;
+            } else {
+              if (g == 0)
+                g = 255;
+              else
+                g--;
+            }
+            speakerLightsRightColor = (speakerLightsRightColor & 0xFF00FF) |
+                                      (static_cast<uint32_t>(g) << 8);
+            if (speakerLightsRightNumLeds > 0 && speakerLightsRight) {
+              speakerLightsRight->setColor(speakerLightsRightColor);
+            }
+            SaveSpeakerLightsSettings();
+            break;
+          }
+          case 13: {  // Right color B
+            uint8_t b = speakerLightsRightColor & 0xFF;
+            if (up) {
+              if (b == 255)
+                b = 0;
+              else
+                b++;
+            } else {
+              if (b == 0)
+                b = 255;
+              else
+                b--;
+            }
+            speakerLightsRightColor = (speakerLightsRightColor & 0xFFFF00) | b;
+            if (speakerLightsRightNumLeds > 0 && speakerLightsRight) {
+              speakerLightsRight->setColor(speakerLightsRightColor);
+            }
+            SaveSpeakerLightsSettings();
+            break;
+          }
+          case 14: {  // Black threshold
+            if (up) {
+              if (speakerLightsBlackThreshold == 255)
+                speakerLightsBlackThreshold = 0;
+              else
+                speakerLightsBlackThreshold++;
+            } else {
+              if (speakerLightsBlackThreshold == 0)
+                speakerLightsBlackThreshold = 255;
+              else
+                speakerLightsBlackThreshold--;
+            }
+            SaveSpeakerLightsSettings();
+            break;
+          }
+          case 15: {  // Gamma factor
+            if (up) {
+              if (speakerLightsGammaFactor == 255)
+                speakerLightsGammaFactor = 0;
+              else
+                speakerLightsGammaFactor++;
+            } else {
+              if (speakerLightsGammaFactor == 0)
+                speakerLightsGammaFactor = 255;
+              else
+                speakerLightsGammaFactor--;
+            }
+            SaveSpeakerLightsSettings();
+            break;
+          }
+          default:
+            break;
+        }
+        RenderSpeakerLightsMenuItem(position);
+        buttonPressed = true;
+      }
+
+      if (buttonPressed || firstMenuRendering) {
+        firstMenuRendering = false;
+        display->Render();
+      }
+      delay(1);
+    }
+  }
+#endif
+#endif
   if (settingsMenu) {
     // Turn off settings menu after restart here.
     // Previously, the value has been set when selecting exit.
@@ -2250,7 +2757,7 @@ void setup() {
 #endif
 
   pinMode(FORWARD_BUTTON_PIN, INPUT_PULLUP);
-#ifdef PICO_BUILD
+#if defined(PICO_BUILD) || defined(ARDUINO_ESP32_S3_N16R8)
   // do not leave some pin configured as adc / floating
   pinMode(BACKWARD_BUTTON_PIN, INPUT_PULLUP);
   pinMode(UP_BUTTON_PIN, INPUT_PULLUP);
