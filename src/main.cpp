@@ -2346,9 +2346,9 @@ void loop() {
       *dst++ = Expand5To8[rgb565 & 0x1f];
     }
     Render();
-    if (spiStartMs <= kDmdreaderMaxDataTimeoutMs) {
-      if (spiStartMs == 0) spiStartMs = millis();
-      if (spiStartMs >= kDmdreaderMinDataTimeoutMs) {
+    if (spiStartMs == 0) spiStartMs = millis();
+    if ((millis() - spiStartMs) <= kDmdreaderMaxDataTimeoutMs) {
+      if ((millis() - spiStartMs) >= kDmdreaderMinDataTimeoutMs) {
         warningCount++;
       }
     }
@@ -2366,7 +2366,7 @@ void loop() {
       }
       Render();
     }
-  } else if (spiStartMs >= kDmdreaderMaxDataTimeoutMs && warningCheck == 0) {
+  } else if ((millis() - spiStartMs) >= kDmdreaderMaxDataTimeoutMs && warningCheck == 0) {
     warningCheck = 1;
     if (warningCount < 2) DrawDmdreaderNoDataWarning();
   }
