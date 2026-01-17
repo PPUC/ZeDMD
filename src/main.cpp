@@ -2351,6 +2351,7 @@ void loop() {
       if (spiStartMs >= kDmdreaderMinDataTimeoutMs) {
         warningCount++;
       }
+    }
   } else if (transport->isLoopback()) {
     uint8_t *buffer = dmdreader_loopback_render();
     if (buffer != nullptr) {
@@ -2368,7 +2369,6 @@ void loop() {
   } else if (spiStartMs >= kDmdreaderMaxDataTimeoutMs && warningCheck == 0) {
     warningCheck = 1;
     if (warningCount < 2) DrawDmdreaderNoDataWarning();
-    }
   }
   tight_loop_contents();
 
