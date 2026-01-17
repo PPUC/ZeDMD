@@ -2349,10 +2349,8 @@ void loop() {
     Render();
     if (spiStartMs <= kDmdreaderMaxDataTimeoutMs) {
       if (spiStartMs == 0) spiStartMs = millis();
-      if (spiStartMs <= kDmdreaderMinDataTimeoutMs) {
+      if (spiStartMs >= kDmdreaderMinDataTimeoutMs) {
         warningCount++;
-      } else {
-        warningCount2++;
       }
   } else if (transport->isLoopback()) {
     uint8_t *buffer = dmdreader_loopback_render();
@@ -2368,11 +2366,9 @@ void loop() {
       }
       Render();
     }
-  } else if ((spiStartMs >= kDmdreaderMaxDataTimeoutMs) && warningCheck < 1) {
+  } else if (spiStartMs >= kDmdreaderMaxDataTimeoutMs && warningCheck == 0) {
     warningCheck = 1;
-    if ((warningCount - warningCount2) >= 2) {
-      DrawDmdreaderNoDataWarning();
-    }
+    if (warningCount < 1) DrawDmdreaderNoDataWarning();
   }
   tight_loop_contents();
 
