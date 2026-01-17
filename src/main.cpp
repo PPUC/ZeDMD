@@ -144,7 +144,8 @@ uint8_t panelMinRefreshRate = 60;
 bool core_0_initialized = false;
 bool core_1_initialized = false;
 uint8_t loopbackColor = (uint8_t)Color::DMD_ORANGE;
-uint8_t warningShown = 0;
+uint8_t warningCheck = 0;
+uint8_t warningCount = 0;
 uint32_t spiStartMs = 0;
 
 const char *ColorString(uint8_t color) {
@@ -198,7 +199,8 @@ static void Scale2xLoopback(const uint8_t *src, uint8_t *dst, uint16_t srcWidth,
   }
 }
 
-constexpr uint32_t kDmdreaderNoDataTimeoutMs = 20000;
+constexpr uint32_t kDmdreaderMinDataTimeoutMs = 10000;
+constexpr uint32_t kDmdreaderMaxDataTimeoutMs = 20000;
 static const char *kDmdreaderNoDataLines[] = {
     "The colorization module is not", "sending anything. Check if the",
     "serum.cROMc file is the right", "one for your game, the ROM",
@@ -2344,7 +2346,12 @@ void loop() {
       *dst++ = Expand5To8[rgb565 & 0x1f];
     }
     Render();
-    if (warningShown < 30) warningShown++;
+    if (spiStartMs == 0) spiStartMs = millis();
+    if ((millis() - spiStartMs) <= kDmdreaderMaxDataTimeoutMs) {
+      if ((millis() - spiStartMs) >= kDmdreaderMinDataTimeoutMs) {
+        warningCount++;
+      }
+    }
   } else if (transport->isLoopback()) {
     uint8_t *buffer = dmdreader_loopback_render();
     if (buffer != nullptr) {
@@ -2359,13 +2366,9 @@ void loop() {
       }
       Render();
     }
-  } else if (warningShown < 30) {
-    if (spiStartMs == 0) {
-      spiStartMs = millis();
-    } else if ((millis() - spiStartMs) >= kDmdreaderNoDataTimeoutMs) {
-      DrawDmdreaderNoDataWarning();
-      warningShown = 30;
-    }
+  } else if ((millis() - spiStartMs) >= kDmdreaderMaxDataTimeoutMs && warningCheck == 0) {
+    warningCheck = 1;
+    if (warningCount < 2) DrawDmdreaderNoDataWarning();
   }
   tight_loop_contents();
 
