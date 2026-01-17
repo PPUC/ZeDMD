@@ -146,7 +146,6 @@ bool core_1_initialized = false;
 uint8_t loopbackColor = (uint8_t)Color::DMD_ORANGE;
 uint8_t warningCheck = 0;
 uint8_t warningCount = 0;
-uint8_t warningCount2 = 0;
 uint32_t spiStartMs = 0;
 
 const char *ColorString(uint8_t color) {
