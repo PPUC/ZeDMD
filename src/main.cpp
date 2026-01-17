@@ -2368,6 +2368,7 @@ void loop() {
   } else if (spiStartMs >= kDmdreaderMaxDataTimeoutMs && warningCheck == 0) {
     warningCheck = 1;
     if (warningCount < 2) DrawDmdreaderNoDataWarning();
+    }
   }
   tight_loop_contents();
 
