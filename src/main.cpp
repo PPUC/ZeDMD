@@ -199,8 +199,8 @@ static void Scale2xLoopback(const uint8_t *src, uint8_t *dst, uint16_t srcWidth,
   }
 }
 
-constexpr uint32_t kDmdreaderMinDataTimeoutMs = 15000;
-constexpr uint32_t kDmdreaderMaxDataTimeoutMs = 30000;
+constexpr uint32_t kDmdreaderMinDataTimeoutMs = 10000;
+constexpr uint32_t kDmdreaderMaxDataTimeoutMs = 20000;
 static const char *kDmdreaderNoDataLines[] = {
     "The colorization module is not", "sending anything. Check if the",
     "serum.cROMc file is the right", "one for your game, the ROM",
