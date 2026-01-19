@@ -2367,10 +2367,10 @@ void loop() {
       }
       Render();
     }
-  } else if ((millis() - spiStartMs) >= kDmdreaderMaxDataTimeoutMs &&
-              warningCheck == 0) {
-    if (warningCount < 2) DrawDmdreaderNoDataWarning();
-    warningCheck = 1;
+  } else if (warningCheck == 0 && spiStartMs != 0) {
+    if ((millis() - spiStartMs) >= kDmdreaderMaxDataTimeoutMs)
+      if (warningCount < 2) DrawDmdreaderNoDataWarning();
+      warningCheck = 1;
   }
   tight_loop_contents();
 
