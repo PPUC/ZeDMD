@@ -2346,10 +2346,12 @@ void loop() {
       *dst++ = Expand5To8[rgb565 & 0x1f];
     }
     Render();
-    if (spiStartMs == 0) spiStartMs = millis();
-    if ((millis() - spiStartMs) <= kDmdreaderMaxDataTimeoutMs &&
-        (millis() - spiStartMs) >= kDmdreaderMinDataTimeoutMs) {
-      warningCount++;
+    if (warningCheck == 0) {
+      if (spiStartMs == 0) spiStartMs = millis();
+      if ((millis() - spiStartMs) <= kDmdreaderMaxDataTimeoutMs &&
+          (millis() - spiStartMs) >= kDmdreaderMinDataTimeoutMs) {
+        warningCount++;
+      }
     }
   } else if (transport->isLoopback()) {
     uint8_t *buffer = dmdreader_loopback_render();
