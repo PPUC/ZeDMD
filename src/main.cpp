@@ -2347,10 +2347,9 @@ void loop() {
     }
     Render();
     if (spiStartMs == 0) spiStartMs = millis();
-    if ((millis() - spiStartMs) <= kDmdreaderMaxDataTimeoutMs) {
-      if ((millis() - spiStartMs) >= kDmdreaderMinDataTimeoutMs) {
-        warningCount++;
-      }
+    if ((millis() - spiStartMs) <= kDmdreaderMaxDataTimeoutMs &&
+        (millis() - spiStartMs) >= kDmdreaderMinDataTimeoutMs) {
+      warningCount++;
     }
   } else if (transport->isLoopback()) {
     uint8_t *buffer = dmdreader_loopback_render();
