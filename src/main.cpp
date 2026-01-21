@@ -2347,9 +2347,10 @@ void loop() {
     }
     Render();
     if (warningCheck == 0) {
-      if (spiStartMs == 0) spiStartMs = millis();
-      if ((millis() - spiStartMs) <= kDmdreaderMaxDataTimeoutMs &&
-          (millis() - spiStartMs) >= kDmdreaderMinDataTimeoutMs) {
+      if (spiStartMs == 0) {
+        spiStartMs = millis();
+      } else if ((millis() - spiStartMs) <= kDmdreaderMaxDataTimeoutMs &&
+                 (millis() - spiStartMs) >= kDmdreaderMinDataTimeoutMs) {
         warningCount++;
       }
     }
