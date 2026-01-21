@@ -2369,9 +2369,10 @@ void loop() {
       Render();
     }
   } else if (warningCheck == 0 && spiStartMs != 0) {
-    if ((millis() - spiStartMs) >= kDmdreaderMaxDataTimeoutMs)
-      if (warningCount < 2) DrawDmdreaderNoDataWarning();
+    if ((millis() - spiStartMs) >= kDmdreaderMaxDataTimeoutMs) {
       warningCheck = 1;
+      if (warningCount < 2) DrawDmdreaderNoDataWarning();
+    }
   }
   tight_loop_contents();
 
