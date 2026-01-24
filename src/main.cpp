@@ -144,7 +144,7 @@ uint8_t panelMinRefreshRate = 60;
 bool core_0_initialized = false;
 bool core_1_initialized = false;
 uint8_t loopbackColor = (uint8_t)Color::DMD_ORANGE;
-uint8_t warningCheck = 0;
+bool warningCheck = false;
 uint8_t warningCount = 0;
 uint32_t spiStartMs = 0;
 
@@ -2346,7 +2346,7 @@ void loop() {
       *dst++ = Expand5To8[rgb565 & 0x1f];
     }
     Render();
-    if (warningCheck == 0) {
+    if (!warningCheck) {
       if (spiStartMs == 0) {
         spiStartMs = millis();
       } else if ((millis() - spiStartMs) <= kDmdreaderMaxDataTimeoutMs &&
@@ -2368,9 +2368,9 @@ void loop() {
       }
       Render();
     }
-  } else if (warningCheck == 0 && spiStartMs != 0) {
+  } else if (!warningCheck && spiStartMs != 0) {
     if ((millis() - spiStartMs) >= kDmdreaderMaxDataTimeoutMs) {
-      warningCheck = 1;
+      warningCheck = true;
       if (warningCount < 2) DrawDmdreaderNoDataWarning();
     }
   }
