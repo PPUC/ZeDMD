@@ -32,7 +32,7 @@
 #include "transports/wifi_transport.h"
 #endif
 
-#ifdef ARDUINO_ESP32_S3_N16R8
+#ifdef SPEAKER_LIGHTS
 #include <WS2812FX.h>
 #endif
 
@@ -62,11 +62,6 @@
 #include "displays/Esp32LedMatrix.h"
 #endif
 
-#ifdef ARDUINO_ESP32_S3_N16R8
-#define SPEAKER_LIGHTS_LEFT_PIN 9    // Left speaker LED strip
-#define SPEAKER_LIGHTS_RIGHT_PIN 10  // Right speaker LED strip
-#endif
-
 #define LED_CHECK_DELAY 1000  // ms per color
 
 #define RC 0
@@ -74,6 +69,14 @@
 #define BC 2
 
 #ifdef SPEAKER_LIGHTS
+#ifdef ARDUINO_ESP32_S3_N16R8
+#define SPEAKER_LIGHTS_LEFT_PIN 9    // Left speaker LED strip
+#define SPEAKER_LIGHTS_RIGHT_PIN 10  // Right speaker LED strip
+#elif defined(DMDREADER)
+#define SPEAKER_LIGHTS_LEFT_PIN 55   // Left speaker LED strip
+#define SPEAKER_LIGHTS_RIGHT_PIN 56  // Right speaker LED strip
+#endif
+
 #define FX_MODE_AMBILIGHT 200
 
 uint8_t speakerLightsLeftNumLeds;
@@ -105,8 +108,10 @@ uint8_t *buffers[NUM_BUFFERS];
 mz_ulong bufferSizes[NUM_BUFFERS] __attribute__((aligned(4))) = {0};
 bool bufferCompressed[NUM_BUFFERS] __attribute__((aligned(4))) = {0};
 
+#ifndef DMDREADER
 // The uncompress buffer should be big enough
 uint8_t uncompressBuffer[2048] __attribute__((aligned(4)));
+#endif
 uint8_t *renderBuffer[NUM_RENDER_BUFFERS];
 uint8_t currentRenderBuffer __attribute__((aligned(4)));
 uint8_t lastRenderBuffer __attribute__((aligned(4)));
@@ -138,25 +143,27 @@ uint8_t panelMinRefreshRate = 60;
 #ifdef DMDREADER
 bool core_0_initialized = false;
 bool core_1_initialized = false;
-uint8_t loopbackColor = (uint8_t)Color::ORANGE;
+uint8_t loopbackColor = (uint8_t)Color::DMD_ORANGE;
+uint8_t warningShown = 0;
+uint32_t spiStartMs = 0;
 
 const char *ColorString(uint8_t color) {
   switch ((Color)color) {
-    case Color::ORANGE:
+    case Color::DMD_ORANGE:
       return "orange";
-    case Color::RED:
+    case Color::DMD_RED:
       return "red   ";
-    case Color::YELLOW:
+    case Color::DMD_YELLOW:
       return "yellow";
-    case Color::GREEN:
+    case Color::DMD_GREEN:
       return "green ";
-    case Color::BLUE:
+    case Color::DMD_BLUE:
       return "blue  ";
-    case Color::PURPLE:
+    case Color::DMD_PURPLE:
       return "purple";
-    case Color::PINK:
+    case Color::DMD_PINK:
       return "pink  ";
-    case Color::WHITE:
+    case Color::DMD_WHITE:
       return "white ";
     default:
       return nullptr;
@@ -189,6 +196,29 @@ static void Scale2xLoopback(const uint8_t *src, uint8_t *dst, uint16_t srcWidth,
       out0[2] = out0[5] = out1[2] = out1[5] = b;
     }
   }
+}
+
+constexpr uint32_t kDmdreaderNoDataTimeoutMs = 20000;
+static const char *kDmdreaderNoDataLines[] = {
+    "The colorization module is not", "sending anything. Check if the",
+    "serum.cROMc file is the right", "one for your game, the ROM",
+    "version and the language."};
+
+static void DrawDmdreaderNoDataWarning() {
+  display->ClearScreen();
+
+  const uint8_t lineHeight = 6;
+  const uint8_t totalLines =
+      sizeof(kDmdreaderNoDataLines) / sizeof(kDmdreaderNoDataLines[0]);
+  const uint8_t maxLines = TOTAL_HEIGHT / lineHeight;
+  const uint8_t linesToShow = (totalLines < maxLines) ? totalLines : maxLines;
+
+  for (uint8_t i = 0; i < linesToShow; ++i) {
+    display->DisplayText(kDmdreaderNoDataLines[i], 0, i * lineHeight, 255, 0,
+                         0);
+  }
+
+  display->Render();
 }
 #endif
 
@@ -591,7 +621,7 @@ void LoadColor() {
   }
   loopbackColor = f.read();
   if (ColorString(loopbackColor) == nullptr) {
-    loopbackColor = (uint8_t)Color::ORANGE;
+    loopbackColor = (uint8_t)Color::DMD_ORANGE;
     SaveColor();
   }
   f.close();
@@ -619,14 +649,14 @@ void SaveSpeakerLightsSettings() {
   f.write(speakerLightsRightMode);
   f.close();
   f = LittleFS.open("/speaker_lights_left_color.val", "w");
-  f.write(speakerLightsLeftColor && 0xFF);
-  f.write((speakerLightsLeftColor >> 8) && 0xFF);
-  f.write((speakerLightsLeftColor >> 16) && 0xFF);
+  f.write(speakerLightsLeftColor & 0xFF);
+  f.write((speakerLightsLeftColor >> 8) & 0xFF);
+  f.write((speakerLightsLeftColor >> 16) & 0xFF);
   f.close();
   f = LittleFS.open("/speaker_lights_right_color.val", "w");
-  f.write(speakerLightsRightColor);
-  f.write((speakerLightsRightColor >> 8) && 0xFF);
-  f.write((speakerLightsRightColor >> 16) && 0xFF);
+  f.write(speakerLightsRightColor & 0xFF);
+  f.write((speakerLightsRightColor >> 8) & 0xFF);
+  f.write((speakerLightsRightColor >> 16) & 0xFF);
   f.close();
   f = LittleFS.open("/speaker_lights_black_threshold.val", "w");
   f.write(speakerLightsBlackThreshold);
@@ -907,6 +937,15 @@ void ClearScreen() {
     lastRenderBuffer = currentRenderBuffer;
     currentRenderBuffer = (currentRenderBuffer + 1) % NUM_RENDER_BUFFERS;
   }
+
+#ifdef SPEAKER_LIGHTS
+  if (FX_MODE_AMBILIGHT == speakerLightsLeftMode) {
+    speakerLightsLeft->setColor(0);  // All black → Turn off LEDs
+  }
+  if (FX_MODE_AMBILIGHT == speakerLightsRightMode) {
+    speakerLightsRight->setColor(0);  // All black → Turn off LEDs
+  }
+#endif
 }
 
 void DisplayLogo() {
@@ -1759,7 +1798,8 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
           }
 
           case 6: {  // Render
-#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
+#if (defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)) || \
+    defined(PICO_BUILD)
             AcquireNextBuffer();
             bufferCompressed[currentBuffer] = false;
             bufferSizes[currentBuffer] = 2;
@@ -2108,13 +2148,14 @@ void setup() {
           }
 #ifdef DMDREADER
           case 4: {  // Color
-            if (up && ++loopbackColor > ((uint8_t)Color::WHITE))
-              loopbackColor = ((uint8_t)Color::ORANGE);
+            if (up && ++loopbackColor > ((uint8_t)Color::DMD_WHITE))
+              loopbackColor = ((uint8_t)Color::DMD_ORANGE);
             else if (down &&
                      --loopbackColor >
-                         ((uint8_t)Color::WHITE))  // underflow will result in
-                                                   // 255, set it to WHITE
-              loopbackColor = ((uint8_t)Color::WHITE);
+                         ((uint8_t)
+                              Color::DMD_WHITE))  // underflow will result in
+                                                  // 255, set it to DMD_WHITE
+              loopbackColor = ((uint8_t)Color::DMD_WHITE);
 
             display->DisplayText(ColorString(loopbackColor),
                                  7 * (TOTAL_WIDTH / 128) + (6 * 4),
@@ -2289,8 +2330,8 @@ void loop() {
     return;
   }
 
-  if (static_cast<SpiTransport *>(transport)->ProcessEnablePinEvents()) {
-    auto *spiTransport = static_cast<SpiTransport *>(transport);
+  auto *spiTransport = static_cast<SpiTransport *>(transport);
+  if (spiTransport->GetFrameReceived()) {
     const uint16_t *src =
         reinterpret_cast<const uint16_t *>(spiTransport->GetDataBuffer());
     uint8_t *dst = renderBuffer[currentRenderBuffer];
@@ -2303,6 +2344,7 @@ void loop() {
       *dst++ = Expand5To8[rgb565 & 0x1f];
     }
     Render();
+    if (warningShown < 30) warningShown++;
   } else if (transport->isLoopback()) {
     uint8_t *buffer = dmdreader_loopback_render();
     if (buffer != nullptr) {
@@ -2317,8 +2359,14 @@ void loop() {
       }
       Render();
     }
+  } else if (warningShown < 30) {
+    if (spiStartMs == 0) {
+      spiStartMs = millis();
+    } else if ((millis() - spiStartMs) >= kDmdreaderNoDataTimeoutMs) {
+      DrawDmdreaderNoDataWarning();
+      warningShown = 30;
+    }
   }
-
   tight_loop_contents();
 
 #else
@@ -2418,9 +2466,7 @@ void loop() {
       if (2 == bufferSizes[processingBuffer] &&
           255 == buffers[processingBuffer][0] &&
           255 == buffers[processingBuffer][1]) {
-#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
         Render();
-#endif
       } else if (2 == bufferSizes[processingBuffer] &&
                  0 == buffers[processingBuffer][0] &&
                  0 == buffers[processingBuffer][1]) {
@@ -2457,7 +2503,8 @@ void loop() {
         uint16_t uncompressedBufferPosition = 0;
         while (uncompressedBufferPosition < uncompressedBufferSize) {
           if (uncompressBuffer[uncompressedBufferPosition] >= 128) {
-#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
+#if (defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)) || \
+    defined(PICO_BUILD)
             const uint8_t idx =
                 uncompressBuffer[uncompressedBufferPosition++] - 128;
             const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
@@ -2472,7 +2519,8 @@ void loop() {
                                128);
 #endif
           } else {
-#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
+#if (defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)) || \
+    defined(PICO_BUILD)
             uint8_t idx = uncompressBuffer[uncompressedBufferPosition++];
             const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
             const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;

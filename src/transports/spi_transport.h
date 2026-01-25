@@ -7,6 +7,7 @@
 #ifdef DMDREADER
 #include <dmdreader.h>
 
+#include "hardware/dma.h"
 #include "hardware/pio.h"
 #endif
 #include "main.h"
@@ -29,35 +30,27 @@ class SpiTransport final : public Transport {
 #ifdef DMDREADER
   void initDmdReader();
   void SetColor(Color color);
-  bool ProcessEnablePinEvents();
-  uint8_t* GetDataBuffer() { return m_dataBuffer; }
+  void SetFrameReceived() { m_frameReceived = true; }
+  bool GetFrameReceived();
+  uint8_t* GetDataBuffer();
 
  private:
   void initPio();
-  void enableSpiStateMachine();
-  void disableSpiStateMachine();
-  void resetStateMachine();
-  void startDma();
-  bool stopDmaAndFlush();
-  void switchToSpiMode();
-  bool onEnableRise();
-  void onEnableFall();
-  static void gpio_irq_handler(uint gpio, uint32_t events);
+  void SetAndEnableNewDmaTarget();
+  static void dmaHandler();
 
   static SpiTransport* s_instance;
+  static constexpr uint kSpiDmaIrqIndex = 2;
+  static constexpr uint kSpiDmaIrq = DMA_IRQ_2;
 
   PIO m_pio;
   uint m_stateMachine;
   uint m_programOffset;
   uint m_dmaChannel;
-  bool m_spiEnabled = false;
-  bool m_transferActive = false;
-  bool m_dmaRunning = false;
-  uint8_t* m_rxBuffer;
-  uint8_t* m_dataBuffer;
-  Color m_color = Color::ORANGE;
-  volatile bool m_enableRisePending = false;
-  volatile bool m_enableFallPending = false;
+  dma_channel_config m_dmaChannelConfig;
+  uint8_t m_rxBuffer;
+  Color m_color = Color::DMD_ORANGE;
+  volatile bool m_frameReceived = false;
 #endif
 };
 

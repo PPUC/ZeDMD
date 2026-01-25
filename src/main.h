@@ -14,11 +14,19 @@
 #define N_INTERMEDIATE_CTR_CHARS 4
 
 #if defined(DMDREADER)
-#define NUM_BUFFERS 2  // Number of buffers
+#ifdef ZEDMD_HD
+#define NUM_BUFFERS 4  // Number of buffers
+#else
+#define NUM_BUFFERS 4  // Number of buffers
+#endif
 #define NUM_RENDER_BUFFERS 1
 #define BUFFER_SIZE TOTAL_BYTES
 #elif defined(PICO_BUILD)
-#define NUM_BUFFERS 12  // Number of buffers
+#if PICO_RP2350
+#define NUM_BUFFERS 128  // Number of buffers
+#else
+#define NUM_BUFFERS 64  // Number of buffers
+#endif
 #define NUM_RENDER_BUFFERS 1
 #define BUFFER_SIZE 1152
 #elif defined(DISPLAY_RM67162_AMOLED)
