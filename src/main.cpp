@@ -575,7 +575,7 @@ void LoadUsbPackageSizeMultiplier() {
 #ifdef ZEDMD_HD_HALF
 void SaveYOffset() {
   File f = LittleFS.open("/y_offset.val", "w");
-  f.write(yOffset);
+  f.write(static_cast<uint8_t>(yOffset));
   f.close();
 }
 
@@ -585,7 +585,7 @@ void LoadYOffset() {
     SaveYOffset();
     return;
   }
-  yOffset = f.read();
+  yOffset = static_cast<int8_t>(f.read());
   f.close();
 }
 #endif
@@ -2594,4 +2594,5 @@ void loop1() {
     delay(1);
   }
 }
+
 #endif
