@@ -23,7 +23,7 @@ PicoLedMatrix::PicoLedMatrix() {
   // rgb565 > rgb888 "fast" pixel conversion
   init_rgb_tables();
 
-  create_hub75_driver(TOTAL_WIDTH, PANEL_HEIGHT, PANEL_RUL6024, false);
+  create_hub75_driver(TOTAL_WIDTH, PANEL_HEIGHT, PANEL_DP3246, false);
   start_hub75_driver();
 }
 
