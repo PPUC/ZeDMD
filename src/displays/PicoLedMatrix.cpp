@@ -76,7 +76,7 @@ void PicoLedMatrix::ClearScreen() { s_hub75->clear(); }
 
 void PicoLedMatrix::SetBrightness(const uint8_t level) {
   // TODO: verify this (compare with an "esp board") ?
-  const auto b = static_cast<uint8_t>(static_cast<float>(level) * 1.0f);
+  const auto b = static_cast<uint8_t>(static_cast<float>(level) * 0.7f);
   s_hub75->brightness = b;
 }
 
