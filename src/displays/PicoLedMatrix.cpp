@@ -75,9 +75,7 @@ void IRAM_ATTR PicoLedMatrix::DrawPixel(const uint16_t x, const uint16_t y,
 void PicoLedMatrix::ClearScreen() { s_hub75->clear(); }
 
 void PicoLedMatrix::SetBrightness(const uint8_t level) {
-  // TODO: verify this (compare with an "esp board") ?
-  const auto b = static_cast<uint8_t>(static_cast<float>(level) * 1.5f);
-  s_hub75->brightness = b;
+  s_hub75->brightness = level;
 }
 
 void PicoLedMatrix::Render() { s_hub75->render(); }
