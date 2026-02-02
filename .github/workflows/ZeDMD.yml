@@ -40,7 +40,7 @@ jobs:
     needs: [ version ]
     strategy:
       matrix:
-        panels: ['128x32', '256x64', '128x64', 'S3-N16R8_128x32', 'S3-N16R8_256x64', 'S3-N16R8_128x64', 'LilygoS3Amoled_128x32', 'LilygoS3Amoled_128x32_wifi', 'pico_128x32', 'pico_256x64', 'pico2_128x32', 'pico2_256x64', 'pico2_128x32_ppucdmd', 'pico2_256x64_ppucdmd', 'ppucdmd_128x32', 'ppucdmd_256x64', 'ppucdmd_128x64x2', 'ppucdmd_128x32_speakerlights', 'ppucdmd_256x64_speakerlights']
+        panels: ['128x32', '256x64', '128x64', 'S3-N16R8_128x32', 'S3-N16R8_256x64', 'S3-N16R8_128x64', 'LilygoS3Amoled_128x32', 'LilygoS3Amoled_128x32_wifi', 'pico_128x32', 'pico_256x64', 'pico2_128x32', 'pico2_256x64', 'pico2_128x32_ppucdmd', 'pico2_256x64_ppucdmd', 'ppucdmd_128x32', 'ppucdmd_192x64', 'ppucdmd_256x64', 'ppucdmd_128x64x2', 'ppucdmd_128x32_speakerlights', 'ppucdmd_256x64_speakerlights']
 
     name: ZeDMD ${{ matrix.panels }}
 
@@ -89,7 +89,7 @@ jobs:
             0x650000 .pio/build/${{ matrix.panels }}/littlefs.bin
           cp .pio/build/${{ matrix.panels }}/firmware.elf firmware.elf
 
-      - if: (matrix.panels == 'pico_128x32' || matrix.panels == 'pico_256x64' || matrix.panels == 'pico2_128x32' || matrix.panels == 'pico2_256x64' || matrix.panels == 'pico2_128x32_ppucdmd' || matrix.panels == 'pico2_256x64_ppucdmd' || matrix.panels == 'ppucdmd_128x32' || matrix.panels == 'ppucdmd_256x64' || matrix.panels == 'ppucdmd_128x64x2' || matrix.panels == 'ppucdmd_128x32_speakerlights' || matrix.panels == 'ppucdmd_256x64_speakerlights')
+      - if: (matrix.panels == 'pico_128x32' || matrix.panels == 'pico_256x64' || matrix.panels == 'pico2_128x32' || matrix.panels == 'pico2_256x64' || matrix.panels == 'pico2_128x32_ppucdmd' || matrix.panels == 'pico2_256x64_ppucdmd' || matrix.panels == 'ppucdmd_128x32' || matrix.panels == 'ppucdmd_192x64' || matrix.panels == 'ppucdmd_256x64' || matrix.panels == 'ppucdmd_128x64x2' || matrix.panels == 'ppucdmd_128x32_speakerlights' || matrix.panels == 'ppucdmd_256x64_speakerlights')
         name: Build ZeDMD pico
         run: |
           pio run -e ${{ matrix.panels }}
@@ -98,7 +98,7 @@ jobs:
           cp .pio/build/${{ matrix.panels }}/firmware.uf2 firmware-update.uf2
           cp .pio/build/${{ matrix.panels }}/firmware_with_fs.uf2 firmware.uf2
 
-      - if: ${{ matrix.panels != 'pico_128x32' && matrix.panels != 'pico_256x64' && matrix.panels != 'pico2_128x32' && matrix.panels != 'pico2_256x64' && matrix.panels != 'pico2_128x32_ppucdmd' && matrix.panels != 'pico2_256x64_ppucdmd' && matrix.panels != 'ppucdmd_128x32' && matrix.panels != 'ppucdmd_256x64' && matrix.panels != 'ppucdmd_128x64x2' && matrix.panels != 'ppucdmd_128x32_speakerlights' && matrix.panels != 'ppucdmd_256x64_speakerlights' }}
+      - if: ${{ matrix.panels != 'pico_128x32' && matrix.panels != 'pico_256x64' && matrix.panels != 'pico2_128x32' && matrix.panels != 'pico2_256x64' && matrix.panels != 'pico2_128x32_ppucdmd' && matrix.panels != 'pico2_256x64_ppucdmd' && matrix.panels != 'ppucdmd_128x32' && matrix.panels != 'ppucdmd_192x64' && matrix.panels != 'ppucdmd_256x64' && matrix.panels != 'ppucdmd_128x64x2' && matrix.panels != 'ppucdmd_128x32_speakerlights' && matrix.panels != 'ppucdmd_256x64_speakerlights' }}
         uses: actions/upload-artifact@v4
         with:
           name: ZeDMD-${{ matrix.panels }}
@@ -106,7 +106,7 @@ jobs:
             ZeDMD.bin
             firmware.elf
 
-      - if: ${{ matrix.panels == 'pico_128x32' || matrix.panels == 'pico_256x64' || matrix.panels == 'pico2_128x32' || matrix.panels == 'pico2_256x64' || matrix.panels == 'pico2_128x32_ppucdmd' || matrix.panels == 'pico2_256x64_ppucdmd' || matrix.panels == 'ppucdmd_128x32' || matrix.panels == 'ppucdmd_256x64' || matrix.panels == 'ppucdmd_128x64x2' || matrix.panels == 'ppucdmd_128x32_speakerlights' || matrix.panels == 'ppucdmd_256x64_speakerlights' }}
+      - if: ${{ matrix.panels == 'pico_128x32' || matrix.panels == 'pico_256x64' || matrix.panels == 'pico2_128x32' || matrix.panels == 'pico2_256x64' || matrix.panels == 'pico2_128x32_ppucdmd' || matrix.panels == 'pico2_256x64_ppucdmd' || matrix.panels == 'ppucdmd_128x32' || matrix.panels == 'ppucdmd_192x64' || matrix.panels == 'ppucdmd_256x64' || matrix.panels == 'ppucdmd_128x64x2' || matrix.panels == 'ppucdmd_128x32_speakerlights' || matrix.panels == 'ppucdmd_256x64_speakerlights' }}
         uses: actions/upload-artifact@v4
         with:
           name: ZeDMD-${{ matrix.panels }}
@@ -168,6 +168,9 @@ jobs:
             cd ../ZeDMD-ppucdmd_128x32
             echo "${{ needs.version.outputs.tag }}" > version.txt
             zip ../ZeDMD-ppucdmd_128x32.zip firmware.uf2 firmware-update.uf2 version.txt
+            cd ../ZeDMD-ppucdmd_192x64
+            echo "${{ needs.version.outputs.tag }}" > version.txt
+            zip ../ZeDMD-ppucdmd_192x64.zip firmware.uf2 firmware-update.uf2 version.txt
             cd ../ZeDMD-ppucdmd_256x64
             echo "${{ needs.version.outputs.tag }}" > version.txt
             zip ../ZeDMD-ppucdmd_256x64.zip firmware.uf2 firmware-update.uf2 version.txt
@@ -202,6 +205,7 @@ jobs:
             ZeDMD-pico2_128x32_ppucdmd.zip
             ZeDMD-pico2_256x64_ppucdmd.zip
             ZeDMD-ppucdmd_128x32.zip
+            ZeDMD-ppucdmd_192x64.zip
             ZeDMD-ppucdmd_256x64.zip
             ZeDMD-ppucdmd_128x64x2.zip
             ZeDMD-ppucdmd_128x32_speakerlights.zip
