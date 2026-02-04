@@ -195,28 +195,6 @@ static void Scale2xLoopback(const uint8_t *src, uint8_t *dst, uint16_t srcWidth,
     }
   }
 }
-
-static const char *kDmdreaderNoDataLines[] = {
-    "The colorization module is not", "sending anything. Check if the",
-    "serum.cROMc file is the right", "one for your game, the ROM",
-    "version and the language."};
-
-static void DrawDmdreaderNoDataWarning() {
-  display->ClearScreen();
-
-  const uint8_t lineHeight = 6;
-  const uint8_t totalLines =
-      sizeof(kDmdreaderNoDataLines) / sizeof(kDmdreaderNoDataLines[0]);
-  const uint8_t maxLines = TOTAL_HEIGHT / lineHeight;
-  const uint8_t linesToShow = (totalLines < maxLines) ? totalLines : maxLines;
-
-  for (uint8_t i = 0; i < linesToShow; ++i) {
-    display->DisplayText(kDmdreaderNoDataLines[i], 0, i * lineHeight, 255, 0,
-                         0);
-  }
-
-  display->Render();
-}
 #endif
 
 // We needed to change these from RGB to RC (Red Color), BC, GC to prevent
@@ -2359,7 +2337,7 @@ void loop() {
       }
       Render();
     }
-  } 
+  }
   tight_loop_contents();
 
 #else
