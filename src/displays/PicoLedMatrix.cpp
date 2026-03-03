@@ -19,6 +19,15 @@ static void init_rgb_tables() {
   }
 }
 
+static inline void write_mapped_pixel(uint8_t *dst, const uint8_t r,
+                                      const uint8_t g, const uint8_t b) {
+  const uint8_t mode = rgbMode % 6;
+  const uint8_t base = mode * 3;
+  dst[rgbOrder[base]] = r;
+  dst[rgbOrder[base + 1]] = g;
+  dst[rgbOrder[base + 2]] = b;
+}
+
 PicoLedMatrix::PicoLedMatrix() {
   // rgb565 > rgb888 "fast" pixel conversion
   init_rgb_tables();
@@ -32,26 +41,21 @@ PicoLedMatrix::~PicoLedMatrix() {}
 void IRAM_ATTR PicoLedMatrix::DrawPixel(const uint16_t x, const uint16_t y,
                                         const uint8_t r, const uint8_t g,
                                         const uint8_t b) {
-  uint16_t pos = ((y + yOffset) * TOTAL_WIDTH + x) * 3;
-  drawBuffer[pos] = b;
-  drawBuffer[++pos] = g;
-  drawBuffer[++pos] = r;
+  const uint16_t pos = ((y + yOffset) * TOTAL_WIDTH + x) * 3;
+  write_mapped_pixel(&drawBuffer[pos], r, g, b);
 }
 
 void IRAM_ATTR PicoLedMatrix::DrawPixel(const uint16_t x, const uint16_t y,
                                         const uint16_t color) {
-  uint16_t pos = ((y + yOffset) * TOTAL_WIDTH + x) * 3;
-  drawBuffer[pos] = r5_to_8[(color >> 11) & 0x1F];
-  drawBuffer[++pos] = g6_to_8[(color >> 5) & 0x3F];
-  drawBuffer[++pos] = b5_to_8[color & 0x1F];
+  const uint16_t pos = ((y + yOffset) * TOTAL_WIDTH + x) * 3;
+  write_mapped_pixel(&drawBuffer[pos], r5_to_8[(color >> 11) & 0x1F],
+                     g6_to_8[(color >> 5) & 0x3F], b5_to_8[color & 0x1F]);
 }
 
 void PicoLedMatrix::ClearScreen() { memset(drawBuffer, 0, sizeof(drawBuffer)); }
 
 void PicoLedMatrix::SetBrightness(const uint8_t level) {
-  // TODO: verify this (compare with an "esp board") ?
-  const auto b = static_cast<uint8_t>(static_cast<float>(level) * 1.5f);
-  setBasisBrightness(b);
+  setBasisBrightness(level);
 }
 
 void PicoLedMatrix::Render() {
