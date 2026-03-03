@@ -23,9 +23,10 @@ static inline void write_mapped_pixel(uint8_t *dst, const uint8_t r,
                                       const uint8_t g, const uint8_t b) {
   const uint8_t mode = rgbMode % 6;
   const uint8_t base = mode * 3;
-  dst[rgbOrder[base]] = r;
-  dst[rgbOrder[base + 1]] = g;
-  dst[rgbOrder[base + 2]] = b;
+  const uint8_t src[3] = {r, g, b};
+  dst[0] = src[rgbOrder[base]];
+  dst[1] = src[rgbOrder[base + 1]];
+  dst[2] = src[rgbOrder[base + 2]];
 }
 
 PicoLedMatrix::PicoLedMatrix() {
