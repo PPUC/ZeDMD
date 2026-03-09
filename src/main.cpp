@@ -37,7 +37,7 @@
 #endif
 
 // Specific improvements and #define for the ESP32 S3 series
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(ARDUINO_ADAFRUIT_MATRIXPORTAL_ESP32S3) || defined(DISPLAY_RM67162_AMOLED)
 #include "S3Specific.h"
 #endif
 #ifndef PICO_BUILD
@@ -69,7 +69,7 @@
 #define BC 2
 
 #ifdef SPEAKER_LIGHTS
-#ifdef ARDUINO_ESP32_S3_N16R8
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(ARDUINO_ADAFRUIT_MATRIXPORTAL_ESP32S3)
 #define SPEAKER_LIGHTS_LEFT_PIN 9    // Left speaker LED strip
 #define SPEAKER_LIGHTS_RIGHT_PIN 10  // Right speaker LED strip
 #elif defined(DMDREADER)
@@ -336,11 +336,12 @@ DisplayDriver *GetDisplayDriver() { return display; }
 
 void TransportCreate(const uint8_t type =
 #ifdef DMDREADER
-                         Transport::SPI
+  Transport::SPI
 #elif defined(ZEDMD_WIFI_ONLY)
-                         Transport::WIFI_UDP
+  //Transport::WIFI_UDP
+  Transport::WIFI_TCP
 #else
-                         Transport::USB
+    Transport::USB
 #endif
 ) {
 
@@ -362,6 +363,7 @@ void TransportCreate(const uint8_t type =
     case Transport::WIFI_UDP:
     case Transport::WIFI_TCP: {
       transport = new WifiTransport();
+      Serial.println("WifiTransport created");
       break;
     }
 #endif
@@ -414,7 +416,8 @@ void LoadTransport() {
 #ifdef DMDREADER
                                               Transport::SPI
 #elif defined(ZEDMD_WIFI_ONLY)
-                                              Transport::WIFI_UDP
+                                              //Transport::WIFI_UDP
+                                              Transport::WIFI_TCP
 #else
                                               Transport::USB
 #endif
@@ -1179,12 +1182,12 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
             response[N_INTERMEDIATE_CTR_CHARS + 18] = 0;
 #endif
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || \
-    defined(PICO_BUILD)
+    defined(PICO_BUILD) || defined(ARDUINO_ADAFRUIT_MATRIXPORTAL_ESP32S3)
             response[N_INTERMEDIATE_CTR_CHARS + 18] += 0b00000010;
 #endif
             response[N_INTERMEDIATE_CTR_CHARS + 19] = shortId & 0xff;
             response[N_INTERMEDIATE_CTR_CHARS + 20] = (shortId >> 8) & 0xff;
-#if defined(ARDUINO_ESP32_S3_N16R8)
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(ARDUINO_ADAFRUIT_MATRIXPORTAL_ESP32S3)
             response[N_INTERMEDIATE_CTR_CHARS + 21] = 1;  // ESP32 S3
 #elif defined(DISPLAY_RM67162_AMOLED)
             response[N_INTERMEDIATE_CTR_CHARS + 21] = 2;  // ESP32 S3 with
@@ -1807,7 +1810,47 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
   return 0;
 }
 
+void PrintFileSystem(fs::FS &fs, const char * dirname, uint8_t depth) {
+
+    File root = fs.open(dirname);
+    if(!root || !root.isDirectory()) {
+        Serial.println("Verzeichnis konnte nicht geoeffnet werden");
+        return;
+    }
+
+    File file = root.openNextFile();
+
+    while(file) {
+
+        for(int i = 0; i < depth; i++) {
+            Serial.print("  ");
+        }
+
+        if(file.isDirectory()) {
+
+            Serial.print("[DIR] ");
+            Serial.println(file.name());
+
+            PrintFileSystem(fs, file.name(), depth + 1);
+
+        } else {
+
+            Serial.print("[FILE] ");
+            Serial.print(file.name());
+            Serial.print(" (");
+            Serial.print(file.size());
+            Serial.println(" bytes)");
+        }
+
+        file = root.openNextFile();
+    }
+}
+
 void setup() {
+
+  Serial.begin(115200);
+  Serial.println("setup started");
+
 #ifndef PICO_BUILD
   esp_log_level_set("*", ESP_LOG_NONE);
 #else
@@ -1861,9 +1904,9 @@ void setup() {
 #endif
 
   bool fileSystemOK;
-  if ((fileSystemOK = LittleFS.begin())) {
+  if ((fileSystemOK = LittleFS.begin(true))) {
     LoadSettingsMenu();
-    LoadTransport();
+    LoadTransport();   
 
 #ifdef DMDREADER
     LoadColor();
@@ -1893,12 +1936,11 @@ void setup() {
   display =
       (DisplayDriver *)new PicoLedMatrix();  // For pico LED matrix display
 #else
-  display =
+    display =
       (DisplayDriver *)new Esp32LedMatrix();  // For ESP32 LED matrix display
 #endif
 #endif
   display->SetBrightness(brightness);
-
   if (!fileSystemOK) {
     display->DisplayText("Error reading file system!", 0, 0, 255, 0, 0);
     display->DisplayText("Try to flash the firmware again.", 0, 6, 255, 0, 0);
@@ -1963,7 +2005,6 @@ void setup() {
     }
     memset(renderBuffer[i], 0, TOTAL_BYTES);
   }
-
 #ifndef DISPLAY_RM67162_AMOLED
   if (settingsMenu) {
     // Turn off settings menu after restart here.
@@ -1987,7 +2028,7 @@ void setup() {
     upButton->interval(100);
     upButton->setPressedState(LOW);
 
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(PICO_BUILD)
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(PICO_BUILD) 
     const auto backwardButton = new Bounce2::Button();
     backwardButton->attach(BACKWARD_BUTTON_PIN, INPUT_PULLUP);
     backwardButton->interval(100);
@@ -2229,6 +2270,7 @@ void setup() {
 #endif
 
   pinMode(FORWARD_BUTTON_PIN, INPUT_PULLUP);
+
 #ifdef PICO_BUILD
   // do not leave some pin configured as adc / floating
   pinMode(BACKWARD_BUTTON_PIN, INPUT_PULLUP);
@@ -2240,12 +2282,12 @@ void setup() {
   DisplayLogo();
   DisplayId();
   display->Render();
-
   // Create synchronization primitives
   for (uint8_t i = 0; i < NUM_BUFFERS; i++) {
 #ifdef BOARD_HAS_PSRAM
     buffers[i] = (uint8_t *)heap_caps_malloc(
         BUFFER_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
+        
 #else
     buffers[i] = (uint8_t *)malloc(BUFFER_SIZE);
 #endif
@@ -2255,7 +2297,6 @@ void setup() {
       while (1);
     }
   }
-
 #ifdef SPEAKER_LIGHTS
   if (speakerLightsLeftNumLeds > 0) {
     speakerLightsLeft =
@@ -2284,10 +2325,11 @@ void setup() {
   static_cast<SpiTransport *>(transport)->SetColor((Color)loopbackColor);
 #endif
   transport->init();
-
 #ifdef DMDREADER
   core_0_initialized = true;
 #endif
+ PrintFileSystem(LittleFS, "/", 0);
+Serial.println("Setup done");
 }
 
 void loop() {

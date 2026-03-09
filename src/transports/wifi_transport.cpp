@@ -113,10 +113,11 @@ bool WifiTransport::init() {
 
   GetDisplayDriver()->DisplayText("zedmd-wifi.local", 0, TOTAL_HEIGHT - 5, 0, 0,
                                   0, true);
-
+  Serial.print("Start webserver ");
   startServer();
 
   if (m_type == WIFI_UDP) {
+     Serial.println("as udp");
     udp = new AsyncUDP();
     udp->onPacket(HandleUdpPacket);
     if (!udp->listen(ip, port)) {
@@ -126,6 +127,7 @@ bool WifiTransport::init() {
     }
   } else {
     tcp = new AsyncServer(port);
+    Serial.println("as tcp");
     tcp->setNoDelay(true);
     tcp->onClient(&NewTcpClient, tcp);
     tcp->begin();
@@ -253,6 +255,8 @@ void WifiTransport::startServer() {
 
   // Serve index.html
   server->on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
+    
+    Serial.println("get index.html");
     request->send(LittleFS, "/index.html", String(), false);
   });
 
