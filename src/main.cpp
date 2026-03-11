@@ -2120,7 +2120,7 @@ void setup() {
             RefreshSetupScreen();
             display->DisplayText("LED Test",
                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
-                                (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
+                                (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             break;
           }
 #ifdef ZEDMD_HD_HALF
@@ -2255,6 +2255,7 @@ void setup() {
           }
           case 8: {  // LED Test
             LedTester();
+            RefreshSetupScreen();
             break;
           }
 #ifdef ZEDMD_HD_HALF
