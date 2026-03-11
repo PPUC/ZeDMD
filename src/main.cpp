@@ -1097,12 +1097,12 @@ void RefreshSetupScreen() {
   }
 #endif
 #ifdef ZEDMD_HD_HALF
-  display->DisplayText("Y-Offset", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
+  display->DisplayText("Y-Offset", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
 #endif
-  display->DisplayText("LED Test", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
+  display->DisplayText("LED Test", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
                        (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
-  display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
+  display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 15,
                        (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
 }
 
@@ -2011,7 +2011,7 @@ void setup() {
     SaveSettingsMenu();
 
     RefreshSetupScreen();
-    display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
+    display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 15,
                          (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
 
     const auto forwardButton = new Bounce2::Button();
@@ -2068,7 +2068,7 @@ void setup() {
           case 1: {  // Exit
             RefreshSetupScreen();
             display->DisplayText("Exit",
-                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
+                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 15,
                                  (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
             break;
           }
@@ -2119,7 +2119,7 @@ void setup() {
           case 8: {  // LED Test
             RefreshSetupScreen();
             display->DisplayText("LED Test",
-                                TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
+                                TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
                                 (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             break;
           }
@@ -2127,7 +2127,7 @@ void setup() {
           case 9: {  // Y Offset
             RefreshSetupScreen();
             display->DisplayText("Y-Offset",
-                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
+                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
                                  (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
             break;
           }
@@ -2257,7 +2257,7 @@ void setup() {
             LedTester();
             RefreshSetupScreen();
             display->DisplayText("LED Test",
-                    TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
+                    TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
                     (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             break;
           }
@@ -2270,7 +2270,7 @@ void setup() {
             ClearScreen();
             RefreshSetupScreen();
             display->DisplayText("Y-Offset",
-                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
+                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
                                  (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
             SaveYOffset();
             break;
