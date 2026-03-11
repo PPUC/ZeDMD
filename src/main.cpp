@@ -341,6 +341,21 @@ void DisplayRGB(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
 #endif
 }
 
+static uint8_t NormalizeTransportType(uint8_t type) {
+#ifdef DMDREADER
+  (void)type;
+  return Transport::SPI;
+#elif defined(ZEDMD_WIFI_ONLY)
+  return (type == Transport::WIFI_TCP || type == Transport::WIFI_UDP)
+             ? type
+             : Transport::WIFI_UDP;
+#elif defined(ZEDMD_NO_NETWORKING)
+  return type == Transport::SPI ? Transport::SPI : Transport::USB;
+#else
+  return type <= Transport::SPI ? type : Transport::USB;
+#endif
+}
+
 /// @brief Get DisplayDriver object, required for webserver
 DisplayDriver *GetDisplayDriver() { return display; }
 
@@ -353,13 +368,18 @@ void TransportCreate(const uint8_t type =
                          Transport::USB
 #endif
 ) {
+  const uint8_t normalizedType = NormalizeTransportType(type);
 
   // "reload" new transport (without init)
   delete transport;
 
-  switch (type) {
+  switch (normalizedType) {
 #ifdef DMDREADER
     case Transport::SPI: {
+      transport = new SpiTransport();
+      break;
+    }
+    default: {
       transport = new SpiTransport();
       break;
     }
@@ -407,14 +427,14 @@ void LoadSettingsMenu() {
 }
 
 void SaveTransport(const uint8_t type = Transport::USB) {
-  if (!transport) return;
+  const uint8_t normalizedType = NormalizeTransportType(type);
 
   File f = LittleFS.open("/transport.val", "w");
-  f.write(type);
+  f.write(normalizedType);
   f.close();
 
   // set new transport type (not active until reboot)
-  transport->setType(type);
+  if (transport) transport->setType(normalizedType);
 }
 
 void LoadTransport() {
@@ -434,8 +454,9 @@ void LoadTransport() {
     return;
   }
 
-  const uint8_t type = f.read();
+  const uint8_t type = NormalizeTransportType(f.read());
   f.close();
+  SaveTransport(type);
   TransportCreate(type);
 }
 
@@ -1480,7 +1501,7 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
           case 45:  // set transport
           {
             // TODO: verify this (need Save ? need Reset ?)
-            transport->setType(pData[pos++]);
+            transport->setType(NormalizeTransportType(pData[pos++]));
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (transport->isWifiAndActive()) break;
@@ -2037,6 +2058,9 @@ void setup() {
         } else {
           if (position == 3) position = forward ? 4 : 2;
         }
+#ifdef DMDREADER
+        if (position == 5) position = forward ? 6 : 4;
+#endif
 
         switch (position) {
           case 1: {  // Exit
@@ -2173,6 +2197,9 @@ void setup() {
           }
 #endif
           case 5: {  // Transport
+#ifdef DMDREADER
+            break;
+#else
 #ifdef ZEDMD_NO_NETWORKING
             const uint8_t type = transport->getType() == Transport::USB
                                      ? Transport::SPI
@@ -2190,6 +2217,7 @@ void setup() {
                                  7 * (TOTAL_WIDTH / 128),
                                  (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             break;
+#endif
           }
           case 6: {  // Debug
             if (++debug > 1) debug = 0;
