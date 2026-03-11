@@ -2114,8 +2114,15 @@ void setup() {
             DisplayRGB(255, 191, 0);
             break;
           }
+          case 8: {  // RGB Test
+            RefreshSetupScreen();
+            display->DisplayText("RGB Test",
+                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
+                                 (TOTAL_HEIGHT / 2) - 4, 255, 191, 0);
+            break;
+          }
 #ifdef ZEDMD_HD_HALF
-          case 8: {  // Y Offset
+          case 9: {  // Y Offset
             RefreshSetupScreen();
             display->DisplayText("Y-Offset",
                                  TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
@@ -2244,8 +2251,12 @@ void setup() {
             SaveRgbOrder();
             break;
           }
+          case 8: {  // RGB Test
+            LedTester();
+            break;
+          }
 #ifdef ZEDMD_HD_HALF
-          case 8: {  // Y-Offset
+          case 9: {  // Y-Offset
             if (up && ++yOffset > 32)
               yOffset = 0;
             else if (down && --yOffset < 0)
