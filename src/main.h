@@ -76,7 +76,7 @@
 #define FORWARD_BUTTON_PIN 33
 #endif
 
-#define LED_CHECK_DELAY 2000  // ms per color
+#define LED_CHECK_DELAY 3000  // ms per color
 
 #ifdef ZEDMD_HD_HALF
 #define MENU_ITEMS_COUNT 9
