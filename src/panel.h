@@ -13,6 +13,10 @@
 #define PANEL_WIDTH 64   // Width: number of LEDs for 1 panel.
 #define PANEL_HEIGHT 64  // Height: number of LEDs.
 #define PANELS_NUMBER 3  // Number of horizontally chained panels.
+#elif defined(ZEDMD_DEX16)
+#define PANEL_WIDTH 64   // Width: number of LEDs for 1 panel.
+#define PANEL_HEIGHT 32  // Height: number of LEDs.
+#define PANELS_NUMBER 2  // Number of horizontally chained panels.
 #endif
 #ifndef PANEL_WIDTH
 #define PANEL_WIDTH 64   // Width: number of LEDs for 1 panel.
@@ -22,6 +26,8 @@
 
 #define TOTAL_WIDTH (PANEL_WIDTH * PANELS_NUMBER)
 #ifdef ZEDMD_HD_HALF
+#define TOTAL_HEIGHT (PANEL_HEIGHT / 2)
+#elif defined(ZEDMD_DEX16)
 #define TOTAL_HEIGHT (PANEL_HEIGHT / 2)
 #endif
 #ifndef TOTAL_HEIGHT

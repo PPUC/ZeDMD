@@ -126,6 +126,11 @@ uint8_t lastBuffer __attribute__((aligned(4)));
 uint8_t processingBuffer __attribute__((aligned(4)));
 bool rgb565ZoneStream = false;
 
+#ifdef ZEDMD_DEX16
+int8_t yOffset = 8;
+#else
+int8_t yOffset = 0;
+#endif
 // Init display on a low brightness to avoid power issues, but bright enough to
 // see something.
 #ifdef DISPLAY_RM67162_AMOLED
@@ -134,7 +139,6 @@ uint8_t brightness = 5;
 uint8_t brightness = 2;
 uint8_t rgbMode = 0;  // Valid values are 0-5.
 uint8_t rgbModeLoaded = 0;
-int8_t yOffset = 0;
 uint8_t panelClkphase = 0;
 uint8_t panelDriver = 0;
 uint8_t panelI2sspeed = 8;
@@ -303,9 +307,15 @@ void DisplayVersion(bool logo = false) {
   char version[10];
   snprintf(version, 9, "%d.%d.%d", ZEDMD_VERSION_MAJOR, ZEDMD_VERSION_MINOR,
            ZEDMD_VERSION_PATCH);
+  #ifdef DMDREADER
+  display->DisplayText(version, TOTAL_WIDTH - (strlen(version) * 4),
+                       TOTAL_HEIGHT - 5, 255 * !logo, 255 * !logo, 255 * !logo,
+                       logo);
+  #else
   display->DisplayText(version, TOTAL_WIDTH - (strlen(version) * 4) - 5,
                        TOTAL_HEIGHT - 5, 255 * !logo, 255 * !logo, 255 * !logo,
                        logo);
+  #endif
 }
 
 void DisplayLum(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
@@ -951,6 +961,8 @@ void DisplayLogo() {
     f = LittleFS.open("/logoHD.raw", "r");
   } else if (TOTAL_WIDTH == 192 && TOTAL_HEIGHT == 64) {
     f = LittleFS.open("/logoSEGAHD.raw", "r");
+  } else if (TOTAL_WIDTH == 128 && TOTAL_HEIGHT == 16) {
+    f = LittleFS.open("/logoDEX16.raw", "r");
   } else {
     f = LittleFS.open("/logo.raw", "r");
   }
@@ -1006,6 +1018,8 @@ void DisplayUpdate() {
   if (TOTAL_WIDTH == 256 && TOTAL_HEIGHT == 64) {
     f = LittleFS.open("/ppucHD.raw", "r");
   } else if (TOTAL_WIDTH == 192 && TOTAL_HEIGHT == 64) {
+    // need to add some day
+  } else if (TOTAL_WIDTH == 128 && TOTAL_HEIGHT == 16) {
     // need to add some day
   } else {
     f = LittleFS.open("/ppuc.raw", "r");
