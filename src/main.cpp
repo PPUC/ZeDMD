@@ -1100,6 +1100,8 @@ void RefreshSetupScreen() {
   display->DisplayText("Y-Offset", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
 #endif
+  display->DisplayText("RGB Test", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
+                       (TOTAL_HEIGHT / 2) - 4, 128, 128, 128);
   display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
                        (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
 }
