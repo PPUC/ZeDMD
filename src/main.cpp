@@ -1100,8 +1100,8 @@ void RefreshSetupScreen() {
   display->DisplayText("Y-Offset", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
 #endif
-  display->DisplayText("RGB Test", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
-                       (TOTAL_HEIGHT / 2) - 2, 128, 128, 128);
+  display->DisplayText("LED Test", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
+                       (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
   display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
                        (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
 }
@@ -2116,11 +2116,11 @@ void setup() {
             DisplayRGB(255, 191, 0);
             break;
           }
-          case 8: {  // RGB Test
+          case 8: {  // LED Test
             RefreshSetupScreen();
-            display->DisplayText("RGB Test",
-                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
-                                 (TOTAL_HEIGHT / 2) - 4, 255, 191, 0);
+            display->DisplayText("LED Test",
+                                TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
+                                (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
             break;
           }
 #ifdef ZEDMD_HD_HALF
@@ -2253,7 +2253,7 @@ void setup() {
             SaveRgbOrder();
             break;
           }
-          case 8: {  // RGB Test
+          case 8: {  // LED Test
             LedTester();
             break;
           }
