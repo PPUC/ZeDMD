@@ -1100,7 +1100,7 @@ void RefreshSetupScreen() {
   display->DisplayText("Y-Offset", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
 #endif
-  display->DisplayText("LED Test", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 30,
+  display->DisplayText("LED Test", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
                        (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
   display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 15,
                        (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
