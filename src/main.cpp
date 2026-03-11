@@ -1060,13 +1060,14 @@ void ScreenSaver() {
 
 void RefreshSetupScreen() {
   DisplayLogo();
-  for (uint16_t y = (TOTAL_HEIGHT / 32 * 5);
-       y < TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5); y++) {
-    for (uint16_t x = (TOTAL_WIDTH / 128 * 5);
-         x < TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5); x++) {
-      display->DrawPixel(x, y, 0, 0, 0);
-    }
-  }
+  ClearScreen();
+  // for (uint16_t y = (TOTAL_HEIGHT / 32 * 5);
+  //     y < TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5); y++) {
+  //  for (uint16_t x = (TOTAL_WIDTH / 128 * 5);
+  //       x < TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5); x++) {
+  //    display->DrawPixel(x, y, 0, 0, 0);
+  //  }
+  //}
   DisplayRGB();
   DisplayLum();
   display->DisplayText(transport->getTypeString(), 7 * (TOTAL_WIDTH / 128),
