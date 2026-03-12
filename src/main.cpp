@@ -750,7 +750,8 @@ void LedTester(void) {
     } else if (!digitalRead(UP_BUTTON_PIN) || !digitalRead(UP_BUTTON_PIN)) {
       pressed = true;
       ledSwitch++;
-    } else if (((millis() - ledStartMs) % LED_CHECK_DELAY) && !pressed) {
+    } else if ((((millis() - ledStartMs) % LED_CHECK_DELAY) == LED_CHECK_DELAY)
+                && !pressed) {
       ledSwitch++;
     }
     switch (ledSwitch) {
