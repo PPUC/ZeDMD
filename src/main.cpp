@@ -739,7 +739,7 @@ void LoadSpeakerLightsSettings() {
 
 void LedTester(void) {
   uint16_t ledStartMs = 0;
-  uint8_t ledSwitch = 0;
+  uint8_t ledSwitch = 1;
   bool pressed = false;
 
   const auto forwardButton = new Bounce2::Button();
@@ -752,20 +752,30 @@ void LedTester(void) {
   upButton->interval(100);
   upButton->setPressedState(LOW);
 
+  const auto downButton = new Bounce2::Button();
+  upButton->attach(DOWN_BUTTON_PIN, INPUT_PULLUP);
+  upButton->interval(100);
+  upButton->setPressedState(LOW);
+
   ledStartMs = millis();
 
   while (ledSwitch != 4) {
     forwardButton->update();
-    const bool forward = forwardButton->pressed();
     upButton->update();
+    downButton->update();
+    const bool forward = forwardButton->pressed();
     const bool up = upButton->pressed();
+    const bool down = downButton->pressed();
+    
     if (forward) {
       ledSwitch = 4;
-    } else if (up) {
+    } 
+    if (up || down) {
       pressed = true;
       ledSwitch++;
-    } else if ((((millis() - ledStartMs) % LED_CHECK_DELAY) == LED_CHECK_DELAY)
-                && !pressed) {
+    }
+    if ((((millis() - ledStartMs) % LED_CHECK_DELAY) ==
+                LED_CHECK_DELAY - 1) && !pressed) {
       ledSwitch++;
     }
     switch (ledSwitch) {
