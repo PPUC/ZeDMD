@@ -45,7 +45,7 @@ void UsbTransport::Task_ReadSerial(void* pvParameters) {
   tud_cdc_set_rx_buffer_size(usbPackageSize + 128);
 #else
   Serial.setRxBufferSize(usbPackageSize + 128);
-  Serial.setRxBufferSize(64);
+  Serial.setTxBufferSize(64);
 #endif
 #if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
   // S3 USB CDC. The actual baud rate doesn't matter.
