@@ -747,7 +747,7 @@ void LedTester(void) {
   while (ledSwitch != 4) {
     if (!digitalRead(FORWARD_BUTTON_PIN)) {
       ledSwitch = 4;
-    } else if (!digitalRead(UP_BUTTON_PIN || DOWN_BUTTON_PIN)) {
+    } else if (!digitalRead(UP_BUTTON_PIN) || !digitalRead(UP_BUTTON_PIN)) {
       pressed = true;
       ledSwitch++;
     } else if (((millis() - ledStartMs) % 2000) && !pressed) {
