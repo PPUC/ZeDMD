@@ -738,18 +738,39 @@ void LoadSpeakerLightsSettings() {
 #endif
 
 void LedTester(void) {
-  display->FillScreen(255, 0, 0);
-  display->Render();
-  delay(LED_CHECK_DELAY);
+  uint16_t ledStartMs = 0;
+  uint8_t ledSwitch = 0;
+  bool pressed = false;
 
-  display->FillScreen(0, 255, 0);
-  display->Render();
-  delay(LED_CHECK_DELAY);
+  ledStartMs = millis();
 
-  display->FillScreen(0, 0, 255);
-  display->Render();
-  delay(LED_CHECK_DELAY);
-
+  while (ledSwitch != 4) {
+    if (!digitalRead(FORWARD_BUTTON_PIN)) {
+      ledSwitch = 4;
+    } else if (!digitalRead(UP_BUTTON_PIN || DOWN_BUTTON_PIN)) {
+      pressed = true;
+      ledSwitch++;
+    } else if (((millis() - ledStartMs) % 2000) && !pressed) {
+      ledSwitch++;
+    }
+    switch (ledSwitch) {
+      case 1:
+        display->FillScreen(255, 0, 0);
+        display->Render();
+        break;
+      case 2:
+        display->FillScreen(0, 255, 0);
+        display->Render();
+        break;
+      case 3:
+        display->FillScreen(0, 0, 255);
+        display->Render();
+        if (pressed) {
+          ledSwitch = 0;
+        }
+        break;
+    }
+  }
   display->ClearScreen();
   display->Render();
 }
