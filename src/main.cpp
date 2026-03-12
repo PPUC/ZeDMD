@@ -229,6 +229,9 @@ static inline void InitRgbLuts() {
 uint8_t usbPackageSizeMultiplier = USB_PACKAGE_SIZE / 32;
 uint8_t settingsMenu = 0;
 uint8_t debug = 0;
+uint8_t ledSwitch = 0;
+uint32_t ledTestMs = 0;
+bool pressed;
 
 Transport *transport = nullptr;
 
@@ -737,67 +740,48 @@ void LoadSpeakerLightsSettings() {
 }
 #endif
 
-void LedTester(void) {
-  uint16_t ledStartMs = 0;
-  uint8_t ledSwitch = 1;
-  bool pressed = false;
-
-  const auto forwardButton = new Bounce2::Button();
-  forwardButton->attach(FORWARD_BUTTON_PIN, INPUT_PULLUP);
-  forwardButton->interval(100);
-  forwardButton->setPressedState(LOW);
-
-  const auto upButton = new Bounce2::Button();
-  upButton->attach(UP_BUTTON_PIN, INPUT_PULLUP);
-  upButton->interval(100);
-  upButton->setPressedState(LOW);
-
-  const auto downButton = new Bounce2::Button();
-  upButton->attach(DOWN_BUTTON_PIN, INPUT_PULLUP);
-  upButton->interval(100);
-  upButton->setPressedState(LOW);
-
-  ledStartMs = millis();
-
-  while (ledSwitch != 4) {
-    forwardButton->update();
-    upButton->update();
-    downButton->update();
-    const bool forward = forwardButton->pressed();
-    const bool up = upButton->pressed();
-    const bool down = downButton->pressed();
-    
-    if (forward) {
-      ledSwitch = 4;
-    } 
-    if (up || down) {
-      pressed = true;
+void LedTester(bool isMenu) {
+  if (isMenu) {
+    if (ledTestMs == 0) {
+      ledTestMs = millis();
+    }
+    if ((millis() - ledTestMs) >= LED_CHECK_DELAY && !pressed) {
+      ledTestMs += LED_CHECK_DELAY;
       ledSwitch++;
     }
-    if ((((millis() - ledStartMs) % LED_CHECK_DELAY) ==
-                LED_CHECK_DELAY - 1) && !pressed) {
-      ledSwitch++;
-    }
-    switch (ledSwitch) {
-      case 1:
+    switch(ledSwitch) {
+      case 0:
         display->FillScreen(255, 0, 0);
         display->Render();
         break;
-      case 2:
+      case 1:
         display->FillScreen(0, 255, 0);
         display->Render();
         break;
-      case 3:
+      case 2:
         display->FillScreen(0, 0, 255);
         display->Render();
-        if (pressed) {
-          ledSwitch = 0;
-        }
+        break;
+      case 3:
+        if (pressed) ledSwitch = 0;
         break;
     }
+  } else {
+    display->FillScreen(255, 0, 0);
+    display->Render();
+    delay(LED_CHECK_DELAY);
+
+    display->FillScreen(0, 255, 0);
+    display->Render();
+    delay(LED_CHECK_DELAY);
+
+    display->FillScreen(0, 0, 255);
+    display->Render();
+    delay(LED_CHECK_DELAY);
+
+    display->ClearScreen();
+    display->Render();
   }
-  display->ClearScreen();
-  display->Render();
 }
 
 void AcquireNextBuffer() {
@@ -1766,7 +1750,7 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
               Serial.flush();
             }
 #endif
-            LedTester();
+            LedTester(false);
             Restart();
           }
 
@@ -2300,7 +2284,22 @@ void setup() {
             break;
           }
           case 8: {  // LED Test
-            LedTester();
+            ledSwitch = 0;
+            ledTestMs = 0;
+            pressed = false;
+            while (ledSwitch != 3) {
+              LedTester(true);
+              if (forward) {
+                ledSwitch = 3;
+              }
+              if (up || down) {
+                pressed = true;
+                ledSwitch++;
+                if (ledSwitch > 2) {
+                  ledSwitch = 0;
+                }
+              }
+            }
             RefreshSetupScreen();
             display->DisplayText("LED Test",
                     TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
