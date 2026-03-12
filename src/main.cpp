@@ -742,12 +742,26 @@ void LedTester(void) {
   uint8_t ledSwitch = 0;
   bool pressed = false;
 
+  const auto forwardButton = new Bounce2::Button();
+  forwardButton->attach(FORWARD_BUTTON_PIN, INPUT_PULLUP);
+  forwardButton->interval(100);
+  forwardButton->setPressedState(LOW);
+
+  const auto upButton = new Bounce2::Button();
+  upButton->attach(UP_BUTTON_PIN, INPUT_PULLUP);
+  upButton->interval(100);
+  upButton->setPressedState(LOW);
+
   ledStartMs = millis();
 
   while (ledSwitch != 4) {
-    if (!digitalRead(FORWARD_BUTTON_PIN)) {
+    forwardButton->update();
+    const bool forward = forwardButton->pressed();
+    upButton->update();
+    const bool up = upButton->pressed();
+    if (forward) {
       ledSwitch = 4;
-    } else if (!digitalRead(UP_BUTTON_PIN) || !digitalRead(UP_BUTTON_PIN)) {
+    } else if (up) {
       pressed = true;
       ledSwitch++;
     } else if ((((millis() - ledStartMs) % LED_CHECK_DELAY) == LED_CHECK_DELAY)
