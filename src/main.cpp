@@ -62,7 +62,7 @@
 #include "displays/Esp32LedMatrix.h"
 #endif
 
-#define LED_CHECK_DELAY 1000  // ms per color
+#define LED_CHECK_DELAY 2500  // ms per color
 
 #define RC 0
 #define GC 1
@@ -750,7 +750,7 @@ void LedTester(void) {
     } else if (!digitalRead(UP_BUTTON_PIN) || !digitalRead(UP_BUTTON_PIN)) {
       pressed = true;
       ledSwitch++;
-    } else if (((millis() - ledStartMs) % 2000) && !pressed) {
+    } else if (((millis() - ledStartMs) % LED_CHECK_DELAY) && !pressed) {
       ledSwitch++;
     }
     switch (ledSwitch) {
