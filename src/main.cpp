@@ -228,6 +228,7 @@ static inline void InitRgbLuts() {
 
 uint8_t usbPackageSizeMultiplier = USB_PACKAGE_SIZE / 32;
 uint8_t settingsMenu = 0;
+uint8_t debug = 0;
 
 Transport *transport = nullptr;
 
