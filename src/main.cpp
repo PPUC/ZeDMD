@@ -335,7 +335,7 @@ void DisplayRGB(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
     display->DrawPixel(TOTAL_WIDTH - (4 * 4) - 1, i, 0, 0, 0);
     display->DrawPixel((TOTAL_WIDTH / 2) - (6 * 4) - 1, i, 0, 0, 0);
   }
-  display->DisplayText("blue", TOTAL_WIDTH - ((4 * 4) - 1), 0, 0, 0, 0, true,
+  display->DisplayText("blue", TOTAL_WIDTH - (4 * 4), 0, 0, 0, 0, true,
                        true);
   display->DisplayText("green", 0, TOTAL_HEIGHT - 6, 0, 0, 0, true, true);
   display->DisplayText("RGB Order:", (TOTAL_WIDTH / 2) - (6 * 4), 0, r, g, b);
@@ -2252,7 +2252,7 @@ void setup() {
               rgbMode = 5;
             RefreshSetupScreen();
             DisplayRGB(255, 191, 0);
-            SaveRgbOrder();
+            //SaveRgbOrder();
             break;
           }
           case 8: {  // LED Test
