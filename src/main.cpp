@@ -465,7 +465,7 @@ void LoadTransport() {
 void SaveRgbOrder() {
   File f = LittleFS.open("/rgb_order.val", "w");
   f.write((uint8_t)rgbMode);
-  f.close();
+  // f.close();
 }
 
 void LoadRgbOrder() {
