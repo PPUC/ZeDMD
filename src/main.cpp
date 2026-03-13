@@ -62,7 +62,7 @@
 #include "displays/Esp32LedMatrix.h"
 #endif
 
-#define LED_CHECK_DELAY 2500  // ms per color
+#define LED_CHECK_DELAY 1000  // ms per color
 
 #define RC 0
 #define GC 1
