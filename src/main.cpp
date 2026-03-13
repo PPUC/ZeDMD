@@ -2255,16 +2255,18 @@ void setup() {
             break;
           }
           case 8: {  // LED Test
-            if (up && ++rgbMode > 3)
+            if (up && ++ledTest > 3)
               ledTest = 0;
             else if (down &&
-                     --rgbMode >
+                     --ledTest >
                          3)  // underflow will result in 255, set it to 2
               ledTest = 3;
             switch(ledTest) {
               case 0:
-                display->FillScreen(255, 0, 0);
-                display->Render();
+                RefreshSetupScreen();
+                display->DisplayText("LED Test",
+                        TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
+                        (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
                 break;
               case 1:
                 display->FillScreen(0, 255, 0);
@@ -2273,11 +2275,10 @@ void setup() {
               case 2:
                 display->FillScreen(0, 0, 255);
                 display->Render();
+                break;
               case 3:
-                RefreshSetupScreen();
-                display->DisplayText("LED Test",
-                        TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
-                        (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+                display->FillScreen(255, 0, 0);
+                display->Render();
                 break;
             }
             break;
