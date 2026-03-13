@@ -2269,15 +2269,15 @@ void setup() {
                         (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
                 break;
               case 1:
-                display->FillScreen(0, 255, 0);
+                display->FillScreen(255, 0, 0);
                 display->Render();
                 break;
               case 2:
-                display->FillScreen(0, 0, 255);
+                display->FillScreen(0, 255, 0);
                 display->Render();
                 break;
               case 3:
-                display->FillScreen(255, 0, 0);
+                display->FillScreen(0, 0, 255);
                 display->Render();
                 break;
             }
