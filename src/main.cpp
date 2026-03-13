@@ -37,7 +37,9 @@
 #endif
 
 // Specific improvements and #define for the ESP32 S3 series
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
+#if defined(ARDUINO_ESP32_S3_N16R8) ||                \
+    defined(ARDUINO_ADAFRUIT_MATRIXPORTAL_ESP32S3) || \
+    defined(DISPLAY_RM67162_AMOLED)
 #include "S3Specific.h"
 #endif
 #ifndef PICO_BUILD
@@ -69,7 +71,8 @@
 #define BC 2
 
 #ifdef SPEAKER_LIGHTS
-#ifdef ARDUINO_ESP32_S3_N16R8
+#if defined(ARDUINO_ESP32_S3_N16R8) || \
+    defined(ARDUINO_ADAFRUIT_MATRIXPORTAL_ESP32S3)
 #define SPEAKER_LIGHTS_LEFT_PIN 9    // Left speaker LED strip
 #define SPEAKER_LIGHTS_RIGHT_PIN 10  // Right speaker LED strip
 #elif defined(DMDREADER)
@@ -266,8 +269,8 @@ void DoRestart(int sec) {
   if (rebootToBootloader) rp2040.rebootToBootloader();
 #endif
 
-  // Note: ESP.restart() or esp_restart() will keep the state of global and
-  // static variables. And not all sub-systems get resetted.
+    // Note: ESP.restart() or esp_restart() will keep the state of global and
+    // static variables. And not all sub-systems get resetted.
 #if (defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1)
 #ifdef PICO_BUILD
   rp2040.reboot();
@@ -1217,12 +1220,13 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
             response[N_INTERMEDIATE_CTR_CHARS + 18] = 0;
 #endif
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || \
-    defined(PICO_BUILD)
+    defined(PICO_BUILD) || defined(ARDUINO_ADAFRUIT_MATRIXPORTAL_ESP32S3)
             response[N_INTERMEDIATE_CTR_CHARS + 18] += 0b00000010;
 #endif
             response[N_INTERMEDIATE_CTR_CHARS + 19] = shortId & 0xff;
             response[N_INTERMEDIATE_CTR_CHARS + 20] = (shortId >> 8) & 0xff;
-#if defined(ARDUINO_ESP32_S3_N16R8)
+#if defined(ARDUINO_ESP32_S3_N16R8) || \
+    defined(ARDUINO_ADAFRUIT_MATRIXPORTAL_ESP32S3)
             response[N_INTERMEDIATE_CTR_CHARS + 21] = 1;  // ESP32 S3
 #elif defined(DISPLAY_RM67162_AMOLED)
             response[N_INTERMEDIATE_CTR_CHARS + 21] = 2;  // ESP32 S3 with
@@ -1236,7 +1240,6 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
 #else
             response[N_INTERMEDIATE_CTR_CHARS + 21] = 0;  // ESP32
 #endif
-
             response[63 - N_ACK_CHARS] = 'R';
             Serial.write(response, 64 - N_ACK_CHARS);
             // This flush is required for USB CDC on Windows.
@@ -1899,7 +1902,7 @@ void setup() {
 #endif
 
   bool fileSystemOK;
-  if ((fileSystemOK = LittleFS.begin())) {
+  if ((fileSystemOK = LittleFS.begin(true))) {
     LoadSettingsMenu();
     LoadTransport();
 
@@ -1936,7 +1939,6 @@ void setup() {
 #endif
 #endif
   display->SetBrightness(brightness);
-
   if (!fileSystemOK) {
     display->DisplayText("Error reading file system!", 0, 0, 255, 0, 0);
     display->DisplayText("Try to flash the firmware again.", 0, 6, 255, 0, 0);
@@ -2001,7 +2003,6 @@ void setup() {
     }
     memset(renderBuffer[i], 0, TOTAL_BYTES);
   }
-
 #ifndef DISPLAY_RM67162_AMOLED
   if (settingsMenu) {
     // Turn off settings menu after restart here.
@@ -2310,6 +2311,7 @@ void setup() {
 #endif
 
   pinMode(FORWARD_BUTTON_PIN, INPUT_PULLUP);
+
 #ifdef PICO_BUILD
   // do not leave some pin configured as adc / floating
   pinMode(BACKWARD_BUTTON_PIN, INPUT_PULLUP);
@@ -2321,12 +2323,12 @@ void setup() {
   DisplayLogo();
   DisplayId();
   display->Render();
-
   // Create synchronization primitives
   for (uint8_t i = 0; i < NUM_BUFFERS; i++) {
 #ifdef BOARD_HAS_PSRAM
     buffers[i] = (uint8_t *)heap_caps_malloc(
         BUFFER_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
+
 #else
     buffers[i] = (uint8_t *)malloc(BUFFER_SIZE);
 #endif
@@ -2336,7 +2338,6 @@ void setup() {
       while (1);
     }
   }
-
 #ifdef SPEAKER_LIGHTS
   if (speakerLightsLeftNumLeds > 0) {
     speakerLightsLeft =
@@ -2365,7 +2366,6 @@ void setup() {
   static_cast<SpiTransport *>(transport)->SetColor((Color)loopbackColor);
 #endif
   transport->init();
-
 #ifdef DMDREADER
   core_0_initialized = true;
 #endif
