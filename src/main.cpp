@@ -2252,7 +2252,7 @@ void setup() {
               rgbMode = 5;
             RefreshSetupScreen();
             DisplayRGB(255, 191, 0);
-            //SaveRgbOrder();
+            SaveRgbOrder();
             break;
           }
           case 8: {  // LED Test
