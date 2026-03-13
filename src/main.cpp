@@ -229,6 +229,7 @@ static inline void InitRgbLuts() {
 uint8_t usbPackageSizeMultiplier = USB_PACKAGE_SIZE / 32;
 uint8_t settingsMenu = 0;
 uint8_t debug = 0;
+uint8_t ledTest = 0;
 
 Transport *transport = nullptr;
 
@@ -737,7 +738,7 @@ void LoadSpeakerLightsSettings() {
 }
 #endif
 
-void LedTester(void) {
+void LedTester() {
   display->FillScreen(255, 0, 0);
   display->Render();
   delay(LED_CHECK_DELAY);
@@ -2254,35 +2255,31 @@ void setup() {
             break;
           }
           case 8: {  // LED Test
-            uint8_t ledTest = 0;
-            while (1) {
-              if (forward) {
+            if (up && ++rgbMode > 3)
+              ledTest = 0;
+            else if (down &&
+                     --rgbMode >
+                         3)  // underflow will result in 255, set it to 2
+              ledTest = 3;
+            switch(ledTest) {
+              case 0:
+                display->FillScreen(255, 0, 0);
+                display->Render();
                 break;
-              }
-              if (up && ++ledTest > 2) {
-                ledTest = 0;
-              } else if (down && --ledTest > 2) {
-                ledTest = 2;
-              }
-              switch((ledTest) && up || down) {
-                case 0:
-                  display->FillScreen(255, 0, 0);
-                  display->Render();
-                  break;
-                case 1:
-                  display->FillScreen(0, 255, 0);
-                  display->Render();
-                  break;
-                case 2:
-                  display->FillScreen(0, 0, 255);
-                  display->Render();
-                  break;
-              }
+              case 1:
+                display->FillScreen(0, 255, 0);
+                display->Render();
+                break;
+              case 2:
+                display->FillScreen(0, 0, 255);
+                display->Render();
+              case 3:
+                RefreshSetupScreen();
+                display->DisplayText("LED Test",
+                        TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
+                        (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+                break;
             }
-            RefreshSetupScreen();
-            display->DisplayText("LED Test",
-                    TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
-                    (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             break;
           }
 #ifdef ZEDMD_HD_HALF
