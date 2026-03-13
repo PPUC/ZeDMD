@@ -79,9 +79,9 @@
 #define LED_CHECK_DELAY 1000  // ms per color
 
 #ifdef ZEDMD_HD_HALF
-#define MENU_ITEMS_COUNT 8
+#define MENU_ITEMS_COUNT 9
 #else
-#define MENU_ITEMS_COUNT 7
+#define MENU_ITEMS_COUNT 8
 #endif
 
 #define RC 0

@@ -229,6 +229,7 @@ static inline void InitRgbLuts() {
 uint8_t usbPackageSizeMultiplier = USB_PACKAGE_SIZE / 32;
 uint8_t settingsMenu = 0;
 uint8_t debug = 0;
+uint8_t ledTest = 0;
 
 Transport *transport = nullptr;
 
@@ -1097,10 +1098,12 @@ void RefreshSetupScreen() {
   }
 #endif
 #ifdef ZEDMD_HD_HALF
-  display->DisplayText("Y-Offset", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
+  display->DisplayText("Y-Offset", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
 #endif
-  display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
+  display->DisplayText("LED Test", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
+                       (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
+  display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 15,
                        (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
 }
 
@@ -2009,7 +2012,7 @@ void setup() {
     SaveSettingsMenu();
 
     RefreshSetupScreen();
-    display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
+    display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 15,
                          (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
 
     const auto forwardButton = new Bounce2::Button();
@@ -2066,7 +2069,7 @@ void setup() {
           case 1: {  // Exit
             RefreshSetupScreen();
             display->DisplayText("Exit",
-                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
+                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 15,
                                  (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
             break;
           }
@@ -2114,11 +2117,18 @@ void setup() {
             DisplayRGB(255, 191, 0);
             break;
           }
+          case 8: {  // LED Test
+            RefreshSetupScreen();
+            display->DisplayText("LED Test",
+                                TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
+                                (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+            break;
+          }
 #ifdef ZEDMD_HD_HALF
-          case 8: {  // Y Offset
+          case 9: {  // Y Offset
             RefreshSetupScreen();
             display->DisplayText("Y-Offset",
-                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
+                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
                                  (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
             break;
           }
@@ -2244,8 +2254,37 @@ void setup() {
             SaveRgbOrder();
             break;
           }
+          case 8: {  // LED Test
+            if (up && ++ledTest > 3)
+              ledTest = 0;
+            else if (down &&
+                     --ledTest >
+                         3)  // underflow will result in 255, set it to 2
+              ledTest = 3;
+            switch(ledTest) {
+              case 0:
+                RefreshSetupScreen();
+                display->DisplayText("LED Test",
+                        TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
+                        (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+                break;
+              case 1:
+                display->FillScreen(255, 0, 0);
+                display->Render();
+                break;
+              case 2:
+                display->FillScreen(0, 255, 0);
+                display->Render();
+                break;
+              case 3:
+                display->FillScreen(0, 0, 255);
+                display->Render();
+                break;
+            }
+            break;
+          }
 #ifdef ZEDMD_HD_HALF
-          case 8: {  // Y-Offset
+          case 9: {  // Y-Offset
             if (up && ++yOffset > 32)
               yOffset = 0;
             else if (down && --yOffset < 0)
@@ -2253,7 +2292,7 @@ void setup() {
             ClearScreen();
             RefreshSetupScreen();
             display->DisplayText("Y-Offset",
-                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
+                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
                                  (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
             SaveYOffset();
             break;
