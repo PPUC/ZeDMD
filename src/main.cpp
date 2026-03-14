@@ -2243,12 +2243,12 @@ void setup() {
             break;
           }
           case 7: {  // RGB order
-            if (rgbModeLoaded != 0) {
-              rgbMode = 0;
-              SaveRgbOrder();
-              delay(10);
-              Restart();
-            }
+            //if (rgbModeLoaded != 0) {
+            //  rgbMode = 0;
+            //  SaveRgbOrder();
+            //  delay(10);
+            //  Restart();
+            //}
             if (up && ++rgbMode > 5)
               rgbMode = 0;
             else if (down &&
