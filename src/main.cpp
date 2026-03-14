@@ -465,7 +465,7 @@ void LoadTransport() {
 void SaveRgbOrder() {
   File f = LittleFS.open("/rgb_order.val", "w");
   f.write((uint8_t)rgbMode);
-  // f.close();
+  f.close();
 }
 
 void LoadRgbOrder() {
@@ -776,6 +776,7 @@ void AcquireNextBuffer() {
 void CheckMenuButton() {
 #ifndef DISPLAY_RM67162_AMOLED
   if (!digitalRead(FORWARD_BUTTON_PIN)) {
+    display->FillScreen(0, 0, 0);
     settingsMenu = true;
     SaveSettingsMenu();
     delay(20);
@@ -2147,6 +2148,11 @@ void setup() {
       if (up || down) {
         switch (position) {
           case 1: {  // Exit
+            display->FillScreen(0, 0, 0);
+            SaveLum();
+            SaveUsbPackageSizeMultiplier();
+            SaveDebug();
+            SaveRgbOrder();
             Restart();
             break;
           }
@@ -2158,7 +2164,7 @@ void setup() {
 
             display->SetBrightness(brightness);
             DisplayLum(255, 191, 0);
-            SaveLum();
+            // SaveLum();
             break;
           }
           case 3: {  // USB Package Size
@@ -2170,7 +2176,7 @@ void setup() {
             DisplayNumber(usbPackageSizeMultiplier * 32, 4,
                           7 * (TOTAL_WIDTH / 128) + (16 * 4),
                           (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
-            SaveUsbPackageSizeMultiplier();
+            // SaveUsbPackageSizeMultiplier();
             break;
           }
 #ifdef DMDREADER
@@ -2233,7 +2239,7 @@ void setup() {
             if (++debug > 1) debug = 0;
             DisplayNumber(debug, 1, 7 * (TOTAL_WIDTH / 128) + (6 * 4),
                           (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
-            SaveDebug();
+            // SaveDebug();
             break;
           }
           case 7: {  // RGB order
@@ -2251,7 +2257,7 @@ void setup() {
               rgbMode = 5;
             RefreshSetupScreen();
             DisplayRGB(255, 191, 0);
-            SaveRgbOrder();
+            // SaveRgbOrder();
             break;
           }
           case 8: {  // LED Test
