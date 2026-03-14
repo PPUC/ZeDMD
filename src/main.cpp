@@ -776,7 +776,7 @@ void AcquireNextBuffer() {
 void CheckMenuButton() {
 #ifndef DISPLAY_RM67162_AMOLED
   if (!digitalRead(FORWARD_BUTTON_PIN)) {
-    display->FillScreen(0, 0, 0);
+    ClearScreen();
     settingsMenu = true;
     SaveSettingsMenu();
     delay(20);
@@ -2148,7 +2148,7 @@ void setup() {
       if (up || down) {
         switch (position) {
           case 1: {  // Exit
-            display->FillScreen(0, 0, 0);
+            ClearScreen();
             SaveLum();
             SaveUsbPackageSizeMultiplier();
             SaveDebug();
