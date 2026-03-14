@@ -37,7 +37,9 @@
 #endif
 
 // Specific improvements and #define for the ESP32 S3 series
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED)
+#if defined(ARDUINO_ESP32_S3_N16R8) || \
+    defined(DISPLAY_RM67162_AMOLED) || \
+    defined(ARDUINO_ADAFRUIT_MATRIXPORTAL_ESP32S3)
 #include "S3Specific.h"
 #endif
 #ifndef PICO_BUILD
@@ -69,7 +71,7 @@
 #define BC 2
 
 #ifdef SPEAKER_LIGHTS
-#ifdef ARDUINO_ESP32_S3_N16R8
+#ifdef ARDUINO_ESP32_S3_N16R8 || defined(ARDUINO_ADAFRUIT_MATRIXPORTAL_ESP32S3)
 #define SPEAKER_LIGHTS_LEFT_PIN 9    // Left speaker LED strip
 #define SPEAKER_LIGHTS_RIGHT_PIN 10  // Right speaker LED strip
 #elif defined(DMDREADER)
@@ -1217,12 +1219,12 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
             response[N_INTERMEDIATE_CTR_CHARS + 18] = 0;
 #endif
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || \
-    defined(PICO_BUILD)
+    defined(PICO_BUILD) || defined(ARDUINO_ADAFRUIT_MATRIXPORTAL_ESP32S3)
             response[N_INTERMEDIATE_CTR_CHARS + 18] += 0b00000010;
 #endif
             response[N_INTERMEDIATE_CTR_CHARS + 19] = shortId & 0xff;
             response[N_INTERMEDIATE_CTR_CHARS + 20] = (shortId >> 8) & 0xff;
-#if defined(ARDUINO_ESP32_S3_N16R8)
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(ARDUINO_ADAFRUIT_MATRIXPORTAL_ESP32S3)
             response[N_INTERMEDIATE_CTR_CHARS + 21] = 1;  // ESP32 S3
 #elif defined(DISPLAY_RM67162_AMOLED)
             response[N_INTERMEDIATE_CTR_CHARS + 21] = 2;  // ESP32 S3 with

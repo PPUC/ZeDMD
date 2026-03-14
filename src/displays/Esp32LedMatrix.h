@@ -16,6 +16,21 @@
 #define LAT_PIN 40
 #define OE_PIN 2
 #define CLK_PIN 41
+#elif defined(ARDUINO_ADAFRUIT_MATRIXPORTAL_ESP32S3)
+#define R1_PIN 42
+#define G1_PIN 41
+#define B1_PIN 40
+#define R2_PIN 38
+#define G2_PIN 39
+#define B2_PIN 37
+#define A_PIN 45
+#define B_PIN 36
+#define C_PIN 48
+#define D_PIN 35
+#define E_PIN 21
+#define LAT_PIN 47
+#define OE_PIN 14
+#define CLK_PIN 2
 #else
 // Pinout derived from ESP32-HUB75-MatrixPanel-I2S-DMA.h
 #define R1_PIN 25
