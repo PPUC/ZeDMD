@@ -2164,7 +2164,6 @@ void setup() {
 
             display->SetBrightness(brightness);
             DisplayLum(255, 191, 0);
-            // SaveLum();
             break;
           }
           case 3: {  // USB Package Size
@@ -2176,7 +2175,6 @@ void setup() {
             DisplayNumber(usbPackageSizeMultiplier * 32, 4,
                           7 * (TOTAL_WIDTH / 128) + (16 * 4),
                           (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
-            // SaveUsbPackageSizeMultiplier();
             break;
           }
 #ifdef DMDREADER
@@ -2239,16 +2237,15 @@ void setup() {
             if (++debug > 1) debug = 0;
             DisplayNumber(debug, 1, 7 * (TOTAL_WIDTH / 128) + (6 * 4),
                           (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
-            // SaveDebug();
             break;
           }
           case 7: {  // RGB order
-            //if (rgbModeLoaded != 0) {
-            //  rgbMode = 0;
-            //  SaveRgbOrder();
-            //  delay(10);
-            //  Restart();
-            //}
+            if (rgbModeLoaded != 0) {
+              rgbMode = 0;
+              SaveRgbOrder();
+              delay(10);
+              Restart();
+            }
             if (up && ++rgbMode > 5)
               rgbMode = 0;
             else if (down &&
@@ -2257,7 +2254,6 @@ void setup() {
               rgbMode = 5;
             RefreshSetupScreen();
             DisplayRGB(255, 191, 0);
-            // SaveRgbOrder();
             break;
           }
           case 8: {  // LED Test
