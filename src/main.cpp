@@ -2153,8 +2153,7 @@ void setup() {
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(PICO_BUILD)
             SaveUsbPackageSizeMultiplier();
             SaveDebug();
-#endif
-#ifdef DMDREADER
+#elif (DMDREADER)
             SaveColor();
 #endif
             Restart();
