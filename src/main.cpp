@@ -2150,9 +2150,14 @@ void setup() {
           case 1: {  // Exit
             ClearScreen();
             SaveLum();
+            SaveRgbOrder();
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(PICO_BUILD)
             SaveUsbPackageSizeMultiplier();
             SaveDebug();
-            SaveRgbOrder();
+#endif
+#ifdef DMDREADER
+            SaveColor();
+#endif
             Restart();
             break;
           }
@@ -2191,7 +2196,6 @@ void setup() {
             display->DisplayText(ColorString(loopbackColor),
                                  7 * (TOTAL_WIDTH / 128) + (6 * 4),
                                  TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
-            SaveColor();
             break;
           }
 #else
