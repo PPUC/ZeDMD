@@ -351,9 +351,8 @@ static uint8_t NormalizeTransportType(uint8_t type) {
              ? type
              : Transport::WIFI_UDP;
 #elif defined(ZEDMD_NO_NETWORKING)
-  return type == Transport::SPI ? Transport::SPI : Transport::USB;
-#else
-  return type <= Transport::SPI ? type : Transport::USB;
+  (void)type;
+  return Transport::USB;
 #endif
 }
 
@@ -2062,7 +2061,7 @@ void setup() {
         } else {
           if (position == 3) position = forward ? 4 : 2;
         }
-#ifdef DMDREADER
+#if defined (DMDREADER) || defined(PICO_BUILD)
         if (position == 5) position = forward ? 6 : 4;
 #endif
 
