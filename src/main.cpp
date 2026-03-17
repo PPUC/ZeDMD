@@ -352,7 +352,7 @@ static uint8_t NormalizeTransportType(uint8_t type) {
              : Transport::WIFI_UDP;
 #elif defined(ZEDMD_NO_NETWORKING)
   return Transport::USB;
-#else 
+#else
   return Transport::USB;
 #endif
 }
