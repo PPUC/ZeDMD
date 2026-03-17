@@ -2151,10 +2151,10 @@ void setup() {
             ClearScreen();
             SaveLum();
             SaveRgbOrder();
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(PICO_BUILD)
+#ifndef DMDREADER
             SaveUsbPackageSizeMultiplier();
             SaveDebug();
-#elif (DMDREADER)
+#else
             SaveColor();
 #endif
             Restart();
