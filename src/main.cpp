@@ -351,9 +351,9 @@ static uint8_t NormalizeTransportType(uint8_t type) {
              ? type
              : Transport::WIFI_UDP;
 #elif defined(ZEDMD_NO_NETWORKING)
-  return type == Transport::SPI ? Transport::SPI : Transport::USB;
+  return Transport::USB;
 #else
-  return type <= Transport::SPI ? type : Transport::USB;
+  return Transport::USB;
 #endif
 }
 
@@ -776,6 +776,7 @@ void AcquireNextBuffer() {
 void CheckMenuButton() {
 #ifndef DISPLAY_RM67162_AMOLED
   if (!digitalRead(FORWARD_BUTTON_PIN)) {
+    ClearScreen();
     settingsMenu = true;
     SaveSettingsMenu();
     delay(20);
@@ -2061,7 +2062,7 @@ void setup() {
         } else {
           if (position == 3) position = forward ? 4 : 2;
         }
-#ifdef DMDREADER
+#if defined (DMDREADER) || defined(PICO_BUILD)
         if (position == 5) position = forward ? 6 : 4;
 #endif
 
@@ -2147,6 +2148,15 @@ void setup() {
       if (up || down) {
         switch (position) {
           case 1: {  // Exit
+            ClearScreen();
+            SaveLum();
+            SaveRgbOrder();
+#if defined(ARDUINO_ESP32_S3_N16R8) || defined(PICO_BUILD)
+            SaveUsbPackageSizeMultiplier();
+            SaveDebug();
+#elif (DMDREADER)
+            SaveColor();
+#endif
             Restart();
             break;
           }
@@ -2158,7 +2168,6 @@ void setup() {
 
             display->SetBrightness(brightness);
             DisplayLum(255, 191, 0);
-            SaveLum();
             break;
           }
           case 3: {  // USB Package Size
@@ -2170,7 +2179,6 @@ void setup() {
             DisplayNumber(usbPackageSizeMultiplier * 32, 4,
                           7 * (TOTAL_WIDTH / 128) + (16 * 4),
                           (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
-            SaveUsbPackageSizeMultiplier();
             break;
           }
 #ifdef DMDREADER
@@ -2187,7 +2195,6 @@ void setup() {
             display->DisplayText(ColorString(loopbackColor),
                                  7 * (TOTAL_WIDTH / 128) + (6 * 4),
                                  TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
-            SaveColor();
             break;
           }
 #else
@@ -2233,7 +2240,6 @@ void setup() {
             if (++debug > 1) debug = 0;
             DisplayNumber(debug, 1, 7 * (TOTAL_WIDTH / 128) + (6 * 4),
                           (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
-            SaveDebug();
             break;
           }
           case 7: {  // RGB order
@@ -2251,7 +2257,6 @@ void setup() {
               rgbMode = 5;
             RefreshSetupScreen();
             DisplayRGB(255, 191, 0);
-            SaveRgbOrder();
             break;
           }
           case 8: {  // LED Test
