@@ -306,7 +306,7 @@ void DisplayVersion(bool logo = false) {
            ZEDMD_VERSION_PATCH);
 #ifdef DMDREADER
   display->DisplayText(version, TOTAL_WIDTH - (strlen(version) * 4),
-                       MENU_HEIGHT - 5 + MENU_OFFSET, 255 * !logo, 255 * !logo,
+                       MENU_HEIGHT - 5 + MENU_Y_OFFSET, 255 * !logo, 255 * !logo,
                        255 * !logo, logo);
 #else
   display->DisplayText(version, TOTAL_WIDTH - (strlen(version) * 4) - 5,
@@ -317,24 +317,24 @@ void DisplayVersion(bool logo = false) {
 
 void DisplayLum(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
   display->DisplayText(" ", (TOTAL_WIDTH / 2) - 26 - 1,
-                       MENU_HEIGHT - 6 + MENU_OFFSET, r, g, b);
+                       MENU_HEIGHT - 6 + MENU_Y_OFFSET, r, g, b);
   display->DisplayText("Brightness:", (TOTAL_WIDTH / 2) - 26,
-                       MENU_HEIGHT - 6 + MENU_OFFSET, r, g, b);
+                       MENU_HEIGHT - 6 + MENU_Y_OFFSET, r, g, b);
   DisplayNumber(brightness, 2, (TOTAL_WIDTH / 2) + 18,
-                MENU_HEIGHT - 6 + MENU_OFFSET, 255, 191, 0);
+                MENU_HEIGHT - 6 + MENU_Y_OFFSET, 255, 191, 0);
 }
 
 void DisplayRGB(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
 #ifndef DISPLAY_RM67162_AMOLED
-  display->DisplayText("red", 0, 0, 0, 0, 0, true, true);
+  display->DisplayText("red", MENU_Y_OFFSET, 0, 0, 0, 0, true, true);
   for (uint8_t i = 0; i < 6; i++) {
-    display->DrawPixel(TOTAL_WIDTH - (4 * 4) - 1, i, 0, 0, 0);
-    display->DrawPixel((TOTAL_WIDTH / 2) - (6 * 4) - 1, i, 0, 0, 0);
+    display->DrawPixel(TOTAL_WIDTH - (4 * 4) - 1, i + MENU_Y_OFFSET, 0, 0, 0);
+    display->DrawPixel((TOTAL_WIDTH / 2) - (6 * 4) - 1, i + MENU_Y_OFFSET, 0, 0, 0);
   }
-  display->DisplayText("blue", TOTAL_WIDTH - (4 * 4), 0, 0, 0, 0, true, true);
-  display->DisplayText("green", 0, TOTAL_HEIGHT - 6, 0, 0, 0, true, true);
-  display->DisplayText("RGB Order:", (TOTAL_WIDTH / 2) - (6 * 4), 0, r, g, b);
-  DisplayNumber(rgbMode, 2, (TOTAL_WIDTH / 2) + (4 * 4), 0, 255, 191, 0);
+  display->DisplayText("blue", TOTAL_WIDTH - (4 * 4), MENU_Y_OFFSET, 0, 0, 0, true, true);
+  display->DisplayText("green", 0, TOTAL_HEIGHT - 6, MENU_Y_OFFSET, 0, 0, true, true);
+  display->DisplayText("RGB Order:", (TOTAL_WIDTH / 2) - (6 * 4), MENU_Y_OFFSET, r, g, b);
+  DisplayNumber(rgbMode, 2, (TOTAL_WIDTH / 2) + (4 * 4), MENU_Y_OFFSET, 255, 191, 0);
 #endif
 }
 
@@ -959,7 +959,7 @@ void DisplayLogo() {
     f = LittleFS.open("/logoHD.raw", "r");
   } else if (TOTAL_WIDTH == 192 && TOTAL_HEIGHT == 64) {
     f = LittleFS.open("/logoSEGAHD.raw", "r");
-  } else if (TOTAL_WIDTH == 128 && TOTAL_HEIGHT == 16) {
+  } else if (TOTAL_WIDTH == 128 && MENU_HEIGHT == 16) {
     f = LittleFS.open("/logoDEX16.raw", "r");
   } else {
     f = LittleFS.open("/logo.raw", "r");
@@ -1410,7 +1410,7 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
               Serial.write(CtrlChars, N_ACK_CHARS);
               Serial.flush();
             }
-            display->DisplayText("Saving settings ...", 0, 0, 255, 0, 0);
+            display->DisplayText("Saving settings ...", MENU_Y_OFFSET, 0, 255, 0, 0);
             display->Render();
             SaveLum();
             SaveDebug();
@@ -1427,7 +1427,7 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
 #ifdef ZEDMD_HD_HALF
             SaveYOffset();
 #endif
-            display->DisplayText("Saving settings ... done", 0, 0, 255, 0, 0);
+            display->DisplayText("Saving settings ... done", MENU_Y_OFFSET, 0, 255, 0, 0);
             display->Render();
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
@@ -2010,7 +2010,7 @@ void setup() {
 
     RefreshSetupScreen();
     display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 15,
-                         (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
+                         (MENU_HEIGHT / 2) + 4, 255, 191, 0);
 
     const auto forwardButton = new Bounce2::Button();
     forwardButton->attach(FORWARD_BUTTON_PIN, INPUT_PULLUP);
@@ -2067,7 +2067,7 @@ void setup() {
             RefreshSetupScreen();
             display->DisplayText("Exit",
                                  TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 15,
-                                 (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
+                                 (MENU_HEIGHT / 2) + 4, 255, 191, 0);
             break;
           }
           case 2: {  // Brightness
