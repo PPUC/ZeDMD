@@ -126,11 +126,6 @@ uint8_t lastBuffer __attribute__((aligned(4)));
 uint8_t processingBuffer __attribute__((aligned(4)));
 bool rgb565ZoneStream = false;
 
-#ifdef ZEDMD_DEX16
-int8_t yOffset = 8;
-#else
-int8_t yOffset = 0;
-#endif
 // Init display on a low brightness to avoid power issues, but bright enough to
 // see something.
 #ifdef DISPLAY_RM67162_AMOLED
@@ -144,6 +139,7 @@ uint8_t panelDriver = 0;
 uint8_t panelI2sspeed = 8;
 uint8_t panelLatchBlanking = 2;
 uint8_t panelMinRefreshRate = 60;
+int8_t yOffset = 0;
 #ifdef DMDREADER
 bool core_0_initialized = false;
 bool core_1_initialized = false;
@@ -308,24 +304,24 @@ void DisplayVersion(bool logo = false) {
   char version[10];
   snprintf(version, 9, "%d.%d.%d", ZEDMD_VERSION_MAJOR, ZEDMD_VERSION_MINOR,
            ZEDMD_VERSION_PATCH);
-  #ifdef DMDREADER
+#ifdef DMDREADER
   display->DisplayText(version, TOTAL_WIDTH - (strlen(version) * 4),
-                       TOTAL_HEIGHT - 5, 255 * !logo, 255 * !logo, 255 * !logo,
-                       logo);
-  #else
+                       MENU_HEIGHT - 5 + MENU_OFFSET, 255 * !logo, 255 * !logo,
+                       255 * !logo, logo);
+#else
   display->DisplayText(version, TOTAL_WIDTH - (strlen(version) * 4) - 5,
-                       TOTAL_HEIGHT - 5, 255 * !logo, 255 * !logo, 255 * !logo,
-                       logo);
-  #endif
+                       MENU_HEIGHT - 5 + MENU_OFFSET, 255 * !logo, 255 * !logo,
+                       255 * !logo, logo);
+#endif
 }
 
 void DisplayLum(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
-  display->DisplayText(" ", (TOTAL_WIDTH / 2) - 26 - 1, TOTAL_HEIGHT - 6, r, g,
-                       b);
-  display->DisplayText("Brightness:", (TOTAL_WIDTH / 2) - 26, TOTAL_HEIGHT - 6,
-                       r, g, b);
-  DisplayNumber(brightness, 2, (TOTAL_WIDTH / 2) + 18, TOTAL_HEIGHT - 6, 255,
-                191, 0);
+  display->DisplayText(" ", (TOTAL_WIDTH / 2) - 26 - 1,
+                       MENU_HEIGHT - 6 + MENU_OFFSET, r, g, b);
+  display->DisplayText("Brightness:", (TOTAL_WIDTH / 2) - 26,
+                       MENU_HEIGHT - 6 + MENU_OFFSET, r, g, b);
+  DisplayNumber(brightness, 2, (TOTAL_WIDTH / 2) + 18,
+                MENU_HEIGHT - 6 + MENU_OFFSET, 255, 191, 0);
 }
 
 void DisplayRGB(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
