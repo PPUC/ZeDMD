@@ -22,6 +22,7 @@ A full tutorial of its installation is available in [English](https://www.pincab
 * ESP32-S3-DevKitC-1-N16R8
 * original ESP32 with CP2102 USB-to-serial converter
 * original ESP32 with CH340 USB-to-serial converter
+* Adafruit MatrixPortal S3
 
 For a new build, the ESP32 S3 is recommended. It provides more memory which is used for smoother rendering and higher color depth. And it provides a native USB interface which allows higher data transfer rates.
 
