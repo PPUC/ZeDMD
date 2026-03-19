@@ -310,7 +310,7 @@ void DisplayVersion(bool logo = false) {
                        255 * !logo, logo);
 #else
   display->DisplayText(version, TOTAL_WIDTH - (strlen(version) * 4) - 5,
-                       MENU_HEIGHT - 5 + MENU_OFFSET, 255 * !logo, 255 * !logo,
+                       MENU_HEIGHT - 5 + MENU_Y_OFFSET, 255 * !logo, 255 * !logo,
                        255 * !logo, logo);
 #endif
 }
