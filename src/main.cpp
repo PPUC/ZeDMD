@@ -332,7 +332,7 @@ void DisplayRGB(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
     display->DrawPixel((TOTAL_WIDTH / 2) - (6 * 4) - 1, i + MENU_Y_OFFSET, 0, 0, 0);
   }
   display->DisplayText("blue", TOTAL_WIDTH - (4 * 4), MENU_Y_OFFSET, 0, 0, 0, true, true);
-  display->DisplayText("green", 0, TOTAL_HEIGHT - 6, MENU_Y_OFFSET, 0, 0, true, true);
+  display->DisplayText("green", 0, MENU_HEIGHT - 6 + MENU_Y_OFFSET, 0, 0, 0, true, true);
   display->DisplayText("RGB Order:", (TOTAL_WIDTH / 2) - (6 * 4), MENU_Y_OFFSET, r, g, b);
   DisplayNumber(rgbMode, 2, (TOTAL_WIDTH / 2) + (4 * 4), MENU_Y_OFFSET, 255, 191, 0);
 #endif
