@@ -2010,7 +2010,7 @@ void setup() {
 
     RefreshSetupScreen();
     display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 15,
-                         (MENU_HEIGHT / 2) + 4, 255, 191, 0);
+                         (MENU_HEIGHT / 2) + 4 + MENU_Y_OFFSET, 255, 191, 0);
 
     const auto forwardButton = new Bounce2::Button();
     forwardButton->attach(FORWARD_BUTTON_PIN, INPUT_PULLUP);
@@ -2067,7 +2067,7 @@ void setup() {
             RefreshSetupScreen();
             display->DisplayText("Exit",
                                  TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 15,
-                                 (MENU_HEIGHT / 2) + 4, 255, 191, 0);
+                                 (MENU_HEIGHT / 2) + 4 + MENU_Y_OFFSET, 255, 191, 0);
             break;
           }
           case 2: {  // Brightness
