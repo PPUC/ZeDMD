@@ -25,7 +25,7 @@
 #define TOTAL_HEIGHT (PANEL_HEIGHT / 2)
 #elif defined(ZEDMD_DEX16)
 #define MENU_HEIGHT (PANEL_HEIGHT / 2)
-#define MENU_OFFSET 8
+#define MENU_Y_OFFSET 8
 #endif
 #ifndef TOTAL_HEIGHT
 #define TOTAL_HEIGHT PANEL_HEIGHT
