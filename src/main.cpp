@@ -326,7 +326,7 @@ void DisplayLum(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
 
 void DisplayRGB(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
 #ifndef DISPLAY_RM67162_AMOLED
-  display->DisplayText("red", MENU_Y_OFFSET, 0, 0, 0, 0, true, true);
+  display->DisplayText("red", 0, MENU_Y_OFFSET, 0, 0, 0, true, true);
   for (uint8_t i = 0; i < 6; i++) {
     display->DrawPixel(TOTAL_WIDTH - (4 * 4) - 1, i + MENU_Y_OFFSET, 0, 0, 0);
     display->DrawPixel((TOTAL_WIDTH / 2) - (6 * 4) - 1, i + MENU_Y_OFFSET, 0, 0, 0);
@@ -1101,7 +1101,7 @@ void RefreshSetupScreen() {
   display->DisplayText("LED Test", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
                        (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
   display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 15,
-                       (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
+                       (MENU_HEIGHT / 2) + 4 + MENU_Y_OFFSET, 128, 128, 128);
 }
 
 uint8_t HandleData(uint8_t *pData, size_t len) {
