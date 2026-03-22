@@ -1017,7 +1017,7 @@ void DisplayUpdate() {
     f = LittleFS.open("/ppucHD.raw", "r");
   } else if (TOTAL_WIDTH == 192 && TOTAL_HEIGHT == 64) {
     // need to add some day
-  } else if (TOTAL_WIDTH == 128 && TOTAL_HEIGHT == 16) {
+  } else if (TOTAL_WIDTH == 128 && MENU_HEIGHT == 16) {
     // need to add some day
   } else {
     f = LittleFS.open("/ppuc.raw", "r");
@@ -1069,10 +1069,12 @@ void RefreshSetupScreen() {
   DisplayLum();
   display->DisplayText(transport->getTypeString(), 7 * (TOTAL_WIDTH / 128),
                        (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
+#ifndef DMDREADER
   display->DisplayText("Debug:", 7 * (TOTAL_WIDTH / 128),
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
   DisplayNumber(debug, 1, 7 * (TOTAL_WIDTH / 128) + (6 * 4),
                 (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
+#endif
   if (transport->isUsb()) {
     display->DisplayText("USB Packet Size:", 7 * (TOTAL_WIDTH / 128),
                          (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
