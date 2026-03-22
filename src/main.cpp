@@ -1058,8 +1058,13 @@ void ScreenSaver() {
 
 void RefreshSetupScreen() {
   DisplayLogo();
+#ifdef ZEDMD_DEX16
+  for (uint16_t y = (TOTAL_HEIGHT / 32 * 5) + MENU_Y_OFFSET;
+       y < MENU_HEIGHT - 10; y++) {
+#else
   for (uint16_t y = (TOTAL_HEIGHT / 32 * 5);
        y < TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5); y++) {
+#endif
     for (uint16_t x = (TOTAL_WIDTH / 128 * 5);
          x < TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5); x++) {
       display->DrawPixel(x, y, 0, 0, 0);
