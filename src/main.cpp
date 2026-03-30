@@ -966,7 +966,7 @@ void DisplayLogo() {
   } else if (TOTAL_WIDTH == 128 && TOTAL_HEIGHT == 16) {
     f = LittleFS.open("/logoDEX16.raw", "r");
   } else {
-    f = LittleFS.open("/logo.raw", "r");
+    f = LittleFS.open("/128x32/logo.raw", "r");
   }
 
   if (!f) {
