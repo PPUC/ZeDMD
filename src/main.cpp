@@ -1076,9 +1076,9 @@ void RefreshSetupScreen() {
 #ifndef DMDREADER
   display->DisplayText("Debug:", 7 * (TOTAL_WIDTH / 128),
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
-#endif
   DisplayNumber(debug, 1, 7 * (TOTAL_WIDTH / 128) + (6 * 4),
                 (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
+#endif
   if (transport->isUsb()) {
     display->DisplayText("USB Packet Size:", 7 * (TOTAL_WIDTH / 128),
                          (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
