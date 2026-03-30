@@ -1,0 +1,132 @@
+name: PPUC-DMD
+
+on:
+  push:
+
+  pull_request:
+  workflow_dispatch:
+
+
+jobs:
+  version:
+    name: Detect version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: version
+        run: |
+          VERSION_MAJOR=$(grep -Eo "ZEDMD_VERSION_MAJOR\s+[0-9]+" src/version.h | grep -Eo "[0-9]+")
+          VERSION_MINOR=$(grep -Eo "ZEDMD_VERSION_MINOR\s+[0-9]+" src/version.h | grep -Eo "[0-9]+")
+          VERSION_PATCH=$(grep -Eo "ZEDMD_VERSION_PATCH\s+[0-9]+" src/version.h | grep -Eo "[0-9]+")
+          TAG="${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}"
+          echo "${TAG}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+      - name: Check git tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          GIT_TAG="${GITHUB_REF#refs/tags/}"
+          EXPECTED_TAG="v${{ steps.version.outputs.tag }}"
+          if [[ "${GIT_TAG}" != "${EXPECTED_TAG}" ]]; then
+            echo "Error: Git tag (${GIT_TAG}) does not match version from version.h (v${{ steps.version.outputs.tag }})"
+            exit 1
+          fi
+
+  pio-run:
+    runs-on: ubuntu-latest
+    needs: [ version ]
+    strategy:
+      matrix:
+        panels: ['pico2_128x32_ppucdmd', 'pico2_256x64_ppucdmd', 'ppucdmd_128x16', 'ppucdmd_128x32', 'ppucdmd_192x64', 'ppucdmd_256x64', 'ppucdmd_128x64x2', 'ppucdmd_128x32_speakerlights', 'ppucdmd_256x64_speakerlights']
+
+    name: ${{ matrix.panels }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-${{ hashFiles('**/lockfiles') }}
+
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install --upgrade platformio rich_click intelhex
+
+      - name: Build firmware
+        run: |
+          pio run -e ${{ matrix.panels }}
+          pio run -e ${{ matrix.panels }} -t buildfs
+          pio run -e ${{ matrix.panels }} -t buildunified
+          cp .pio/build/${{ matrix.panels }}/firmware.uf2 firmware-update.uf2
+          cp .pio/build/${{ matrix.panels }}/firmware_with_fs.uf2 firmware.uf2
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.panels }}
+          path: |
+            firmware.uf2
+            firmware-update.uf2
+
+  post-build:
+    runs-on: ubuntu-latest
+    needs: [ version, pio-run ]
+    name: Release
+    steps:
+      - uses: actions/download-artifact@v4
+      - name: Package
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+            cd ../pico2_128x32_ppucdmd
+            echo "${{ needs.version.outputs.tag }}" > version.txt
+            zip ../pico2_128x32_ppucdmd.zip firmware.uf2 firmware-update.uf2 version.txt
+            cd ../pico2_256x64_ppucdmd
+            echo "${{ needs.version.outputs.tag }}" > version.txt
+            zip ../pico2_256x64_ppucdmdzip firmware.uf2 firmware-update.uf2 version.txt
+            cd ../ppucdmd_128x16
+            echo "${{ needs.version.outputs.tag }}" > version.txt
+            zip ../ppucdmd_128x16.zip firmware.uf2 firmware-update.uf2 version.txt
+            cd ../ppucdmd_128x32
+            echo "${{ needs.version.outputs.tag }}" > version.txt
+            zip ../ppucdmd_128x32.zip firmware.uf2 firmware-update.uf2 version.txt
+            cd ../ppucdmd_192x64
+            echo "${{ needs.version.outputs.tag }}" > version.txt
+            zip ../ppucdmd_192x64.zip firmware.uf2 firmware-update.uf2 version.txt
+            cd ../ppucdmd_256x64
+            echo "${{ needs.version.outputs.tag }}" > version.txt
+            zip ../ppucdmd_256x64.zip firmware.uf2 firmware-update.uf2 version.txt
+            cd ../ppucdmd_128x64x2
+            echo "${{ needs.version.outputs.tag }}" > version.txt
+            zip ../ppucdmd_128x64x2.zip firmware.uf2 firmware-update.uf2 version.txt
+            cd ../ppucdmd_128x32_speakerlights
+            echo "${{ needs.version.outputs.tag }}" > version.txt
+            zip ../ppucdmd_128x32_speakerlights.zip firmware.uf2 firmware-update.uf2 version.txt
+            cd ../ppucdmd_256x64_speakerlights
+            echo "${{ needs.version.outputs.tag }}" > version.txt
+            zip ../ppucdmd_256x64_speakerlights.zip firmware.uf2 firmware-update.uf2 version.txt
+            cd ..
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          draft: true
+          files: |
+            pico2_128x32_ppucdmd.zip
+            pico2_256x64_ppucdmd.zip
+            ppucdmd_128x16.zip
+            ppucdmd_128x32.zip
+            ppucdmd_192x64.zip
+            ppucdmd_256x64.zip
+            ppucdmd_128x64x2.zip
+            ppucdmd_128x32_speakerlights.zip
+            ppucdmd_256x64_speakerlights.zip

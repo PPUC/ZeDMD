@@ -229,6 +229,7 @@ static inline void InitRgbLuts() {
 uint8_t usbPackageSizeMultiplier = USB_PACKAGE_SIZE / 32;
 uint8_t settingsMenu = 0;
 uint8_t debug = 0;
+uint8_t ledTest = 0;
 
 Transport *transport = nullptr;
 
@@ -341,6 +342,21 @@ void DisplayRGB(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
 #endif
 }
 
+static uint8_t NormalizeTransportType(uint8_t type) {
+#ifdef DMDREADER
+  (void)type;
+  return Transport::SPI;
+#elif defined(ZEDMD_WIFI_ONLY)
+  return (type == Transport::WIFI_TCP || type == Transport::WIFI_UDP)
+             ? type
+             : Transport::WIFI_UDP;
+#elif defined(ZEDMD_NO_NETWORKING)
+  return Transport::USB;
+#else
+  return Transport::USB;
+#endif
+}
+
 /// @brief Get DisplayDriver object, required for webserver
 DisplayDriver *GetDisplayDriver() { return display; }
 
@@ -353,13 +369,18 @@ void TransportCreate(const uint8_t type =
                          Transport::USB
 #endif
 ) {
+  const uint8_t normalizedType = NormalizeTransportType(type);
 
   // "reload" new transport (without init)
   delete transport;
 
-  switch (type) {
+  switch (normalizedType) {
 #ifdef DMDREADER
     case Transport::SPI: {
+      transport = new SpiTransport();
+      break;
+    }
+    default: {
       transport = new SpiTransport();
       break;
     }
@@ -407,14 +428,14 @@ void LoadSettingsMenu() {
 }
 
 void SaveTransport(const uint8_t type = Transport::USB) {
-  if (!transport) return;
+  const uint8_t normalizedType = NormalizeTransportType(type);
 
   File f = LittleFS.open("/transport.val", "w");
-  f.write(type);
+  f.write(normalizedType);
   f.close();
 
   // set new transport type (not active until reboot)
-  transport->setType(type);
+  if (transport) transport->setType(normalizedType);
 }
 
 void LoadTransport() {
@@ -434,8 +455,9 @@ void LoadTransport() {
     return;
   }
 
-  const uint8_t type = f.read();
+  const uint8_t type = NormalizeTransportType(f.read());
   f.close();
+  SaveTransport(type);
   TransportCreate(type);
 }
 
@@ -754,6 +776,7 @@ void AcquireNextBuffer() {
 void CheckMenuButton() {
 #ifndef DISPLAY_RM67162_AMOLED
   if (!digitalRead(FORWARD_BUTTON_PIN)) {
+    ClearScreen();
     settingsMenu = true;
     SaveSettingsMenu();
     delay(20);
@@ -1076,10 +1099,12 @@ void RefreshSetupScreen() {
   }
 #endif
 #ifdef ZEDMD_HD_HALF
-  display->DisplayText("Y-Offset", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
+  display->DisplayText("Y-Offset", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
 #endif
-  display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
+  display->DisplayText("LED Test", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
+                       (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
+  display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 15,
                        (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
 }
 
@@ -1480,7 +1505,7 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
           case 45:  // set transport
           {
             // TODO: verify this (need Save ? need Reset ?)
-            transport->setType(pData[pos++]);
+            transport->setType(NormalizeTransportType(pData[pos++]));
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (transport->isWifiAndActive()) break;
@@ -1988,7 +2013,7 @@ void setup() {
     SaveSettingsMenu();
 
     RefreshSetupScreen();
-    display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
+    display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 15,
                          (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
 
     const auto forwardButton = new Bounce2::Button();
@@ -2037,12 +2062,15 @@ void setup() {
         } else {
           if (position == 3) position = forward ? 4 : 2;
         }
+#if defined (DMDREADER) || defined(PICO_BUILD)
+        if (position == 5) position = forward ? 6 : 4;
+#endif
 
         switch (position) {
           case 1: {  // Exit
             RefreshSetupScreen();
             display->DisplayText("Exit",
-                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 16,
+                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 15,
                                  (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
             break;
           }
@@ -2090,11 +2118,18 @@ void setup() {
             DisplayRGB(255, 191, 0);
             break;
           }
+          case 8: {  // LED Test
+            RefreshSetupScreen();
+            display->DisplayText("LED Test",
+                                TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
+                                (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+            break;
+          }
 #ifdef ZEDMD_HD_HALF
-          case 8: {  // Y Offset
+          case 9: {  // Y Offset
             RefreshSetupScreen();
             display->DisplayText("Y-Offset",
-                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
+                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
                                  (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
             break;
           }
@@ -2113,6 +2148,15 @@ void setup() {
       if (up || down) {
         switch (position) {
           case 1: {  // Exit
+            ClearScreen();
+            SaveLum();
+            SaveRgbOrder();
+#ifndef DMDREADER
+            SaveUsbPackageSizeMultiplier();
+            SaveDebug();
+#else
+            SaveColor();
+#endif
             Restart();
             break;
           }
@@ -2124,7 +2168,6 @@ void setup() {
 
             display->SetBrightness(brightness);
             DisplayLum(255, 191, 0);
-            SaveLum();
             break;
           }
           case 3: {  // USB Package Size
@@ -2136,7 +2179,6 @@ void setup() {
             DisplayNumber(usbPackageSizeMultiplier * 32, 4,
                           7 * (TOTAL_WIDTH / 128) + (16 * 4),
                           (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
-            SaveUsbPackageSizeMultiplier();
             break;
           }
 #ifdef DMDREADER
@@ -2153,7 +2195,6 @@ void setup() {
             display->DisplayText(ColorString(loopbackColor),
                                  7 * (TOTAL_WIDTH / 128) + (6 * 4),
                                  TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
-            SaveColor();
             break;
           }
 #else
@@ -2173,6 +2214,9 @@ void setup() {
           }
 #endif
           case 5: {  // Transport
+#ifdef DMDREADER
+            break;
+#else
 #ifdef ZEDMD_NO_NETWORKING
             const uint8_t type = transport->getType() == Transport::USB
                                      ? Transport::SPI
@@ -2190,12 +2234,12 @@ void setup() {
                                  7 * (TOTAL_WIDTH / 128),
                                  (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             break;
+#endif
           }
           case 6: {  // Debug
             if (++debug > 1) debug = 0;
             DisplayNumber(debug, 1, 7 * (TOTAL_WIDTH / 128) + (6 * 4),
                           (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
-            SaveDebug();
             break;
           }
           case 7: {  // RGB order
@@ -2213,11 +2257,39 @@ void setup() {
               rgbMode = 5;
             RefreshSetupScreen();
             DisplayRGB(255, 191, 0);
-            SaveRgbOrder();
+            break;
+          }
+          case 8: {  // LED Test
+            if (up && ++ledTest > 3)
+              ledTest = 0;
+            else if (down &&
+                     --ledTest >
+                         3)  // underflow will result in 255, set it to 2
+              ledTest = 3;
+            switch(ledTest) {
+              case 0:
+                RefreshSetupScreen();
+                display->DisplayText("LED Test",
+                        TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
+                        (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+                break;
+              case 1:
+                display->FillScreen(255, 0, 0);
+                display->Render();
+                break;
+              case 2:
+                display->FillScreen(0, 255, 0);
+                display->Render();
+                break;
+              case 3:
+                display->FillScreen(0, 0, 255);
+                display->Render();
+                break;
+            }
             break;
           }
 #ifdef ZEDMD_HD_HALF
-          case 8: {  // Y-Offset
+          case 9: {  // Y-Offset
             if (up && ++yOffset > 32)
               yOffset = 0;
             else if (down && --yOffset < 0)
@@ -2225,7 +2297,7 @@ void setup() {
             ClearScreen();
             RefreshSetupScreen();
             display->DisplayText("Y-Offset",
-                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 32,
+                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
                                  (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
             SaveYOffset();
             break;
