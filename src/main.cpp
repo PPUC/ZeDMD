@@ -2097,7 +2097,8 @@ void setup() {
           case 4: {  // Color
             RefreshSetupScreen();
             display->DisplayText("Color:", 7 * (TOTAL_WIDTH / 128),
-                                 TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
+                                 (TOTAL_HEIGHT / 2) + 4 - MENU_Y_OFFSET, 255,
+                                 191, 0);
             break;
           }
 #else
