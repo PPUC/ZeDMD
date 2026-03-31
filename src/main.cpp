@@ -959,7 +959,7 @@ void DisplayLogo() {
     f = LittleFS.open("/logoHD.raw", "r");
   } else if (TOTAL_WIDTH == 192 && TOTAL_HEIGHT == 64) {
     f = LittleFS.open("/logoSEGAHD.raw", "r");
-  } else if (TOTAL_WIDTH == 128 && MENU_HEIGHT == 16) {
+  } else if (TOTAL_WIDTH == 128 && MENU_HEIGHT == 18) {
     f = LittleFS.open("/logoDEX16.raw", "r");
   } else {
     f = LittleFS.open("/logo.raw", "r");
