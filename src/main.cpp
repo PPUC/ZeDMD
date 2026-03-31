@@ -306,12 +306,12 @@ void DisplayVersion(bool logo = false) {
            ZEDMD_VERSION_PATCH);
 #ifdef DMDREADER
   display->DisplayText(version, TOTAL_WIDTH - (strlen(version) * 4),
-                       MENU_HEIGHT - 5 + MENU_Y_OFFSET, 255 * !logo, 255 * !logo,
-                       255 * !logo, logo);
+                       MENU_HEIGHT - 5 + MENU_Y_OFFSET, 255 * !logo,
+                       255 * !logo, 255 * !logo, logo);
 #else
   display->DisplayText(version, TOTAL_WIDTH - (strlen(version) * 4) - 5,
-                       MENU_HEIGHT - 5 + MENU_Y_OFFSET, 255 * !logo, 255 * !logo,
-                       255 * !logo, logo);
+                       MENU_HEIGHT - 5 + MENU_Y_OFFSET, 255 * !logo,
+                       255 * !logo, 255 * !logo, logo);
 #endif
 }
 
@@ -329,12 +329,17 @@ void DisplayRGB(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
   display->DisplayText("red", 0, MENU_Y_OFFSET, 0, 0, 0, true, true);
   for (uint8_t i = 0; i < 6; i++) {
     display->DrawPixel(TOTAL_WIDTH - (4 * 4) - 1, i + MENU_Y_OFFSET, 0, 0, 0);
-    display->DrawPixel((TOTAL_WIDTH / 2) - (6 * 4) - 1, i + MENU_Y_OFFSET, 0, 0, 0);
+    display->DrawPixel((TOTAL_WIDTH / 2) - (6 * 4) - 1, i + MENU_Y_OFFSET, 0, 0,
+                       0);
   }
-  display->DisplayText("blue", TOTAL_WIDTH - (4 * 4), MENU_Y_OFFSET, 0, 0, 0, true, true);
-  display->DisplayText("green", 0, MENU_HEIGHT - 6 + MENU_Y_OFFSET, 0, 0, 0, true, true);
-  display->DisplayText("RGB Order:", (TOTAL_WIDTH / 2) - (6 * 4), MENU_Y_OFFSET, r, g, b);
-  DisplayNumber(rgbMode, 2, (TOTAL_WIDTH / 2) + (4 * 4), MENU_Y_OFFSET, 255, 191, 0);
+  display->DisplayText("blue", TOTAL_WIDTH - (4 * 4), MENU_Y_OFFSET, 0, 0, 0,
+                       true, true);
+  display->DisplayText("green", 0, MENU_HEIGHT - 6 + MENU_Y_OFFSET, 0, 0, 0,
+                       true, true);
+  display->DisplayText("RGB Order:", (TOTAL_WIDTH / 2) - (6 * 4), MENU_Y_OFFSET,
+                       r, g, b);
+  DisplayNumber(rgbMode, 2, (TOTAL_WIDTH / 2) + (4 * 4), MENU_Y_OFFSET, 255,
+                191, 0);
 #endif
 }
 
@@ -1425,7 +1430,8 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
               Serial.write(CtrlChars, N_ACK_CHARS);
               Serial.flush();
             }
-            display->DisplayText("Saving settings ...", MENU_Y_OFFSET, 0, 255, 0, 0);
+            display->DisplayText("Saving settings ...", MENU_Y_OFFSET, 0, 255,
+                                 0, 0);
             display->Render();
             SaveLum();
             SaveDebug();
@@ -1442,7 +1448,8 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
 #ifdef ZEDMD_HD_HALF
             SaveYOffset();
 #endif
-            display->DisplayText("Saving settings ... done", MENU_Y_OFFSET, 0, 255, 0, 0);
+            display->DisplayText("Saving settings ... done", MENU_Y_OFFSET, 0,
+                                 255, 0, 0);
             display->Render();
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
@@ -2136,12 +2143,12 @@ void setup() {
             RefreshSetupScreen();
 #ifdef ZEDMD_DEX16
             display->DisplayText("LED",
-                                TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
-                                (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
+                                 (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
 #else
             display->DisplayText("LED Test",
-                                TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
-                                (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
+                                 (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
 #endif
             break;
           }
@@ -2212,9 +2219,9 @@ void setup() {
                                                   // 255, set it to DMD_WHITE
               loopbackColor = ((uint8_t)Color::DMD_WHITE);
 
-            display->DisplayText(ColorString(loopbackColor),
-                                 7 * (TOTAL_WIDTH / 128) + (6 * 4),
-                                 TOTAL_HEIGHT / 2 + 4 - MENU_Y_OFFSET, 255, 191, 0);
+            display->DisplayText(
+                ColorString(loopbackColor), 7 * (TOTAL_WIDTH / 128) + (6 * 4),
+                TOTAL_HEIGHT / 2 + 4 - MENU_Y_OFFSET, 255, 191, 0);
             break;
           }
 #else
@@ -2286,17 +2293,17 @@ void setup() {
                      --ledTest >
                          3)  // underflow will result in 255, set it to 2
               ledTest = 3;
-            switch(ledTest) {
+            switch (ledTest) {
               case 0:
                 RefreshSetupScreen();
 #ifdef ZEDMD_DEX16
-                display->DisplayText("LED",
-                        TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
-                        (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+                display->DisplayText(
+                    "LED", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
+                    (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
 #else
-                display->DisplayText("LED Test",
-                        TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
-                        (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+                display->DisplayText(
+                    "LED Test", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
+                    (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
 #endif
                 break;
               case 1:
