@@ -1073,9 +1073,10 @@ void RefreshSetupScreen() {
   DisplayRGB();
   DisplayLum();
 
-#ifndef DMDREADER
+#ifndef ZEDMD_DEX16
   display->DisplayText(transport->getTypeString(), 7 * (TOTAL_WIDTH / 128),
                        (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
+#endif
 #ifndef DMDREADER
   display->DisplayText("Debug:", 7 * (TOTAL_WIDTH / 128),
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
