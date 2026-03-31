@@ -1098,10 +1098,10 @@ void RefreshSetupScreen() {
 #ifdef DMDREADER
   else if (transport->isSpi()) {
     display->DisplayText("Color:", 7 * (TOTAL_WIDTH / 128),
-                         (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
+                         (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
     display->DisplayText(ColorString(loopbackColor),
                          7 * (TOTAL_WIDTH / 128) + (6 * 4),
-                         (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+                         (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
   }
 #endif
 #ifdef ZEDMD_HD_HALF
