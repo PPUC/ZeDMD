@@ -1108,8 +1108,13 @@ void RefreshSetupScreen() {
   display->DisplayText("Y-Offset", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
 #endif
+#ifdef ZEDMD_DEX16
+  display->DisplayText("LED", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
+                       (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
+#else
   display->DisplayText("LED Test", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
                        (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
+#endif
   display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 15,
                        (MENU_HEIGHT / 2) + 4, 128, 128, 128);
 }
@@ -2129,9 +2134,15 @@ void setup() {
           }
           case 8: {  // LED Test
             RefreshSetupScreen();
+#ifdef ZEDMD_DEX16
+            display->DisplayText("LED",
+                                TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
+                                (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+#else
             display->DisplayText("LED Test",
                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
                                 (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+#endif
             break;
           }
 #ifdef ZEDMD_HD_HALF
@@ -2278,9 +2289,15 @@ void setup() {
             switch(ledTest) {
               case 0:
                 RefreshSetupScreen();
+#ifdef ZEDMD_DEX16
+                display->DisplayText("LED",
+                        TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
+                        (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+#else
                 display->DisplayText("LED Test",
                         TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
                         (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+#endif
                 break;
               case 1:
                 display->FillScreen(255, 0, 0);
