@@ -1076,6 +1076,7 @@ void RefreshSetupScreen() {
 #ifndef DMDREADER
   display->DisplayText(transport->getTypeString(), 7 * (TOTAL_WIDTH / 128),
                        (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
+#ifndef DMDREADER
   display->DisplayText("Debug:", 7 * (TOTAL_WIDTH / 128),
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
   DisplayNumber(debug, 1, 7 * (TOTAL_WIDTH / 128) + (6 * 4),
@@ -2066,7 +2067,9 @@ void setup() {
         } else {
           if (position == 3) position = forward ? 4 : 2;
         }
-#if defined (DMDREADER) || defined(PICO_BUILD)
+#ifdef DMDREADER
+        if (position == 5 || position == 6) position = forward ? 7 : 4;
+#elif defined(PICO_BUILD)
         if (position == 5) position = forward ? 6 : 4;
 #endif
 
