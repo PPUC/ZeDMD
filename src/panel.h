@@ -23,7 +23,7 @@
 #define TOTAL_WIDTH (PANEL_WIDTH * PANELS_NUMBER)
 #ifdef ZEDMD_HD_HALF
 #define TOTAL_HEIGHT (PANEL_HEIGHT / 2)
-#elif defined(ZEDMD_DEX16)
+#elif defined(ZEDMD_DEX16)  // should be centered and 18 pixels high
 #define MENU_HEIGHT ((PANEL_HEIGHT / 2) + 2)
 #define MENU_Y_OFFSET 7
 #endif
