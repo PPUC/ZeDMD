@@ -1111,7 +1111,7 @@ void RefreshSetupScreen() {
   display->DisplayText("LED Test", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
                        (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
   display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 15,
-                       (MENU_HEIGHT / 2) + 4 + MENU_Y_OFFSET, 128, 128, 128);
+                       (MENU_HEIGHT / 2) + 4 - MENU_Y_OFFSET, 128, 128, 128);
 }
 
 uint8_t HandleData(uint8_t *pData, size_t len) {
@@ -2020,7 +2020,7 @@ void setup() {
 
     RefreshSetupScreen();
     display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 15,
-                         (MENU_HEIGHT / 2) + 4 + MENU_Y_OFFSET, 255, 191, 0);
+                         (MENU_HEIGHT / 2) + 4 - MENU_Y_OFFSET, 255, 191, 0);
 
     const auto forwardButton = new Bounce2::Button();
     forwardButton->attach(FORWARD_BUTTON_PIN, INPUT_PULLUP);
@@ -2079,7 +2079,7 @@ void setup() {
             RefreshSetupScreen();
             display->DisplayText("Exit",
                                  TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 15,
-                                 (MENU_HEIGHT / 2) + 4 + MENU_Y_OFFSET, 255, 191, 0);
+                                 (MENU_HEIGHT / 2) + 4 - MENU_Y_OFFSET, 255, 191, 0);
             break;
           }
           case 2: {  // Brightness
