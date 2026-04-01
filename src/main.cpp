@@ -233,7 +233,7 @@ uint8_t ledTest = 0;
 
 Transport *transport = nullptr;
 
-bool logoActive, updateActive, saverActive;
+bool logoActive, saverActive;
 bool transportActive;
 uint8_t transportWaitCounter;
 Clock logoWaitCounterClock;
@@ -1008,45 +1008,51 @@ void DisplayLogo() {
   logoWaitCounterClock.restart();
 }
 
+void DisplayFrame() {
+  File f;
+
+  if (TOTAL_WIDTH == 256 && TOTAL_HEIGHT == 64) {
+    f = LittleFS.open("/frameHD.raw", "r");
+  } else if (TOTAL_WIDTH == 192 && TOTAL_HEIGHT == 64) {
+    f = LittleFS.open("/frameSEGAHD.raw", "r");
+  } else if (TOTAL_WIDTH == 128 && TOTAL_HEIGHT == 16) {
+    f = LittleFS.open("/frameDEX16.raw", "r");
+  } else {
+    f = LittleFS.open("/frame.raw", "r");
+  }
+
+  if (!f) {
+    display->DisplayText("Frame is missing", 0, 0, 255, 0, 0);
+    return;
+  }
+#ifndef DISPLAY_RM67162_AMOLED
+  for (uint16_t tj = 0; tj < TOTAL_BYTES; tj += 3) {
+    if (rgbMode == rgbModeLoaded) {
+      renderBuffer[currentRenderBuffer][tj] = f.read();
+      renderBuffer[currentRenderBuffer][tj + 1] = f.read();
+      renderBuffer[currentRenderBuffer][tj + 2] = f.read();
+    } else {
+      renderBuffer[currentRenderBuffer][tj + rgbOrder[rgbMode * 3]] = f.read();
+      renderBuffer[currentRenderBuffer][tj + rgbOrder[rgbMode * 3 + 1]] =
+          f.read();
+      renderBuffer[currentRenderBuffer][tj + rgbOrder[rgbMode * 3 + 2]] =
+          f.read();
+    }
+  }
+#else
+  for (uint16_t tj = 0; tj < TOTAL_BYTES; tj++) {
+    renderBuffer[currentRenderBuffer][tj] = f.read();
+  }
+#endif
+  f.close();
+
+  Render(false);
+}
+
 void DisplayId() {
   char id[5];
   sprintf(id, "%04X", shortId);
   display->DisplayText(id, TOTAL_WIDTH - 16, 0, 0, 0, 0, 1);
-}
-
-void DisplayUpdate() {
-  File f;
-
-  if (TOTAL_WIDTH == 256 && TOTAL_HEIGHT == 64) {
-    f = LittleFS.open("/ppucHD.raw", "r");
-  } else if (TOTAL_WIDTH == 192 && TOTAL_HEIGHT == 64) {
-    // need to add some day
-  } else if (TOTAL_WIDTH == 128 && TOTAL_HEIGHT == 16) {
-    // need to add some day
-  } else {
-    f = LittleFS.open("/ppuc.raw", "r");
-  }
-
-  if (!f) {
-    return;
-  }
-
-  for (uint16_t tj = 0; tj < TOTAL_BYTES; tj++) {
-    renderBuffer[currentRenderBuffer][tj] = f.read();
-  }
-
-  f.close();
-
-  Render();
-
-  DisplayId();
-
-  throbberColors[0] = 0;
-  throbberColors[1] = 0;
-  throbberColors[2] = 0;
-  throbberColors[3] = 255;
-  throbberColors[4] = 255;
-  throbberColors[5] = 0;
 }
 
 void ScreenSaver() {
@@ -1061,7 +1067,7 @@ void ScreenSaver() {
 }
 
 void RefreshSetupScreen() {
-  DisplayLogo();
+  DisplayFrame();
   for (uint16_t y = (TOTAL_HEIGHT / 32 * 5);
        y < TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5); y++) {
     for (uint16_t x = (TOTAL_WIDTH / 128 * 5);
@@ -2435,14 +2441,8 @@ void loop() {
   if (!transportActive) {
     if (!logoActive) logoActive = true;
 
-    if (!updateActive &&
-        logoWaitCounterClock.getElapsedTime().asSeconds() > 10) {
-      updateActive = true;
-      DisplayUpdate();
-    }
-
     if (!saverActive &&
-        logoWaitCounterClock.getElapsedTime().asSeconds() > 20) {
+        logoWaitCounterClock.getElapsedTime().asSeconds() > 10) {
       saverActive = true;
       ScreenSaver();
     }
