@@ -996,7 +996,7 @@ void DisplayLogo() {
   f.close();
 
   Render(false);
-  
+
 #ifndef DMDREADER
   DisplayVersion(true);
 #endif
@@ -1049,9 +1049,9 @@ void DisplayFrame() {
   }
 #endif
   f.close();
-  DisplayVersion(true);
 
   Render(false);
+  DisplayVersion(true);
 }
 
 void DisplayId() {
