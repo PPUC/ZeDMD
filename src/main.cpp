@@ -2358,7 +2358,9 @@ void setup() {
 
   InitRgbLuts();
   DisplayLogo();
+#ifndef DMDREADER
   DisplayId();
+#endif
   display->Render();
 
   // Create synchronization primitives
