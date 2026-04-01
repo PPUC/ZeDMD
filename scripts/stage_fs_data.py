@@ -5,12 +5,12 @@ Import("env")
 
 
 ASSET_MAP = (
-    ("128x16",   ("128x16_border.raw", "128x16_logo.raw")),
-    ("192x64",   ("192x64_border.raw", "192x64_logo.raw")),
-    ("128x64x2", ("256x64_border.raw", "256x64_logo.raw")),
-    ("256x64",   ("256x64_border.raw", "256x64_logo.raw")),
-    ("128x64",   ("128x32_border.raw", "128x32_logo.raw")),
-    ("128x32",   ("128x32_border.raw", "128x32_logo.raw")),
+    ("128x16",   ("128x16_frame.raw", "128x16_logo.raw")),
+    ("192x64",   ("192x64_frame.raw", "192x64_logo.raw")),
+    ("128x64x2", ("256x64_frame.raw", "256x64_logo.raw")),
+    ("256x64",   ("256x64_frame.raw", "256x64_logo.raw")),
+    ("128x64",   ("128x32_frame.raw", "128x32_logo.raw")),
+    ("128x32",   ("128x32_frame.raw", "128x32_logo.raw")),
 )
 
 
