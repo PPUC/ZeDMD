@@ -961,13 +961,13 @@ void DisplayLogo() {
   File f;
 
   if (TOTAL_WIDTH == 256 && TOTAL_HEIGHT == 64) {
-    f = LittleFS.open("/logoHD.raw", "r");
+    f = LittleFS.open("/256x64_logo.raw", "r");
   } else if (TOTAL_WIDTH == 192 && TOTAL_HEIGHT == 64) {
-    f = LittleFS.open("/logoSEGAHD.raw", "r");
+    f = LittleFS.open("/192x64_logo.raw", "r");
   } else if (TOTAL_WIDTH == 128 && MENU_HEIGHT == 18) {
-    f = LittleFS.open("/logoDEX16.raw", "r");
+    f = LittleFS.open("/128x16_logo.raw", "r");
   } else {
-    f = LittleFS.open("/logo.raw", "r");
+    f = LittleFS.open("/128x32_logo.raw", "r");
   }
 
   if (!f) {
@@ -1013,13 +1013,13 @@ void DisplayFrame() {
   File f;
 
   if (TOTAL_WIDTH == 256 && TOTAL_HEIGHT == 64) {
-    f = LittleFS.open("/frameHD.raw", "r");
+    f = LittleFS.open("/256x64_frame.raw", "r");
   } else if (TOTAL_WIDTH == 192 && TOTAL_HEIGHT == 64) {
-    f = LittleFS.open("/frameSEGAHD.raw", "r");
-  } else if (TOTAL_WIDTH == 128 && TOTAL_HEIGHT == 16) {
-    f = LittleFS.open("/frameDEX16.raw", "r");
+    f = LittleFS.open("/192x64_frame.raw", "r");
+  } else if (TOTAL_WIDTH == 128 && MENU_HEIGHT == 18) {
+    f = LittleFS.open("/128x16_frame.raw", "r");
   } else {
-    f = LittleFS.open("/frame.raw", "r");
+    f = LittleFS.open("/128x32_frame.raw", "r");
   }
 
   if (!f) {
