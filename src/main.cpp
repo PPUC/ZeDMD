@@ -247,7 +247,7 @@ void DoRestart(int sec) {
     transport->deinit();
   }
   display->ClearScreen();
-  display->DisplayText("Restarting ...", 0, 0, 255, 0, 0);
+  display->DisplayText("Restarting ...", 0, MENU_Y_OFFSET, 255, 0, 0);
   display->Render();
 #ifndef DMDREADER
   vTaskDelay(pdMS_TO_TICKS(sec * 1000));
