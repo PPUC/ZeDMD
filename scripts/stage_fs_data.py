@@ -15,9 +15,13 @@ ASSET_MAP = (
 
 
 project_dir = Path(env.subst("$PROJECT_DIR")).resolve()
-source_data_dir = Path(env.subst("$PROJECT_DATA_DIR")).resolve()
 env_name = env.subst("$PIOENV")
 staged_data_dir = project_dir / ".pio" / "fsdata" / env_name
+
+if env_name.startswith("ppucdmd_"):
+    source_data_dir = project_dir / "data_ppucdmd"
+else:
+    source_data_dir = Path(env.subst("$PROJECT_DATA_DIR")).resolve()
 
 allowed_files = None
 for resolution, asset_files in ASSET_MAP:
