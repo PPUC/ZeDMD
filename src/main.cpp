@@ -126,11 +126,6 @@ uint8_t lastBuffer __attribute__((aligned(4)));
 uint8_t processingBuffer __attribute__((aligned(4)));
 bool rgb565ZoneStream = false;
 
-#ifdef ZEDMD_DEX16
-int8_t yOffset = 8;
-#else
-int8_t yOffset = 0;
-#endif
 // Init display on a low brightness to avoid power issues, but bright enough to
 // see something.
 #ifdef DISPLAY_RM67162_AMOLED
@@ -144,6 +139,7 @@ uint8_t panelDriver = 0;
 uint8_t panelI2sspeed = 8;
 uint8_t panelLatchBlanking = 2;
 uint8_t panelMinRefreshRate = 60;
+int8_t yOffset = 0;
 #ifdef DMDREADER
 bool core_0_initialized = false;
 bool core_1_initialized = false;
@@ -233,7 +229,7 @@ uint8_t ledTest = 0;
 
 Transport *transport = nullptr;
 
-bool logoActive, updateActive, saverActive;
+bool logoActive, saverActive;
 bool transportActive;
 uint8_t transportWaitCounter;
 Clock logoWaitCounterClock;
@@ -308,37 +304,42 @@ void DisplayVersion(bool logo = false) {
   char version[10];
   snprintf(version, 9, "%d.%d.%d", ZEDMD_VERSION_MAJOR, ZEDMD_VERSION_MINOR,
            ZEDMD_VERSION_PATCH);
-  #ifdef DMDREADER
+#ifdef DMDREADER
   display->DisplayText(version, TOTAL_WIDTH - (strlen(version) * 4),
-                       TOTAL_HEIGHT - 5, 255 * !logo, 255 * !logo, 255 * !logo,
-                       logo);
-  #else
+                       MENU_HEIGHT - 5 + MENU_Y_OFFSET, 255 * !logo,
+                       255 * !logo, 255 * !logo, logo);
+#else
   display->DisplayText(version, TOTAL_WIDTH - (strlen(version) * 4) - 5,
-                       TOTAL_HEIGHT - 5, 255 * !logo, 255 * !logo, 255 * !logo,
-                       logo);
-  #endif
+                       MENU_HEIGHT - 5 + MENU_Y_OFFSET, 255 * !logo,
+                       255 * !logo, 255 * !logo, logo);
+#endif
 }
 
 void DisplayLum(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
-  display->DisplayText(" ", (TOTAL_WIDTH / 2) - 26 - 1, TOTAL_HEIGHT - 6, r, g,
-                       b);
-  display->DisplayText("Brightness:", (TOTAL_WIDTH / 2) - 26, TOTAL_HEIGHT - 6,
-                       r, g, b);
-  DisplayNumber(brightness, 2, (TOTAL_WIDTH / 2) + 18, TOTAL_HEIGHT - 6, 255,
-                191, 0);
+  display->DisplayText(" ", (TOTAL_WIDTH / 2) - 26 - 1,
+                       MENU_HEIGHT - 6 + MENU_Y_OFFSET, r, g, b);
+  display->DisplayText("Brightness:", (TOTAL_WIDTH / 2) - 26,
+                       MENU_HEIGHT - 6 + MENU_Y_OFFSET, r, g, b);
+  DisplayNumber(brightness, 2, (TOTAL_WIDTH / 2) + 18,
+                MENU_HEIGHT - 6 + MENU_Y_OFFSET, 255, 191, 0);
 }
 
 void DisplayRGB(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
 #ifndef DISPLAY_RM67162_AMOLED
-  display->DisplayText("red", 0, 0, 0, 0, 0, true, true);
+  display->DisplayText("red", 0, MENU_Y_OFFSET, 0, 0, 0, true, true);
   for (uint8_t i = 0; i < 6; i++) {
-    display->DrawPixel(TOTAL_WIDTH - (4 * 4) - 1, i, 0, 0, 0);
-    display->DrawPixel((TOTAL_WIDTH / 2) - (6 * 4) - 1, i, 0, 0, 0);
+    display->DrawPixel(TOTAL_WIDTH - (4 * 4) - 1, i + MENU_Y_OFFSET, 0, 0, 0);
+    display->DrawPixel((TOTAL_WIDTH / 2) - (6 * 4) - 1, i + MENU_Y_OFFSET, 0, 0,
+                       0);
   }
-  display->DisplayText("blue", TOTAL_WIDTH - (4 * 4), 0, 0, 0, 0, true, true);
-  display->DisplayText("green", 0, TOTAL_HEIGHT - 6, 0, 0, 0, true, true);
-  display->DisplayText("RGB Order:", (TOTAL_WIDTH / 2) - (6 * 4), 0, r, g, b);
-  DisplayNumber(rgbMode, 2, (TOTAL_WIDTH / 2) + (4 * 4), 0, 255, 191, 0);
+  display->DisplayText("blue", TOTAL_WIDTH - (4 * 4), MENU_Y_OFFSET, 0, 0, 0,
+                       true, true);
+  display->DisplayText("green", 0, MENU_HEIGHT - 6 + MENU_Y_OFFSET, 0, 0, 0,
+                       true, true);
+  display->DisplayText("RGB Order:", (TOTAL_WIDTH / 2) - (6 * 4), MENU_Y_OFFSET,
+                       r, g, b);
+  DisplayNumber(rgbMode, 2, (TOTAL_WIDTH / 2) + (4 * 4), MENU_Y_OFFSET, 255,
+                191, 0);
 #endif
 }
 
@@ -963,7 +964,7 @@ void DisplayLogo() {
     f = LittleFS.open("/logoHD.raw", "r");
   } else if (TOTAL_WIDTH == 192 && TOTAL_HEIGHT == 64) {
     f = LittleFS.open("/logoSEGAHD.raw", "r");
-  } else if (TOTAL_WIDTH == 128 && TOTAL_HEIGHT == 16) {
+  } else if (TOTAL_WIDTH == 128 && MENU_HEIGHT == 18) {
     f = LittleFS.open("/logoDEX16.raw", "r");
   } else {
     f = LittleFS.open("/logo.raw", "r");
@@ -1008,45 +1009,51 @@ void DisplayLogo() {
   logoWaitCounterClock.restart();
 }
 
+void DisplayFrame() {
+  File f;
+
+  if (TOTAL_WIDTH == 256 && TOTAL_HEIGHT == 64) {
+    f = LittleFS.open("/frameHD.raw", "r");
+  } else if (TOTAL_WIDTH == 192 && TOTAL_HEIGHT == 64) {
+    f = LittleFS.open("/frameSEGAHD.raw", "r");
+  } else if (TOTAL_WIDTH == 128 && TOTAL_HEIGHT == 16) {
+    f = LittleFS.open("/frameDEX16.raw", "r");
+  } else {
+    f = LittleFS.open("/frame.raw", "r");
+  }
+
+  if (!f) {
+    display->DisplayText("Frame is missing", 0, 0, 255, 0, 0);
+    return;
+  }
+#ifndef DISPLAY_RM67162_AMOLED
+  for (uint16_t tj = 0; tj < TOTAL_BYTES; tj += 3) {
+    if (rgbMode == rgbModeLoaded) {
+      renderBuffer[currentRenderBuffer][tj] = f.read();
+      renderBuffer[currentRenderBuffer][tj + 1] = f.read();
+      renderBuffer[currentRenderBuffer][tj + 2] = f.read();
+    } else {
+      renderBuffer[currentRenderBuffer][tj + rgbOrder[rgbMode * 3]] = f.read();
+      renderBuffer[currentRenderBuffer][tj + rgbOrder[rgbMode * 3 + 1]] =
+          f.read();
+      renderBuffer[currentRenderBuffer][tj + rgbOrder[rgbMode * 3 + 2]] =
+          f.read();
+    }
+  }
+#else
+  for (uint16_t tj = 0; tj < TOTAL_BYTES; tj++) {
+    renderBuffer[currentRenderBuffer][tj] = f.read();
+  }
+#endif
+  f.close();
+
+  Render(false);
+}
+
 void DisplayId() {
   char id[5];
   sprintf(id, "%04X", shortId);
   display->DisplayText(id, TOTAL_WIDTH - 16, 0, 0, 0, 0, 1);
-}
-
-void DisplayUpdate() {
-  File f;
-
-  if (TOTAL_WIDTH == 256 && TOTAL_HEIGHT == 64) {
-    f = LittleFS.open("/ppucHD.raw", "r");
-  } else if (TOTAL_WIDTH == 192 && TOTAL_HEIGHT == 64) {
-    // need to add some day
-  } else if (TOTAL_WIDTH == 128 && TOTAL_HEIGHT == 16) {
-    // need to add some day
-  } else {
-    f = LittleFS.open("/ppuc.raw", "r");
-  }
-
-  if (!f) {
-    return;
-  }
-
-  for (uint16_t tj = 0; tj < TOTAL_BYTES; tj++) {
-    renderBuffer[currentRenderBuffer][tj] = f.read();
-  }
-
-  f.close();
-
-  Render();
-
-  DisplayId();
-
-  throbberColors[0] = 0;
-  throbberColors[1] = 0;
-  throbberColors[2] = 0;
-  throbberColors[3] = 255;
-  throbberColors[4] = 255;
-  throbberColors[5] = 0;
 }
 
 void ScreenSaver() {
@@ -1062,8 +1069,14 @@ void ScreenSaver() {
 
 void RefreshSetupScreen() {
   DisplayLogo();
+  DisplayFrame();
+#ifdef ZEDMD_DEX16
+  for (uint16_t y = (TOTAL_HEIGHT / 32 * 5) + MENU_Y_OFFSET;
+       y < MENU_HEIGHT - 10; y++) {
+#else
   for (uint16_t y = (TOTAL_HEIGHT / 32 * 5);
        y < TOTAL_HEIGHT - (TOTAL_HEIGHT / 32 * 5); y++) {
+#endif
     for (uint16_t x = (TOTAL_WIDTH / 128 * 5);
          x < TOTAL_WIDTH - (TOTAL_WIDTH / 128 * 5); x++) {
       display->DrawPixel(x, y, 0, 0, 0);
@@ -1071,12 +1084,17 @@ void RefreshSetupScreen() {
   }
   DisplayRGB();
   DisplayLum();
+
+#ifndef ZEDMD_DEX16
   display->DisplayText(transport->getTypeString(), 7 * (TOTAL_WIDTH / 128),
                        (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
+#endif
+#ifndef DMDREADER
   display->DisplayText("Debug:", 7 * (TOTAL_WIDTH / 128),
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
   DisplayNumber(debug, 1, 7 * (TOTAL_WIDTH / 128) + (6 * 4),
                 (TOTAL_HEIGHT / 2) - 10, 255, 191, 0);
+#endif
   if (transport->isUsb()) {
     display->DisplayText("USB Packet Size:", 7 * (TOTAL_WIDTH / 128),
                          (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
@@ -1092,20 +1110,25 @@ void RefreshSetupScreen() {
 #ifdef DMDREADER
   else if (transport->isSpi()) {
     display->DisplayText("Color:", 7 * (TOTAL_WIDTH / 128),
-                         (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
+                         (TOTAL_HEIGHT / 2) + 4 - MENU_Y_OFFSET, 128, 128, 128);
     display->DisplayText(ColorString(loopbackColor),
                          7 * (TOTAL_WIDTH / 128) + (6 * 4),
-                         (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
+                         (TOTAL_HEIGHT / 2) + 4 - MENU_Y_OFFSET, 255, 191, 0);
   }
 #endif
 #ifdef ZEDMD_HD_HALF
   display->DisplayText("Y-Offset", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
                        (TOTAL_HEIGHT / 2) - 10, 128, 128, 128);
 #endif
+#ifdef ZEDMD_DEX16
+  display->DisplayText("LED", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
+                       (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
+#else
   display->DisplayText("LED Test", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
                        (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
+#endif
   display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 15,
-                       (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
+                       (MENU_HEIGHT / 2) + 4, 128, 128, 128);
 }
 
 uint8_t HandleData(uint8_t *pData, size_t len) {
@@ -1414,7 +1437,8 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
               Serial.write(CtrlChars, N_ACK_CHARS);
               Serial.flush();
             }
-            display->DisplayText("Saving settings ...", 0, 0, 255, 0, 0);
+            display->DisplayText("Saving settings ...", MENU_Y_OFFSET, 0, 255,
+                                 0, 0);
             display->Render();
             SaveLum();
             SaveDebug();
@@ -1431,7 +1455,8 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
 #ifdef ZEDMD_HD_HALF
             SaveYOffset();
 #endif
-            display->DisplayText("Saving settings ... done", 0, 0, 255, 0, 0);
+            display->DisplayText("Saving settings ... done", MENU_Y_OFFSET, 0,
+                                 255, 0, 0);
             display->Render();
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
@@ -2014,7 +2039,7 @@ void setup() {
 
     RefreshSetupScreen();
     display->DisplayText("Exit", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 15,
-                         (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
+                         (MENU_HEIGHT / 2) + 4, 255, 191, 0);
 
     const auto forwardButton = new Bounce2::Button();
     forwardButton->attach(FORWARD_BUTTON_PIN, INPUT_PULLUP);
@@ -2062,7 +2087,9 @@ void setup() {
         } else {
           if (position == 3) position = forward ? 4 : 2;
         }
-#if defined (DMDREADER) || defined(PICO_BUILD)
+#ifdef DMDREADER
+        if (position == 5 || position == 6) position = forward ? 7 : 4;
+#elif defined(PICO_BUILD)
         if (position == 5) position = forward ? 6 : 4;
 #endif
 
@@ -2071,7 +2098,7 @@ void setup() {
             RefreshSetupScreen();
             display->DisplayText("Exit",
                                  TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 15,
-                                 (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
+                                 (MENU_HEIGHT / 2) + 4, 255, 191, 0);
             break;
           }
           case 2: {  // Brightness
@@ -2089,7 +2116,8 @@ void setup() {
           case 4: {  // Color
             RefreshSetupScreen();
             display->DisplayText("Color:", 7 * (TOTAL_WIDTH / 128),
-                                 TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
+                                 (TOTAL_HEIGHT / 2) + 4 - MENU_Y_OFFSET, 255,
+                                 191, 0);
             break;
           }
 #else
@@ -2120,9 +2148,15 @@ void setup() {
           }
           case 8: {  // LED Test
             RefreshSetupScreen();
+#ifdef ZEDMD_DEX16
+            display->DisplayText("LED",
+                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
+                                 (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+#else
             display->DisplayText("LED Test",
-                                TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
-                                (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+                                 TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
+                                 (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+#endif
             break;
           }
 #ifdef ZEDMD_HD_HALF
@@ -2192,9 +2226,9 @@ void setup() {
                                                   // 255, set it to DMD_WHITE
               loopbackColor = ((uint8_t)Color::DMD_WHITE);
 
-            display->DisplayText(ColorString(loopbackColor),
-                                 7 * (TOTAL_WIDTH / 128) + (6 * 4),
-                                 TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
+            display->DisplayText(
+                ColorString(loopbackColor), 7 * (TOTAL_WIDTH / 128) + (6 * 4),
+                TOTAL_HEIGHT / 2 + 4 - MENU_Y_OFFSET, 255, 191, 0);
             break;
           }
 #else
@@ -2266,12 +2300,18 @@ void setup() {
                      --ledTest >
                          3)  // underflow will result in 255, set it to 2
               ledTest = 3;
-            switch(ledTest) {
+            switch (ledTest) {
               case 0:
                 RefreshSetupScreen();
-                display->DisplayText("LED Test",
-                        TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
-                        (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+#ifdef ZEDMD_DEX16
+                display->DisplayText(
+                    "LED", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
+                    (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+#else
+                display->DisplayText(
+                    "LED Test", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
+                    (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
+#endif
                 break;
               case 1:
                 display->FillScreen(255, 0, 0);
@@ -2431,14 +2471,8 @@ void loop() {
   if (!transportActive) {
     if (!logoActive) logoActive = true;
 
-    if (!updateActive &&
-        logoWaitCounterClock.getElapsedTime().asSeconds() > 10) {
-      updateActive = true;
-      DisplayUpdate();
-    }
-
     if (!saverActive &&
-        logoWaitCounterClock.getElapsedTime().asSeconds() > 20) {
+        logoWaitCounterClock.getElapsedTime().asSeconds() > 10) {
       saverActive = true;
       ScreenSaver();
     }

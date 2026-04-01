@@ -5,3 +5,4 @@
 .idea/
 # pico pio
 *.pio.h
+scripts/__pycache__
