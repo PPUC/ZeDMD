@@ -247,7 +247,7 @@ void DoRestart(int sec) {
     transport->deinit();
   }
   display->ClearScreen();
-  display->DisplayText("Restarting ...", 0, 0, 255, 0, 0);
+  display->DisplayText("Restarting ...", 0, MENU_Y_OFFSET, 255, 0, 0);
   display->Render();
 #ifndef DMDREADER
   vTaskDelay(pdMS_TO_TICKS(sec * 1000));
@@ -971,7 +971,7 @@ void DisplayLogo() {
   }
 
   if (!f) {
-    display->DisplayText("Logo is missing", 0, 0, 255, 0, 0);
+    display->DisplayText("Logo is missing", 0, MENU_Y_OFFSET, 255, 0, 0);
     return;
   }
 #ifndef DISPLAY_RM67162_AMOLED
@@ -1026,7 +1026,7 @@ void DisplayFrame() {
   }
 
   if (!f) {
-    display->DisplayText("Frame is missing", 0, 0, 255, 0, 0);
+    display->DisplayText("Frame is missing", 0, MENU_Y_OFFSET, 255, 0, 0);
     return;
   }
 #ifndef DISPLAY_RM67162_AMOLED
@@ -1057,7 +1057,7 @@ void DisplayFrame() {
 void DisplayId() {
   char id[5];
   sprintf(id, "%04X", shortId);
-  display->DisplayText(id, TOTAL_WIDTH - 16, 0, 0, 0, 0, 1);
+  display->DisplayText(id, TOTAL_WIDTH - 16, MENU_Y_OFFSET, 0, 0, 0, 1);
 }
 
 void ScreenSaver() {
@@ -1956,8 +1956,10 @@ void setup() {
   display->SetBrightness(brightness);
 
   if (!fileSystemOK) {
-    display->DisplayText("Error reading file system!", 0, 0, 255, 0, 0);
-    display->DisplayText("Try to flash the firmware again.", 0, 6, 255, 0, 0);
+    display->DisplayText("Error reading file system!", 0, MENU_Y_OFFSET, 255, 0,
+                         0);
+    display->DisplayText("Try to flash the firmware again.", 0,
+                         MENU_Y_OFFSET + 6, 255, 0, 0);
     display->Render();
     while (true);
   }
@@ -2356,7 +2358,9 @@ void setup() {
 
   InitRgbLuts();
   DisplayLogo();
+#ifndef DMDREADER
   DisplayId();
+#endif
   display->Render();
 
   // Create synchronization primitives
@@ -2368,7 +2372,7 @@ void setup() {
     buffers[i] = (uint8_t *)malloc(BUFFER_SIZE);
 #endif
     if (nullptr == buffers[i]) {
-      display->DisplayText("out of memory", 0, 0, 255, 0, 0);
+      display->DisplayText("out of memory", 0, MENU_Y_OFFSET, 255, 0, 0);
       display->Render();
       while (1);
     }
@@ -2564,14 +2568,18 @@ void loop() {
 
           if (MZ_OK != minizStatus) {
             if (1 == debug) {
-              display->DisplayText("miniz error: ", 0, 0, 255, 0, 0);
-              DisplayNumber(minizStatus, 3, 13 * 4, 0, 255, 0, 0);
-              display->DisplayText("free heap: ", 0, 6, 255, 0, 0);
+              display->DisplayText("miniz error: ", 0, MENU_Y_OFFSET, 255, 0,
+                                   0);
+              DisplayNumber(minizStatus, 3, 13 * 4, MENU_Y_OFFSET, 255, 0, 0);
+              display->DisplayText("free heap: ", 0, MENU_Y_OFFSET + 6, 255, 0,
+                                   0);
               display->Render();
 #ifdef PICO_BUILD
-              DisplayNumber(rp2040.getFreeHeap(), 8, 11 * 4, 6, 255, 0, 0);
+              DisplayNumber(rp2040.getFreeHeap(), 8, 11 * 4, MENU_Y_OFFSET + 6,
+                            255, 0, 0);
 #else
-              DisplayNumber(esp_get_free_heap_size(), 8, 11 * 4, 6, 255, 0, 0);
+              DisplayNumber(esp_get_free_heap_size(), 8, 11 * 4,
+                            MENU_Y_OFFSET + 6, 255, 0, 0);
 #endif
               while (1);
             }
