@@ -24,6 +24,10 @@
 #elif defined(PICO_BUILD)
 #if PICO_RP2350
 #define NUM_BUFFERS 128  // Number of buffers
+#elif defined(ZEDMD_HD)
+// RP2040 256x64 needs to leave room for the 256x64 RGB888 render buffer and
+// the HUB75 driver state, so keep a smaller packet queue here.
+#define NUM_BUFFERS 24
 #else
 #define NUM_BUFFERS 64  // Number of buffers
 #endif
