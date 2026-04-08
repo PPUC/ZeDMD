@@ -113,7 +113,6 @@ bool WifiTransport::init() {
 
   GetDisplayDriver()->DisplayText("zedmd-wifi.local", 0, TOTAL_HEIGHT - 5, 0, 0,
                                   0, true);
-
   startServer();
 
   if (m_type == WIFI_UDP) {
@@ -253,6 +252,7 @@ void WifiTransport::startServer() {
 
   // Serve index.html
   server->on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
+    
     request->send(LittleFS, "/index.html", String(), false);
   });
 

@@ -49,7 +49,8 @@
 #endif
 
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(DISPLAY_RM67162_AMOLED) || \
-    defined(PICO_BUILD)
+    defined(PICO_BUILD) || defined(DISPLAY_RM67162_AMOLED) ||             \
+    defined(ARDUINO_ADAFRUIT_MATRIXPORTAL_ESP32S3)
 // USB CDC
 #define SERIAL_BAUD 115200
 #define USB_PACKAGE_SIZE 512
@@ -75,6 +76,9 @@
 #elif defined(DISPLAY_RM67162_AMOLED)
 #define UP_BUTTON_PIN 0
 #define FORWARD_BUTTON_PIN 21
+#elif defined(ARDUINO_ADAFRUIT_MATRIXPORTAL_ESP32S3)
+#define UP_BUTTON_PIN 6
+#define FORWARD_BUTTON_PIN 7
 #else
 #define UP_BUTTON_PIN 21
 #define FORWARD_BUTTON_PIN 33

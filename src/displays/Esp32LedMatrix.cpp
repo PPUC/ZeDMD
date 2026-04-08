@@ -1,6 +1,7 @@
 #if defined(DISPLAY_LED_MATRIX) && defined(ESP_BUILD)
 
 #include "Esp32LedMatrix.h"
+#include <HardwareSerial.h>
 
 Esp32LedMatrix::Esp32LedMatrix() {
   int8_t colorPins1[3] = {R1_PIN, G1_PIN, B1_PIN};
@@ -19,7 +20,6 @@ Esp32LedMatrix::Esp32LedMatrix() {
                                         LAT_PIN,
                                         OE_PIN,
                                         CLK_PIN};
-
   HUB75_I2S_CFG mxconfig(PANEL_WIDTH, PANEL_HEIGHT, PANELS_NUMBER, pins);
   // Without setting clkphase to false, HD panels seem to flicker.
   mxconfig.clkphase = (panelClkphase == 1);
@@ -31,7 +31,6 @@ Esp32LedMatrix::Esp32LedMatrix() {
   mxconfig.latch_blanking = panelLatchBlanking;
   mxconfig.min_refresh_rate = panelMinRefreshRate;
   mxconfig.driver = (HUB75_I2S_CFG::shift_driver)panelDriver;
-
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   dma_display->begin();
 }
