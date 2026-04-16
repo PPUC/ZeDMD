@@ -2678,6 +2678,21 @@ void setup1() {
 }
 
 void loop1() {
+  auto *spiTransport = static_cast<SpiTransport *>(transport);
+  static uint32_t lastDmdReaderInitAttempt = 0;
+
+  if (!spiTransport->isDmdReaderInitialized()) {
+    const uint32_t now = millis();
+    if (transport->isLoopback() &&
+        (lastDmdReaderInitAttempt == 0 ||
+         now - lastDmdReaderInitAttempt >= 1000)) {
+      lastDmdReaderInitAttempt = now;
+      spiTransport->initDmdReader();
+    }
+    delay(1);
+    return;
+  }
+
   if (!transport->isLoopback()) {
     dmdreader_spi_send();
     tight_loop_contents();

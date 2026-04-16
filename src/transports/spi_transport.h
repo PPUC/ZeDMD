@@ -28,7 +28,8 @@ class SpiTransport final : public Transport {
   bool deinit() override;
 
 #ifdef DMDREADER
-  void initDmdReader();
+  bool initDmdReader();
+  bool isDmdReaderInitialized() const { return m_dmdReaderInitialized; }
   void SetColor(Color color);
   void SetFrameReceived() { m_frameReceived = true; }
   bool GetFrameReceived();
@@ -51,6 +52,7 @@ class SpiTransport final : public Transport {
   uint8_t m_rxBuffer;
   Color m_color = Color::DMD_ORANGE;
   volatile bool m_frameReceived = false;
+  bool m_dmdReaderInitialized = false;
 #endif
 };
 

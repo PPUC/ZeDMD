@@ -76,10 +76,18 @@ bool SpiTransport::deinit() {
 
 #ifdef DMDREADER
 
-void SpiTransport::initDmdReader() {
-  dmdreader_init();
-  // Start SPI transfer, waiting in the background.
-  dmdreader_spi_init();
+bool SpiTransport::initDmdReader() {
+  if (m_dmdReaderInitialized) {
+    return true;
+  }
+
+  m_dmdReaderInitialized = dmdreader_init(true);
+  if (m_dmdReaderInitialized) {
+    // Start SPI transfer, waiting in the background.
+    dmdreader_spi_init();
+  }
+
+  return m_dmdReaderInitialized;
 }
 
 void SpiTransport::SetAndEnableNewDmaTarget() {
