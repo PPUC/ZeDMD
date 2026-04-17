@@ -14,7 +14,7 @@ jobs:
     outputs:
       tag: ${{ steps.version.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - id: version
@@ -45,15 +45,15 @@ jobs:
     name: ZeDMD ${{ matrix.panels }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
       - name: Cache PlatformIO
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.platformio
           key: ${{ runner.os }}-${{ hashFiles('**/lockfiles') }}
@@ -99,7 +99,7 @@ jobs:
           cp .pio/build/${{ matrix.panels }}/firmware_with_fs.uf2 firmware.uf2
 
       - if: ${{ matrix.panels != 'pico_128x32' && matrix.panels != 'pico_256x64' && matrix.panels != 'pico2_128x32' && matrix.panels != 'pico2_256x64' && matrix.panels != 'pico2_128x32_ppucdmd' && matrix.panels != 'pico2_256x64_ppucdmd' && matrix.panels != 'ppucdmd_128x16' && matrix.panels != 'ppucdmd_128x32' && matrix.panels != 'ppucdmd_192x64' && matrix.panels != 'ppucdmd_256x64' && matrix.panels != 'ppucdmd_128x64x2' && matrix.panels != 'ppucdmd_128x32_speakerlights' && matrix.panels != 'ppucdmd_256x64_speakerlights' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ZeDMD-${{ matrix.panels }}
           path: |
@@ -107,7 +107,7 @@ jobs:
             firmware.elf
 
       - if: ${{ matrix.panels == 'pico_128x32' || matrix.panels == 'pico_256x64' || matrix.panels == 'pico2_128x32' || matrix.panels == 'pico2_256x64' || matrix.panels == 'pico2_128x32_ppucdmd' || matrix.panels == 'pico2_256x64_ppucdmd' || matrix.panels == 'ppucdmd_128x16' || matrix.panels == 'ppucdmd_128x32' || matrix.panels == 'ppucdmd_192x64' || matrix.panels == 'ppucdmd_256x64' || matrix.panels == 'ppucdmd_128x64x2' || matrix.panels == 'ppucdmd_128x32_speakerlights' || matrix.panels == 'ppucdmd_256x64_speakerlights' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ZeDMD-${{ matrix.panels }}
           path: |
@@ -119,7 +119,7 @@ jobs:
     needs: [ version, pio-run ]
     name: Release
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
       - name: Package
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
@@ -161,7 +161,7 @@ jobs:
             zip ../ZeDMD-pico2_256x64.zip firmware.uf2 firmware-update.uf2 version.txt
             cd ..
       - name: Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         if: startsWith(github.ref, 'refs/tags/v')
         with:
           draft: true
