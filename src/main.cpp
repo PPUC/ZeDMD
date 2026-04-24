@@ -2117,9 +2117,8 @@ void setup() {
 #else
           case 4: {  // UDP Delay
             RefreshSetupScreen();
-            display->DisplayText(
-                "UDP/TCP Delay:      ", 7 * (TOTAL_WIDTH / 128),
-                TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
+            display->DisplayText("UDP/TCP Delay:", 7 * (TOTAL_WIDTH / 128),
+                                 TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
             break;
           }
 #endif
