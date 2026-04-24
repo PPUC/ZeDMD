@@ -1094,7 +1094,7 @@ void RefreshSetupScreen() {
                   7 * (TOTAL_WIDTH / 128) + (16 * 4), (TOTAL_HEIGHT / 2) + 4,
                   255, 191, 0);
   } else if (transport->isWifi()) {
-    display->DisplayText("UDP Delay:", 7 * (TOTAL_WIDTH / 128),
+    display->DisplayText("UDP/TCP Delay:      ", 7 * (TOTAL_WIDTH / 128),
                          (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
     DisplayNumber(transport->getDelay(), 1, 7 * (TOTAL_WIDTH / 128) + 10 * 4,
                   (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
@@ -2296,8 +2296,8 @@ void setup() {
               ledTest = 3;
             switch (ledTest) {
               case 0:
+                ClearScreen();
                 RefreshSetupScreen();
-                display->Render();
 #ifdef ZEDMD_DEX16
                 display->DisplayText(
                     "LED", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
