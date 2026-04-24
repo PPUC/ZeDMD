@@ -1096,7 +1096,7 @@ void RefreshSetupScreen() {
   } else if (transport->isWifi()) {
     display->DisplayText("UDP/TCP Delay:      ", 7 * (TOTAL_WIDTH / 128),
                          (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
-    DisplayNumber(transport->getDelay(), 1, 7 * (TOTAL_WIDTH / 128) + 10 * 4,
+    DisplayNumber(transport->getDelay(), 1, 7 * (TOTAL_WIDTH / 128) + (14 * 4),
                   (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
   }
 #ifdef DMDREADER
@@ -2117,8 +2117,9 @@ void setup() {
 #else
           case 4: {  // UDP Delay
             RefreshSetupScreen();
-            display->DisplayText("UDP Delay:", 7 * (TOTAL_WIDTH / 128),
-                                 TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
+            display->DisplayText(
+                "UDP/TCP Delay:      ", 7 * (TOTAL_WIDTH / 128),
+                TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
             break;
           }
 #endif
@@ -2234,7 +2235,7 @@ void setup() {
                      --delay > 9)  // underflow will result in 255, set it to 9
               delay = 9;
 
-            DisplayNumber(delay, 1, 7 * (TOTAL_WIDTH / 128) + 10 * 4,
+            DisplayNumber(delay, 1, 7 * (TOTAL_WIDTH / 128) + (14 * 4),
                           TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
             transport->setDelay(delay);
             transport->saveDelay();
