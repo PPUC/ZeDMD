@@ -2297,6 +2297,7 @@ void setup() {
             switch (ledTest) {
               case 0:
                 RefreshSetupScreen();
+                display->Render();
 #ifdef ZEDMD_DEX16
                 display->DisplayText(
                     "LED", TOTAL_WIDTH - (7 * (TOTAL_WIDTH / 128)) - 31,
