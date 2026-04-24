@@ -1072,7 +1072,6 @@ void ScreenSaver() {
 }
 
 void RefreshSetupScreen() {
-  // DisplayLogo();
   DisplayFrame();
   DisplayRGB();
   DisplayLum();
