@@ -391,9 +391,14 @@ void TransportCreate(const uint8_t type =
       break;
     }
 #ifndef ZEDMD_NO_NETWORKING
-    case Transport::WIFI_UDP:
+    case Transport::WIFI_UDP: {
+      transport = new WifiTransport();
+      transport->setType(Transport::WIFI_UDP);
+      break;
+    }
     case Transport::WIFI_TCP: {
       transport = new WifiTransport();
+      transport->setType(Transport::WIFI_TCP);
       break;
     }
 #endif
