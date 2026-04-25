@@ -2079,7 +2079,7 @@ void setup() {
         } else if (transport->isSpi()) {
           if (position == 3) position = forward ? 4 : 2;
         } else if (transport->getType() == Transport::WIFI_TCP) {
-          if (position == 4) position = forward ? 5 : 2;
+          if (position == 4 || position == 3) position = forward ? 5 : 2;
         } else {
           if (position == 3) position = forward ? 4 : 2;
         }
