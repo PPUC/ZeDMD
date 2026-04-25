@@ -354,7 +354,7 @@ static uint8_t NormalizeTransportType(uint8_t type) {
 #elif defined(ZEDMD_NO_NETWORKING)
   return Transport::USB;
 #else
-  return Transport::USB;
+  return type <= Transport::WIFI_TCP ? type : Transport::USB;
 #endif
 }
 
@@ -391,9 +391,14 @@ void TransportCreate(const uint8_t type =
       break;
     }
 #ifndef ZEDMD_NO_NETWORKING
-    case Transport::WIFI_UDP:
+    case Transport::WIFI_UDP: {
+      transport = new WifiTransport();
+      transport->setType(Transport::WIFI_UDP);
+      break;
+    }
     case Transport::WIFI_TCP: {
       transport = new WifiTransport();
+      transport->setType(Transport::WIFI_TCP);
       break;
     }
 #endif
@@ -1072,7 +1077,6 @@ void ScreenSaver() {
 }
 
 void RefreshSetupScreen() {
-  DisplayLogo();
   DisplayFrame();
   DisplayRGB();
   DisplayLum();
@@ -1093,11 +1097,16 @@ void RefreshSetupScreen() {
     DisplayNumber(usbPackageSizeMultiplier * 32, 4,
                   7 * (TOTAL_WIDTH / 128) + (16 * 4), (TOTAL_HEIGHT / 2) + 4,
                   255, 191, 0);
-  } else if (transport->isWifi()) {
-    display->DisplayText("UDP Delay:", 7 * (TOTAL_WIDTH / 128),
+  } else if (transport->isWifi() &&
+             transport->getType() == Transport::WIFI_UDP) {
+    display->DisplayText("UDP Delay:          ", 7 * (TOTAL_WIDTH / 128),
                          (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
-    DisplayNumber(transport->getDelay(), 1, 7 * (TOTAL_WIDTH / 128) + 10 * 4,
+    DisplayNumber(transport->getDelay(), 1, 7 * (TOTAL_WIDTH / 128) + (10 * 4),
                   (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
+  } else if (transport->isWifi() &&
+             transport->getType() == Transport::WIFI_TCP) {
+    display->DisplayText("                    ", 7 * (TOTAL_WIDTH / 128),
+                         (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
   }
 #ifdef DMDREADER
   else if (transport->isSpi()) {
@@ -2078,6 +2087,8 @@ void setup() {
           if (position == 4) position = forward ? 5 : 3;
         } else if (transport->isSpi()) {
           if (position == 3) position = forward ? 4 : 2;
+        } else if (transport->getType() == Transport::WIFI_TCP) {
+          if (position == 4 || position == 3) position = forward ? 5 : 2;
         } else {
           if (position == 3) position = forward ? 4 : 2;
         }
@@ -2234,7 +2245,7 @@ void setup() {
                      --delay > 9)  // underflow will result in 255, set it to 9
               delay = 9;
 
-            DisplayNumber(delay, 1, 7 * (TOTAL_WIDTH / 128) + 10 * 4,
+            DisplayNumber(delay, 1, 7 * (TOTAL_WIDTH / 128) + (10 * 4),
                           TOTAL_HEIGHT / 2 + 4, 255, 191, 0);
             transport->setDelay(delay);
             transport->saveDelay();
@@ -2296,6 +2307,7 @@ void setup() {
               ledTest = 3;
             switch (ledTest) {
               case 0:
+                ClearScreen();
                 RefreshSetupScreen();
 #ifdef ZEDMD_DEX16
                 display->DisplayText(
