@@ -2693,15 +2693,14 @@ void loop1() {
   auto *spiTransport = static_cast<SpiTransport *>(transport);
   static uint32_t lastDmdReaderInitAttempt = 0;
 
-  if (!spiTransport->isDmdReaderInitialized()) {
-    const uint32_t now = millis();
-    if (transport->isLoopback() &&
-        (lastDmdReaderInitAttempt == 0 ||
-         now - lastDmdReaderInitAttempt >= 1000)) {
-      lastDmdReaderInitAttempt = now;
-      spiTransport->initDmdReader();
-    }
-    delay(1);
+  if (!spiTransport->isDmdReaderInitialized() && transport->isLoopback()) {
+    spiTransport->initDmdReader();
+    // Blink to indicate that loopback mode is active but DMD reader is not yet
+    // initialized.
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(300);
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(200);
     return;
   }
 
