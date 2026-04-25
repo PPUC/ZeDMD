@@ -1098,6 +1098,10 @@ void RefreshSetupScreen() {
                          (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
     DisplayNumber(transport->getDelay(), 1, 7 * (TOTAL_WIDTH / 128) + (10 * 4),
                   (TOTAL_HEIGHT / 2) + 4, 255, 191, 0);
+  } else if (transport->isWifi() &&
+             transport->getType() == Transport::WIFI_TCP) {
+    display->DisplayText("                    ", 7 * (TOTAL_WIDTH / 128),
+                         (TOTAL_HEIGHT / 2) + 4, 128, 128, 128);
   }
 #ifdef DMDREADER
   else if (transport->isSpi()) {
