@@ -117,6 +117,7 @@ extern uint8_t brightness;
 extern int8_t yOffset;
 extern uint8_t panelClkphase;
 extern uint8_t panelDriver;
+extern uint8_t panelLineDecoder;
 extern uint8_t panelI2sspeed;
 extern uint8_t panelLatchBlanking;
 extern uint8_t panelMinRefreshRate;

@@ -31,6 +31,7 @@ Esp32LedMatrix::Esp32LedMatrix() {
   mxconfig.latch_blanking = panelLatchBlanking;
   mxconfig.min_refresh_rate = panelMinRefreshRate;
   mxconfig.driver = (HUB75_I2S_CFG::shift_driver)panelDriver;
+  mxconfig.line_decoder = (HUB75_I2S_CFG::line_driver)panelLineDecoder;
 
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   dma_display->begin();

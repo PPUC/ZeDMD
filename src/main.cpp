@@ -136,6 +136,7 @@ uint8_t rgbMode = 0;  // Valid values are 0-5.
 uint8_t rgbModeLoaded = 0;
 uint8_t panelClkphase = 0;
 uint8_t panelDriver = 0;
+uint8_t panelLineDecoder = 0;
 uint8_t panelI2sspeed = 8;
 uint8_t panelLatchBlanking = 2;
 uint8_t panelMinRefreshRate = 60;
@@ -491,6 +492,9 @@ void SavePanelSettings() {
   f = LittleFS.open("/panel_driver.val", "w");
   f.write(panelDriver);
   f.close();
+  f = LittleFS.open("/panel_line_driver.val", "w");
+  f.write(panelLineDecoder);
+  f.close();
   f = LittleFS.open("/panel_i2sspeed.val", "w");
   f.write(panelI2sspeed);
   f.close();
@@ -514,6 +518,12 @@ void LoadPanelSettings() {
     SavePanelSettings();
   }
   panelDriver = f.read();
+  f.close();
+  f = LittleFS.open("/panel_line_driver.val", "r");
+  if (!f) {
+    SavePanelSettings();
+  }
+  panelLineDecoder = f.read();
   f.close();
   f = LittleFS.open("/panel_i2sspeed.val", "r");
   if (!f) {
@@ -1261,6 +1271,7 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
 #else
             response[N_INTERMEDIATE_CTR_CHARS + 21] = 0;  // ESP32
 #endif
+            response[N_INTERMEDIATE_CTR_CHARS + 22] = panelLineDecoder;
 
             response[63 - N_ACK_CHARS] = 'R';
             Serial.write(response, 64 - N_ACK_CHARS);
@@ -1559,6 +1570,15 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
           case 48:  // set yOffset
           {
             yOffset = pData[pos++];
+            headerBytesReceived = 0;
+            numCtrlCharsFound = 0;
+            if (transport->isWifiAndActive()) break;
+            return 1;
+          }
+
+          case 49:  // set panelLineDecoder
+          {
+            panelLineDecoder = pData[pos++];
             headerBytesReceived = 0;
             numCtrlCharsFound = 0;
             if (transport->isWifiAndActive()) break;
