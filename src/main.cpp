@@ -791,7 +791,14 @@ void AcquireNextBuffer() {
 
 void CheckMenuButton() {
 #ifndef DISPLAY_RM67162_AMOLED
+
+#ifdef BACKWARD_BUTTON_PIN
+  if (!digitalRead(FORWARD_BUTTON_PIN) || 
+      !digitalRead(BACKWARD_BUTTON_PIN)) {
+#else
   if (!digitalRead(FORWARD_BUTTON_PIN)) {
+#endif
+
     ClearScreen();
     settingsMenu = true;
     SaveSettingsMenu();
