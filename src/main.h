@@ -81,6 +81,7 @@
 #endif
 
 #define LED_CHECK_DELAY 1000  // ms per color
+#define DEBOUNCE_INTERVAL 80 // set the debounce interval in milliseconds
 
 #ifdef ZEDMD_HD_HALF
 #define MENU_ITEMS_COUNT 9

@@ -2066,23 +2066,23 @@ void setup() {
 
     const auto forwardButton = new Bounce2::Button();
     forwardButton->attach(FORWARD_BUTTON_PIN, INPUT_PULLUP);
-    forwardButton->interval(100);
+    forwardButton->interval(DEBOUNCE_INTERVAL);
     forwardButton->setPressedState(LOW);
 
     const auto upButton = new Bounce2::Button();
     upButton->attach(UP_BUTTON_PIN, INPUT_PULLUP);
-    upButton->interval(100);
+    upButton->interval(DEBOUNCE_INTERVAL);
     upButton->setPressedState(LOW);
 
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(PICO_BUILD)
     const auto backwardButton = new Bounce2::Button();
     backwardButton->attach(BACKWARD_BUTTON_PIN, INPUT_PULLUP);
-    backwardButton->interval(100);
+    backwardButton->interval(DEBOUNCE_INTERVAL);
     backwardButton->setPressedState(LOW);
 
     const auto downButton = new Bounce2::Button();
     downButton->attach(DOWN_BUTTON_PIN, INPUT_PULLUP);
-    downButton->interval(100);
+    downButton->interval(DEBOUNCE_INTERVAL);
     downButton->setPressedState(LOW);
 #endif
 
