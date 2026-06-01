@@ -2115,7 +2115,7 @@ void setup() {
 #ifdef DMDREADER
         if (position == 5 || position == 6) position = forward ? 7 : 4;
 #elif defined(PICO_BUILD)
-        if (position == 5) position = forward ? 6 : 4;
+        if (position == 5 || position == 3) position = forward ? 6 : 2;
 #endif
 
         switch (position) {
