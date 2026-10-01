@@ -76,7 +76,7 @@ jobs:
       - name: Install PlatformIO
         run: |
           python -m pip install --upgrade pip
-          pip install --upgrade platformio rich_click intelhex
+          pip install --upgrade platformio rich_click intelhex esptool
 
       - if: (matrix.panels == 'WROOM-32_128x32' || matrix.panels == 'WROOM-32_128x64')
         name: Build ZeDMD ESP32
