@@ -14,8 +14,8 @@
 #include "transport.h"
 
 #define SPI_TRANSPORT_ENABLE_PIN 13
-#define SPI_TRANSPORT_CLK_PIN 14
-#define SPI_TRANSPORT_DATA_PIN 15
+#define SPI_TRANSPORT_CLK_PIN 18
+#define SPI_TRANSPORT_DATA_PIN 19
 
 class SpiTransport final : public Transport {
  public:
