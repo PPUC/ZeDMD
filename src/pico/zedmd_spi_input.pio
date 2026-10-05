@@ -5,5 +5,5 @@
 .wrap_target
 wait 1 gpio 18    ; wait for clock high
 in pins, 1        ; sample IN pin base
-wait 0 gpio 18     ; wait for clock low
+wait 0 gpio 18    ; wait for clock low
 .wrap
