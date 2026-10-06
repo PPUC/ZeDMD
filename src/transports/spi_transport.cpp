@@ -104,6 +104,7 @@ void SpiTransport::SetAndEnableNewDmaTarget() {
 void SpiTransport::initPio() {
   m_rxBuffer = NUM_BUFFERS;
   m_frameReceived = false;
+  m_missingBytes = 0;
   SetAndEnableNewDmaTarget();
   pio_sm_set_enabled(m_pio, m_stateMachine, false);
   pio_sm_clear_fifos(m_pio, m_stateMachine);
@@ -113,6 +114,10 @@ void SpiTransport::initPio() {
 
 void SpiTransport::dmaHandler() {
   if (!s_instance) return;
+  // The frame is complete and the sender pauses. Drop the bits of an
+  // incomplete byte caused by extra clock edges to stay in sync.
+  pio_sm_clear_fifos(s_instance->m_pio, s_instance->m_stateMachine);
+  pio_sm_restart(s_instance->m_pio, s_instance->m_stateMachine);
   s_instance->SetAndEnableNewDmaTarget();
   s_instance->SetFrameReceived();
 }
@@ -131,9 +136,54 @@ bool SpiTransport::GetFrameReceived() {
 
     dmdreader_loopback_stop();
     initPio();
+  } else if (!m_loopback) {
+    CheckFrameTimeout();
   }
 
   return false;
+}
+
+void SpiTransport::CheckFrameTimeout() {
+  const uint32_t missing = dma_channel_hw_addr(m_dmaChannel)->transfer_count;
+  if (0 == missing || RGB565_TOTAL_BYTES == missing) {
+    // Pause between two frames, nothing has been received yet.
+    m_missingBytes = 0;
+    return;
+  }
+
+  const uint32_t now = time_us_32();
+  if (missing != m_missingBytes || m_rxBuffer != m_stalledBuffer) {
+    // The frame is still progressing.
+    m_missingBytes = missing;
+    m_stalledBuffer = m_rxBuffer;
+    m_lastProgressUs = now;
+    return;
+  }
+
+  if (now - m_lastProgressUs > SPI_TRANSPORT_FRAME_TIMEOUT_US) {
+    // The frame is incomplete, but the sender paused. Discard the data and
+    // wait for the next frame.
+    Resync();
+  }
+}
+
+void SpiTransport::Resync() {
+  irq_set_enabled(kSpiDmaIrq, false);
+  pio_sm_set_enabled(m_pio, m_stateMachine, false);
+  dma_channel_abort(m_dmaChannel);
+  dma_irqn_acknowledge_channel(kSpiDmaIrqIndex, m_dmaChannel);
+
+  // Restarting the state machine also drops the bits of an incomplete byte.
+  pio_sm_clear_fifos(m_pio, m_stateMachine);
+  pio_sm_restart(m_pio, m_stateMachine);
+  pio_sm_exec(m_pio, m_stateMachine, pio_encode_jmp(m_programOffset));
+
+  // Re-use the current buffer.
+  m_missingBytes = 0;
+  dma_channel_set_write_addr(m_dmaChannel, buffers[m_rxBuffer], false);
+  dma_channel_set_trans_count(m_dmaChannel, RGB565_TOTAL_BYTES, true);
+  irq_set_enabled(kSpiDmaIrq, true);
+  pio_sm_set_enabled(m_pio, m_stateMachine, true);
 }
 
 uint8_t* SpiTransport::GetDataBuffer() {
