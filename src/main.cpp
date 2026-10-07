@@ -105,7 +105,7 @@ bool rgb565ZoneStream = false;
 #ifdef DISPLAY_RM67162_AMOLED
 uint8_t brightness = 5;
 #else
-uint8_t brightness = 2;
+uint8_t brightness = DEFAULT_BRIGHTNESS;
 uint8_t rgbMode = DEFAULT_RGB_MODE;  // Valid values are 0-5.
 uint8_t rgbModeLoaded = 0;
 uint8_t panelClkphase = 0;
