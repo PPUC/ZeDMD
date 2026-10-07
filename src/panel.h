@@ -44,6 +44,9 @@
 #ifndef MAX_BRIGHTNESS
 #define MAX_BRIGHTNESS 15
 #endif
+#ifndef DEFAULT_BRIGHTNESS
+#define DEFAULT_BRIGHTNESS 3
+#endif
 #ifndef MENU_SETTING_OFFSET
 #define MENU_SETTING_OFFSET 0
 #endif
