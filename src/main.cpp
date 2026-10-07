@@ -1913,6 +1913,9 @@ void setup() {
 #endif
             SaveTransport(type);
             RefreshSetupScreen();
+            display->DisplayText("MODE:", 7 * (TOTAL_WIDTH / 128),
+                                 (TOTAL_HEIGHT / 2) - 3 - MENU_Y_OFFSET, 255,
+                                 191, 0);
             display->DisplayText(
                 transport->getTypeString(), 7 * (TOTAL_WIDTH / 128) + (5 * 4),
                 (TOTAL_HEIGHT / 2) - 3 - MENU_Y_OFFSET, 255, 191, 0);
