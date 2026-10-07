@@ -886,8 +886,10 @@ void RefreshSetupScreen() {
   DisplayLum();
 
 #ifndef ZEDMD_DEX16
-  display->DisplayText(transport->getTypeString(), 7 * (TOTAL_WIDTH / 128),
-                       (TOTAL_HEIGHT / 2) - 3, 128, 128, 128);
+  display->DisplayText("MODE:", 7 * (TOTAL_WIDTH / 128),
+                        (TOTAL_HEIGHT / 2) - 3 - MENU_Y_OFFSET, 128, 128, 128);
+  display->DisplayText(transport->getTypeString(), 27 * (TOTAL_WIDTH / 128),
+                       (TOTAL_HEIGHT / 2) - 3 - MENU_Y_OFFSET, 255, 191, 0);
 #endif
 #ifndef DMDREADER
   display->DisplayText("DEBUG:", 7 * (TOTAL_WIDTH / 128),
@@ -1775,7 +1777,7 @@ void setup() {
           case 5: {  // Transport
             RefreshSetupScreen();
             display->DisplayText(transport->getTypeString(),
-                                 7 * (TOTAL_WIDTH / 128),
+                                 27 * (TOTAL_WIDTH / 128),
                                  (TOTAL_HEIGHT / 2) - 3, red, green, 0);
             break;
           }
@@ -1911,7 +1913,7 @@ void setup() {
             SaveTransport(type);
             RefreshSetupScreen();
             display->DisplayText(transport->getTypeString(),
-                                 7 * (TOTAL_WIDTH / 128),
+                                 27 * (TOTAL_WIDTH / 128),
                                  (TOTAL_HEIGHT / 2) - 3, 255, 191, 0);
             break;
 #endif
