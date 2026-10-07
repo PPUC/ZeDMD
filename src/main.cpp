@@ -889,7 +889,7 @@ void RefreshSetupScreen() {
   display->DisplayText("MODE:", 7 * (TOTAL_WIDTH / 128),
                        (TOTAL_HEIGHT / 2) - 3 - MENU_Y_OFFSET, 128, 128, 128);
   display->DisplayText(transport->getTypeString(),
-                       3 * (TOTAL_WIDTH / 128) + (6 * 4),
+                       7 * (TOTAL_WIDTH / 128) + (5 * 4),
                        (TOTAL_HEIGHT / 2) - 3 - MENU_Y_OFFSET, 255, 191, 0);
 #endif
 #ifndef DMDREADER
@@ -1914,7 +1914,7 @@ void setup() {
             SaveTransport(type);
             RefreshSetupScreen();
             display->DisplayText(
-                transport->getTypeString(), 3 * (TOTAL_WIDTH / 128) + (6 * 4),
+                transport->getTypeString(), 7 * (TOTAL_WIDTH / 128) + (5 * 4),
                 (TOTAL_HEIGHT / 2) - 3 - MENU_Y_OFFSET, 255, 191, 0);
             break;
 #endif
