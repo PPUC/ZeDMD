@@ -304,7 +304,7 @@ void DisplayRGB(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
   display->DisplayText("RED", 0, MENU_Y_OFFSET, 0, 0, 0, true, true);
   for (uint8_t i = 0; i < 6; i++) {
     display->DrawPixel(TOTAL_WIDTH - (4 * 4) - 1, i + MENU_Y_OFFSET, 0, 0, 0);
-#if !(defined(ZEDMD_HD) || defined(ZEDMD_SEGAHD))
+#if !(defined(ZEDMD_HD) || defined(ZEDMD_XL))
     display->DrawPixel((TOTAL_WIDTH / 2) - (6 * 4) - 1, i + MENU_Y_OFFSET, 0, 0,
                        0);
 #endif

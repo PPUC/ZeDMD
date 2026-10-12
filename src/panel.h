@@ -10,7 +10,7 @@
 #define PANEL_WIDTH 128  // Width: number of LEDs for 1 panel.
 #define PANEL_HEIGHT 64  // Height: number of LEDs.
 #define PANELS_NUMBER 1  // Number of horizontally chained panels.
-#elif defined(ZEDMD_SEGAHD)
+#elif defined(ZEDMD_XL)
 #define PANEL_WIDTH 64   // Width: number of LEDs for 1 panel.
 #define PANEL_HEIGHT 64  // Height: number of LEDs.
 #define PANELS_NUMBER 3  // Number of horizontally chained panels.
