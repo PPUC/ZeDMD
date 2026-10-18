@@ -114,34 +114,12 @@ void IRAM_ATTR PicoLedMatrix::FillPanelRaw(uint8_t *pBuffer) {
 }
 
 void IRAM_ATTR PicoLedMatrix::FillPanelRaw565(const uint8_t *pBuffer) {
-  BeginFrame();
-  FillRows565(0, TOTAL_HEIGHT, pBuffer);
-  Flip();
-}
-
-void PicoLedMatrix::BeginFrame() {
   // With a yOffset the frame doesn't cover the panel, so keep the rest of it.
   if (yOffset == 0 && TOTAL_HEIGHT == PANEL_HEIGHT) {
     s_hub75->begin_frame();
-  } else {
-    s_hub75->prepare_partial_draw();
   }
-}
-
-void IRAM_ATTR PicoLedMatrix::FillRows565(uint16_t yStart, uint16_t yEnd,
-                                          const uint8_t *pBuffer) {
-  s_hub75->draw_rgb565(0, yStart + yOffset, TOTAL_WIDTH, yEnd - yStart,
-                       pBuffer + yStart * TOTAL_WIDTH * 2);
-}
-
-void PicoLedMatrix::Flip() { s_hub75->flip(); }
-
-void PicoLedMatrix::EnableRefreshIrqOnThisCore() {
-  irq_set_enabled(DMA_IRQ_0, true);
-}
-
-void PicoLedMatrix::DisableRefreshIrqOnThisCore() {
-  irq_set_enabled(DMA_IRQ_0, false);
+  s_hub75->draw_rgb565(0, yOffset, TOTAL_WIDTH, TOTAL_HEIGHT, pBuffer);
+  s_hub75->flip();
 }
 
 void PicoLedMatrix::Render() { s_hub75->render(); }

@@ -49,22 +49,6 @@
 #include "main.h"
 #include "utility/clock.h"
 
-#ifdef DMDREADER
-#include <atomic>
-#endif
-
-// Optional logic analyzer markers. Define the GPIOs in build_flags.
-#ifdef ZEDMD_PROFILE_PIN_RENDER
-#define PROFILE_RENDER(v) gpio_put(ZEDMD_PROFILE_PIN_RENDER, v)
-#else
-#define PROFILE_RENDER(v)
-#endif
-#ifdef ZEDMD_PROFILE_PIN_CORE1
-#define PROFILE_CORE1(v) gpio_put(ZEDMD_PROFILE_PIN_CORE1, v)
-#else
-#define PROFILE_CORE1(v)
-#endif
-
 // To save RAM only include the driver we want to use.
 #ifdef DISPLAY_RM67162_AMOLED
 #include "displays/Rm67162Amoled.h"
@@ -135,18 +119,6 @@ int8_t yOffset = 0;
 bool core_0_initialized = false;
 bool core_1_initialized = false;
 uint8_t loopbackColor = (uint8_t)Color::DMD_ORANGE;
-
-#ifdef ZEDMD_DUAL_CORE_RENDER
-// Core 1 converts the lower half of an SPI frame.
-// 0: idle, 1: requested, 2: claimed by one of the cores, 3: done by core 1.
-std::atomic<uint8_t> core1RenderState{0};
-const uint8_t *core1RenderSrc = nullptr;
-#endif
-#ifdef ZEDMD_HUB75_IRQ_CORE1
-// Core 1 requests the HUB75 refresh IRQ, core 0 releases it.
-volatile bool refreshIrqMoveRequested = false;
-volatile bool refreshIrqReleased = false;
-#endif
 
 const char *ColorString(uint8_t color) {
   switch ((Color)color) {
@@ -1558,17 +1530,6 @@ void setup() {
                             1000000);
   // overclock to achieve higher SPI transfer speed
   set_sys_clock_khz(SYS_CLK_MHZ * 1000, true);
-
-#ifdef ZEDMD_PROFILE_PIN_RENDER
-  gpio_init(ZEDMD_PROFILE_PIN_RENDER);
-  gpio_set_dir(ZEDMD_PROFILE_PIN_RENDER, true);
-  gpio_put(ZEDMD_PROFILE_PIN_RENDER, 0);
-#endif
-#ifdef ZEDMD_PROFILE_PIN_CORE1
-  gpio_init(ZEDMD_PROFILE_PIN_CORE1);
-  gpio_set_dir(ZEDMD_PROFILE_PIN_CORE1, true);
-  gpio_put(ZEDMD_PROFILE_PIN_CORE1, 0);
-#endif
 #endif
 
 #ifdef DMDREADER
@@ -2117,29 +2078,7 @@ void setup() {
 // Converts a full RGB565 frame from the host straight into the HUB75 draw
 // buffer. renderBuffer is bypassed and keeps its last content.
 void RenderSpiFrame(const uint8_t *src) {
-  auto *matrix = static_cast<PicoLedMatrix *>(display);
-  PROFILE_RENDER(1);
-#ifdef ZEDMD_DUAL_CORE_RENDER
-  matrix->BeginFrame();
-  core1RenderSrc = src;
-  core1RenderState.store(1, std::memory_order_release);
-  matrix->FillRows565(0, TOTAL_HEIGHT / 2, src);
-  uint8_t expected = 1;
-  if (core1RenderState.compare_exchange_strong(expected, 2,
-                                               std::memory_order_acq_rel)) {
-    // Core 1 didn't pick it up yet, so do its half here.
-    matrix->FillRows565(TOTAL_HEIGHT / 2, TOTAL_HEIGHT, src);
-  } else {
-    while (core1RenderState.load(std::memory_order_acquire) != 3) {
-      tight_loop_contents();
-    }
-  }
-  core1RenderState.store(0, std::memory_order_relaxed);
-  matrix->Flip();
-#else
-  matrix->FillPanelRaw565(src);
-#endif
-  PROFILE_RENDER(0);
+  static_cast<PicoLedMatrix *>(display)->FillPanelRaw565(src);
 
 #ifdef ZEDMD_CLIENT_DEBUG_FPS
   FpsUpdate();
@@ -2151,13 +2090,6 @@ void loop() {
   CheckMenuButton();
 
 #ifdef DMDREADER
-#ifdef ZEDMD_HUB75_IRQ_CORE1
-  if (refreshIrqMoveRequested && !refreshIrqReleased) {
-    static_cast<PicoLedMatrix *>(display)->DisableRefreshIrqOnThisCore();
-    refreshIrqReleased = true;
-  }
-#endif
-
   if (!core_1_initialized) {
     delay(1);
     return;
@@ -2403,32 +2335,10 @@ void setup1() {
   // not required, but slightly extend the splash screen duration
   delay(425);
 
-#ifdef ZEDMD_HUB75_IRQ_CORE1
-  // The IRQ must never be enabled on both cores at once. Core 0 releases it in
-  // loop(); a refresh interrupt raised in between stays pending until then.
-  refreshIrqMoveRequested = true;
-  while (!refreshIrqReleased) {
-    tight_loop_contents();
-  }
-  static_cast<PicoLedMatrix *>(display)->EnableRefreshIrqOnThisCore();
-#endif
-
   core_1_initialized = true;
 }
 
 void loop1() {
-#ifdef ZEDMD_DUAL_CORE_RENDER
-  uint8_t expected = 1;
-  if (core1RenderState.compare_exchange_strong(expected, 2,
-                                               std::memory_order_acq_rel)) {
-    PROFILE_CORE1(1);
-    static_cast<PicoLedMatrix *>(display)->FillRows565(
-        TOTAL_HEIGHT / 2, TOTAL_HEIGHT, core1RenderSrc);
-    PROFILE_CORE1(0);
-    core1RenderState.store(3, std::memory_order_release);
-  }
-#endif
-
   auto *spiTransport = static_cast<SpiTransport *>(transport);
   static uint32_t lastDmdReaderInitAttempt = 0;
   static bool countDmdReaderSignals = false;
