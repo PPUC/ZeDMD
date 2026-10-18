@@ -721,23 +721,24 @@ void Render(bool renderAll = true) {
   display->FillPanelRaw(renderBuffer[currentRenderBuffer]);
 #else
   if (NUM_RENDER_BUFFERS == 1 || currentRenderBuffer != lastRenderBuffer) {
-    uint16_t pos;
 
+    const uint8_t *cur  = renderBuffer[currentRenderBuffer];
+    const uint8_t *prev = renderBuffer[lastRenderBuffer];
+    uint32_t stamp1 = micros();
     for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
       for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
-        pos = (y * TOTAL_WIDTH + x) * 3;
+        const uint16_t pos = (y * TOTAL_WIDTH + x) * 3;
         // When only one render buffer is in use there is no previous frame to
         // diff against, so always draw. Otherwise draw only on loopback or
         // when the pixel actually changed.
         if (NUM_RENDER_BUFFERS == 1 || transport->isLoopback() ||
-            memcmp(&renderBuffer[currentRenderBuffer][pos],
-                   &renderBuffer[lastRenderBuffer][pos], 3) != 0) {
-          display->DrawPixel(x, y, renderBuffer[currentRenderBuffer][pos],
-                             renderBuffer[currentRenderBuffer][pos + 1],
-                             renderBuffer[currentRenderBuffer][pos + 2]);
+            memcmp(&cur[pos], &prev[pos], 3) != 0) {
+          display->DrawPixel(x, y, cur[pos], cur[pos + 1], cur[pos + 2]);
         }
       }
     }
+    uint32_t stamp2 = micros();
+    Serial.printf("time diff: uS%d\n", stamp2-stamp1);
 
     if (renderAll) display->Render();
     if (NUM_RENDER_BUFFERS > 1) {
