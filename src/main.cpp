@@ -724,7 +724,6 @@ void Render(bool renderAll = true) {
 
     const uint8_t *cur  = renderBuffer[currentRenderBuffer];
     const uint8_t *prev = renderBuffer[lastRenderBuffer];
-    uint32_t stamp1 = micros();
     for (uint16_t y = 0; y < TOTAL_HEIGHT; y++) {
       for (uint16_t x = 0; x < TOTAL_WIDTH; x++) {
         const uint16_t pos = (y * TOTAL_WIDTH + x) * 3;
@@ -737,8 +736,6 @@ void Render(bool renderAll = true) {
         }
       }
     }
-    uint32_t stamp2 = micros();
-    Serial.printf("time diff: uS%d\n", stamp2-stamp1);
 
     if (renderAll) display->Render();
     if (NUM_RENDER_BUFFERS > 1) {
