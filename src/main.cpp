@@ -49,6 +49,22 @@
 #include "main.h"
 #include "utility/clock.h"
 
+#ifdef DMDREADER
+#include <atomic>
+#endif
+
+// Optional logic analyzer markers. Define the GPIOs in build_flags.
+#ifdef ZEDMD_PROFILE_PIN_RENDER
+#define PROFILE_RENDER(v) gpio_put(ZEDMD_PROFILE_PIN_RENDER, v)
+#else
+#define PROFILE_RENDER(v)
+#endif
+#ifdef ZEDMD_PROFILE_PIN_CORE1
+#define PROFILE_CORE1(v) gpio_put(ZEDMD_PROFILE_PIN_CORE1, v)
+#else
+#define PROFILE_CORE1(v)
+#endif
+
 // To save RAM only include the driver we want to use.
 #ifdef DISPLAY_RM67162_AMOLED
 #include "displays/Rm67162Amoled.h"
@@ -119,6 +135,18 @@ int8_t yOffset = 0;
 bool core_0_initialized = false;
 bool core_1_initialized = false;
 uint8_t loopbackColor = (uint8_t)Color::DMD_ORANGE;
+
+#ifdef ZEDMD_DUAL_CORE_RENDER
+// Core 1 converts the lower half of an SPI frame.
+// 0: idle, 1: requested, 2: claimed by one of the cores, 3: done by core 1.
+std::atomic<uint8_t> core1RenderState{0};
+const uint8_t *core1RenderSrc = nullptr;
+#endif
+#ifdef ZEDMD_HUB75_IRQ_CORE1
+// Core 1 requests the HUB75 refresh IRQ, core 0 releases it.
+volatile bool refreshIrqMoveRequested = false;
+volatile bool refreshIrqReleased = false;
+#endif
 
 const char *ColorString(uint8_t color) {
   switch ((Color)color) {
@@ -720,6 +748,11 @@ void Render(bool renderAll = true) {
 #ifdef DISPLAY_RM67162_AMOLED
   display->FillPanelRaw(renderBuffer[currentRenderBuffer]);
 #else
+#ifdef PICO_BUILD
+  // Single render buffer: every pixel is drawn, so use the driver's bulk path.
+  display->FillPanelRaw(renderBuffer[currentRenderBuffer]);
+  if (renderAll) display->Render();
+#else
   if (NUM_RENDER_BUFFERS == 1 || currentRenderBuffer != lastRenderBuffer) {
 
     const uint8_t *cur  = renderBuffer[currentRenderBuffer];
@@ -745,6 +778,7 @@ void Render(bool renderAll = true) {
              TOTAL_BYTES);
     }
   }
+#endif  // PICO_BUILD
 #endif
 
 #ifdef ZEDMD_CLIENT_DEBUG_FPS
@@ -1524,6 +1558,17 @@ void setup() {
                             1000000);
   // overclock to achieve higher SPI transfer speed
   set_sys_clock_khz(SYS_CLK_MHZ * 1000, true);
+
+#ifdef ZEDMD_PROFILE_PIN_RENDER
+  gpio_init(ZEDMD_PROFILE_PIN_RENDER);
+  gpio_set_dir(ZEDMD_PROFILE_PIN_RENDER, true);
+  gpio_put(ZEDMD_PROFILE_PIN_RENDER, 0);
+#endif
+#ifdef ZEDMD_PROFILE_PIN_CORE1
+  gpio_init(ZEDMD_PROFILE_PIN_CORE1);
+  gpio_set_dir(ZEDMD_PROFILE_PIN_CORE1, true);
+  gpio_put(ZEDMD_PROFILE_PIN_CORE1, 0);
+#endif
 #endif
 
 #ifdef DMDREADER
@@ -2068,10 +2113,51 @@ void setup() {
 #endif
 }
 
+#ifdef DMDREADER
+// Converts a full RGB565 frame from the host straight into the HUB75 draw
+// buffer. renderBuffer is bypassed and keeps its last content.
+void RenderSpiFrame(const uint8_t *src) {
+  auto *matrix = static_cast<PicoLedMatrix *>(display);
+  PROFILE_RENDER(1);
+#ifdef ZEDMD_DUAL_CORE_RENDER
+  matrix->BeginFrame();
+  core1RenderSrc = src;
+  core1RenderState.store(1, std::memory_order_release);
+  matrix->FillRows565(0, TOTAL_HEIGHT / 2, src);
+  uint8_t expected = 1;
+  if (core1RenderState.compare_exchange_strong(expected, 2,
+                                               std::memory_order_acq_rel)) {
+    // Core 1 didn't pick it up yet, so do its half here.
+    matrix->FillRows565(TOTAL_HEIGHT / 2, TOTAL_HEIGHT, src);
+  } else {
+    while (core1RenderState.load(std::memory_order_acquire) != 3) {
+      tight_loop_contents();
+    }
+  }
+  core1RenderState.store(0, std::memory_order_relaxed);
+  matrix->Flip();
+#else
+  matrix->FillPanelRaw565(src);
+#endif
+  PROFILE_RENDER(0);
+
+#ifdef ZEDMD_CLIENT_DEBUG_FPS
+  FpsUpdate();
+#endif
+}
+#endif
+
 void loop() {
   CheckMenuButton();
 
 #ifdef DMDREADER
+#ifdef ZEDMD_HUB75_IRQ_CORE1
+  if (refreshIrqMoveRequested && !refreshIrqReleased) {
+    static_cast<PicoLedMatrix *>(display)->DisableRefreshIrqOnThisCore();
+    refreshIrqReleased = true;
+  }
+#endif
+
   if (!core_1_initialized) {
     delay(1);
     return;
@@ -2079,18 +2165,7 @@ void loop() {
 
   auto *spiTransport = static_cast<SpiTransport *>(transport);
   if (spiTransport->GetFrameReceived()) {
-    const uint16_t *src =
-        reinterpret_cast<const uint16_t *>(spiTransport->GetDataBuffer());
-    uint8_t *dst = renderBuffer[currentRenderBuffer];
-    const size_t pixelCount = RGB565_TOTAL_BYTES / 2;
-
-    for (size_t i = 0; i < pixelCount; ++i) {
-      const uint16_t rgb565 = src[i];
-      *dst++ = Expand5To8[rgb565 >> 11];
-      *dst++ = Expand6To8[(rgb565 >> 5) & 0x3f];
-      *dst++ = Expand5To8[rgb565 & 0x1f];
-    }
-    Render();
+    RenderSpiFrame(spiTransport->GetDataBuffer());
   } else if (transport->isLoopback()) {
     uint8_t *buffer = dmdreader_loopback_render();
     if (buffer != nullptr) {
@@ -2199,7 +2274,15 @@ void loop() {
       if (2 == bufferSizes[processingBuffer] &&
           255 == buffers[processingBuffer][0] &&
           255 == buffers[processingBuffer][1]) {
+#ifdef PICO_BUILD
+        // Zones are drawn straight into the HUB75 draw buffer.
+        display->Render();
+#ifdef ZEDMD_CLIENT_DEBUG_FPS
+        FpsUpdate();
+#endif
+#else
         Render();
+#endif
       } else if (2 == bufferSizes[processingBuffer] &&
                  0 == buffers[processingBuffer][0] &&
                  0 == buffers[processingBuffer][1]) {
@@ -2240,8 +2323,7 @@ void loop() {
         uint16_t uncompressedBufferPosition = 0;
         while (uncompressedBufferPosition < uncompressedBufferSize) {
           if (uncompressBuffer[uncompressedBufferPosition] >= 128) {
-#if (defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)) || \
-    defined(PICO_BUILD)
+#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
             const uint8_t idx =
                 uncompressBuffer[uncompressedBufferPosition++] - 128;
             const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
@@ -2256,8 +2338,7 @@ void loop() {
                                128);
 #endif
           } else {
-#if (defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)) || \
-    defined(PICO_BUILD)
+#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
             uint8_t idx = uncompressBuffer[uncompressedBufferPosition++];
             const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
             const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
@@ -2289,15 +2370,15 @@ void loop() {
               }
             }
 #else
+            // Separate statements: argument evaluation order is unspecified.
+            const uint8_t idx = uncompressBuffer[uncompressedBufferPosition++];
             if (rgb565ZoneStream) {
               display->FillZoneRaw565(
-                  uncompressBuffer[uncompressedBufferPosition++],
-                  &uncompressBuffer[uncompressedBufferPosition]);
+                  idx, &uncompressBuffer[uncompressedBufferPosition]);
               uncompressedBufferPosition += RGB565_ZONE_SIZE;
             } else {
               display->FillZoneRaw(
-                  uncompressBuffer[uncompressedBufferPosition++],
-                  &uncompressBuffer[uncompressedBufferPosition]);
+                  idx, &uncompressBuffer[uncompressedBufferPosition]);
               uncompressedBufferPosition += ZONE_SIZE;
             }
 #endif
@@ -2321,10 +2402,33 @@ void setup1() {
 
   // not required, but slightly extend the splash screen duration
   delay(425);
+
+#ifdef ZEDMD_HUB75_IRQ_CORE1
+  // The IRQ must never be enabled on both cores at once. Core 0 releases it in
+  // loop(); a refresh interrupt raised in between stays pending until then.
+  refreshIrqMoveRequested = true;
+  while (!refreshIrqReleased) {
+    tight_loop_contents();
+  }
+  static_cast<PicoLedMatrix *>(display)->EnableRefreshIrqOnThisCore();
+#endif
+
   core_1_initialized = true;
 }
 
 void loop1() {
+#ifdef ZEDMD_DUAL_CORE_RENDER
+  uint8_t expected = 1;
+  if (core1RenderState.compare_exchange_strong(expected, 2,
+                                               std::memory_order_acq_rel)) {
+    PROFILE_CORE1(1);
+    static_cast<PicoLedMatrix *>(display)->FillRows565(
+        TOTAL_HEIGHT / 2, TOTAL_HEIGHT, core1RenderSrc);
+    PROFILE_CORE1(0);
+    core1RenderState.store(3, std::memory_order_release);
+  }
+#endif
+
   auto *spiTransport = static_cast<SpiTransport *>(transport);
   static uint32_t lastDmdReaderInitAttempt = 0;
   static bool countDmdReaderSignals = false;
