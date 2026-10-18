@@ -15,7 +15,17 @@ class PicoLedMatrix final : public LedMatrix {
 
   void ClearScreen() override;
   void SetBrightness(uint8_t level) override;
+  void FillScreen(uint8_t r, uint8_t g, uint8_t b) override;
+  void FillZoneRaw(uint8_t idx, uint8_t *pBuffer) override;
+  void FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) override;
+  void ClearZone(uint8_t idx) override;
+  void FillPanelRaw(uint8_t *pBuffer) override;
   void Render() override;
+
+  // Full RGB565 frame (TOTAL_WIDTH x TOTAL_HEIGHT, little-endian): converted
+  // straight into the HUB75 draw buffer and shown at the next refresh
+  // boundary without copying.
+  void FillPanelRaw565(const uint8_t *pBuffer);
 
  private:
   uint8_t color_order[6] = {

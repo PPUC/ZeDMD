@@ -720,6 +720,11 @@ void Render(bool renderAll = true) {
 #ifdef DISPLAY_RM67162_AMOLED
   display->FillPanelRaw(renderBuffer[currentRenderBuffer]);
 #else
+#ifdef PICO_BUILD
+  // Single render buffer: every pixel is drawn, so use the driver's bulk path.
+  display->FillPanelRaw(renderBuffer[currentRenderBuffer]);
+  if (renderAll) display->Render();
+#else
   if (NUM_RENDER_BUFFERS == 1 || currentRenderBuffer != lastRenderBuffer) {
 
     const uint8_t *cur  = renderBuffer[currentRenderBuffer];
@@ -745,6 +750,7 @@ void Render(bool renderAll = true) {
              TOTAL_BYTES);
     }
   }
+#endif  // PICO_BUILD
 #endif
 
 #ifdef ZEDMD_CLIENT_DEBUG_FPS
@@ -2068,6 +2074,18 @@ void setup() {
 #endif
 }
 
+#ifdef DMDREADER
+// Converts a full RGB565 frame from the host straight into the HUB75 draw
+// buffer. renderBuffer is bypassed and keeps its last content.
+void RenderSpiFrame(const uint8_t *src) {
+  static_cast<PicoLedMatrix *>(display)->FillPanelRaw565(src);
+
+#ifdef ZEDMD_CLIENT_DEBUG_FPS
+  FpsUpdate();
+#endif
+}
+#endif
+
 void loop() {
   CheckMenuButton();
 
@@ -2079,18 +2097,7 @@ void loop() {
 
   auto *spiTransport = static_cast<SpiTransport *>(transport);
   if (spiTransport->GetFrameReceived()) {
-    const uint16_t *src =
-        reinterpret_cast<const uint16_t *>(spiTransport->GetDataBuffer());
-    uint8_t *dst = renderBuffer[currentRenderBuffer];
-    const size_t pixelCount = RGB565_TOTAL_BYTES / 2;
-
-    for (size_t i = 0; i < pixelCount; ++i) {
-      const uint16_t rgb565 = src[i];
-      *dst++ = Expand5To8[rgb565 >> 11];
-      *dst++ = Expand6To8[(rgb565 >> 5) & 0x3f];
-      *dst++ = Expand5To8[rgb565 & 0x1f];
-    }
-    Render();
+    RenderSpiFrame(spiTransport->GetDataBuffer());
   } else if (transport->isLoopback()) {
     uint8_t *buffer = dmdreader_loopback_render();
     if (buffer != nullptr) {
@@ -2199,7 +2206,15 @@ void loop() {
       if (2 == bufferSizes[processingBuffer] &&
           255 == buffers[processingBuffer][0] &&
           255 == buffers[processingBuffer][1]) {
+#ifdef PICO_BUILD
+        // Zones are drawn straight into the HUB75 draw buffer.
+        display->Render();
+#ifdef ZEDMD_CLIENT_DEBUG_FPS
+        FpsUpdate();
+#endif
+#else
         Render();
+#endif
       } else if (2 == bufferSizes[processingBuffer] &&
                  0 == buffers[processingBuffer][0] &&
                  0 == buffers[processingBuffer][1]) {
@@ -2240,8 +2255,7 @@ void loop() {
         uint16_t uncompressedBufferPosition = 0;
         while (uncompressedBufferPosition < uncompressedBufferSize) {
           if (uncompressBuffer[uncompressedBufferPosition] >= 128) {
-#if (defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)) || \
-    defined(PICO_BUILD)
+#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
             const uint8_t idx =
                 uncompressBuffer[uncompressedBufferPosition++] - 128;
             const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
@@ -2256,8 +2270,7 @@ void loop() {
                                128);
 #endif
           } else {
-#if (defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)) || \
-    defined(PICO_BUILD)
+#if defined(BOARD_HAS_PSRAM) && (NUM_RENDER_BUFFERS > 1)
             uint8_t idx = uncompressBuffer[uncompressedBufferPosition++];
             const uint8_t yOffset = (idx / ZONES_PER_ROW) * ZONE_HEIGHT;
             const uint8_t xOffset = (idx % ZONES_PER_ROW) * ZONE_WIDTH;
@@ -2289,15 +2302,15 @@ void loop() {
               }
             }
 #else
+            // Separate statements: argument evaluation order is unspecified.
+            const uint8_t idx = uncompressBuffer[uncompressedBufferPosition++];
             if (rgb565ZoneStream) {
               display->FillZoneRaw565(
-                  uncompressBuffer[uncompressedBufferPosition++],
-                  &uncompressBuffer[uncompressedBufferPosition]);
+                  idx, &uncompressBuffer[uncompressedBufferPosition]);
               uncompressedBufferPosition += RGB565_ZONE_SIZE;
             } else {
               display->FillZoneRaw(
-                  uncompressBuffer[uncompressedBufferPosition++],
-                  &uncompressBuffer[uncompressedBufferPosition]);
+                  idx, &uncompressBuffer[uncompressedBufferPosition]);
               uncompressedBufferPosition += ZONE_SIZE;
             }
 #endif
@@ -2321,6 +2334,7 @@ void setup1() {
 
   // not required, but slightly extend the splash screen duration
   delay(425);
+
   core_1_initialized = true;
 }
 

@@ -7,7 +7,9 @@
 static pimoroni::Hub75 *s_hub75;
 
 // interrupt callback required function
-static void __isr dma_complete() { s_hub75->dma_complete(); }
+static void __isr __not_in_flash_func(dma_complete)() {
+  s_hub75->dma_complete();
+}
 
 static uint8_t r5_to_8[32];
 static uint8_t g6_to_8[64];
@@ -83,6 +85,41 @@ void PicoLedMatrix::ClearScreen() { s_hub75->clear(); }
 
 void PicoLedMatrix::SetBrightness(const uint8_t level) {
   s_hub75->brightness = level;
+}
+
+void PicoLedMatrix::FillScreen(uint8_t r, uint8_t g, uint8_t b) {
+  s_hub75->fill_rect(0, yOffset, TOTAL_WIDTH, TOTAL_HEIGHT, r, g, b);
+}
+
+void IRAM_ATTR PicoLedMatrix::FillZoneRaw(uint8_t idx, uint8_t *pBuffer) {
+  s_hub75->draw_rgb888((idx % ZONES_PER_ROW) * ZONE_WIDTH,
+                       (idx / ZONES_PER_ROW) * ZONE_HEIGHT + yOffset,
+                       ZONE_WIDTH, ZONE_HEIGHT, pBuffer);
+}
+
+void IRAM_ATTR PicoLedMatrix::FillZoneRaw565(uint8_t idx, uint8_t *pBuffer) {
+  s_hub75->draw_rgb565((idx % ZONES_PER_ROW) * ZONE_WIDTH,
+                       (idx / ZONES_PER_ROW) * ZONE_HEIGHT + yOffset,
+                       ZONE_WIDTH, ZONE_HEIGHT, pBuffer);
+}
+
+void IRAM_ATTR PicoLedMatrix::ClearZone(uint8_t idx) {
+  s_hub75->fill_rect((idx % ZONES_PER_ROW) * ZONE_WIDTH,
+                     (idx / ZONES_PER_ROW) * ZONE_HEIGHT + yOffset, ZONE_WIDTH,
+                     ZONE_HEIGHT, 0, 0, 0);
+}
+
+void IRAM_ATTR PicoLedMatrix::FillPanelRaw(uint8_t *pBuffer) {
+  s_hub75->draw_rgb888(0, yOffset, TOTAL_WIDTH, TOTAL_HEIGHT, pBuffer);
+}
+
+void IRAM_ATTR PicoLedMatrix::FillPanelRaw565(const uint8_t *pBuffer) {
+  // With a yOffset the frame doesn't cover the panel, so keep the rest of it.
+  if (yOffset == 0 && TOTAL_HEIGHT == PANEL_HEIGHT) {
+    s_hub75->begin_frame();
+  }
+  s_hub75->draw_rgb565(0, yOffset, TOTAL_WIDTH, TOTAL_HEIGHT, pBuffer);
+  s_hub75->flip();
 }
 
 void PicoLedMatrix::Render() { s_hub75->render(); }
