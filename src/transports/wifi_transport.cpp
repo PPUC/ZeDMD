@@ -55,6 +55,7 @@ bool WifiTransport::init() {
     // Don't use the fallback to skip the countdown.
     WiFi.softAP(apSSID, apPassword);
     ip = WiFi.softAPIP();
+    captivePortal = true;
   }
 
   if (!softAPFallback && WiFiClass::getMode() == WIFI_STA) {
@@ -75,6 +76,7 @@ bool WifiTransport::init() {
     }
     WiFi.softAP(apSSID, apPassword);
     ip = WiFi.softAPIP();
+    captivePortal = true;
   }
 
   ClearScreen();
@@ -115,6 +117,8 @@ bool WifiTransport::init() {
   GetDisplayDriver()->DisplayText("zedmd-wifi.local", 0, TOTAL_HEIGHT - 5, 0, 0,
                                   0, true);
 
+  if (captivePortal) startCaptivePortalDns(ip);
+
   startServer();
 
   if (m_type == WIFI_UDP) {
@@ -135,7 +139,59 @@ bool WifiTransport::init() {
   return true;
 }
 
+// Answers a DNS query: A queries for any name get the access point's IP,
+// all other types get an empty NOERROR reply. The DNSServer libraries answer
+// AAAA queries with NXDOMAIN ("name doesn't exist"), which makes phones skip
+// their captive portal check instead of opening the setup page.
+static void HandleDnsQuery(AsyncUDPPacket& packet, const IPAddress& ip) {
+  const uint8_t* query = packet.data();
+  const size_t len = packet.length();
+  // Header is 12 bytes; only handle standard queries with one question.
+  if (len < 12 || (query[2] & 0xF8) != 0 || query[4] != 0 || query[5] != 1)
+    return;
+
+  // Skip the question name (labels ending in a zero byte), type and class.
+  size_t pos = 12;
+  while (pos < len && query[pos] != 0) {
+    if (query[pos] & 0xC0) return;  // no compression in questions
+    pos += query[pos] + 1;
+  }
+  const size_t questionEnd = pos + 1 + 4;
+  if (questionEnd > len) return;
+  const uint16_t qtype = query[pos + 1] << 8 | query[pos + 2];
+  const bool answerA = qtype == 1 || qtype == 255;  // A or ANY
+
+  uint8_t response[512];
+  if (questionEnd + 16 > sizeof(response)) return;
+  memcpy(response, query, questionEnd);
+  response[2] = 0x84 | (query[2] & 0x01);  // response, authoritative, RD
+  response[3] = 0x80;                      // recursion available, NOERROR
+  response[6] = 0;
+  response[7] = answerA ? 1 : 0;  // answers
+  memset(&response[8], 0, 4);     // no authority or additional records
+
+  size_t out = questionEnd;
+  if (answerA) {
+    const uint8_t answer[] = {
+        0xC0, 0x0C,              // name: pointer to the question
+        0x00, 0x01, 0x00, 0x01,  // type A, class IN
+        0x00, 0x00, 0x00, 0x3C,  // TTL 60 seconds
+        0x00, 0x04,              // 4 bytes of address
+        ip[0], ip[1], ip[2], ip[3]};
+    memcpy(&response[out], answer, sizeof(answer));
+    out += sizeof(answer);
+  }
+  packet.write(response, out);
+}
+
+void WifiTransport::startCaptivePortalDns(const IPAddress& ip) {
+  dns = new AsyncUDP();
+  if (!dns->listen(53)) return;
+  dns->onPacket([ip](AsyncUDPPacket& packet) { HandleDnsQuery(packet, ip); });
+}
+
 bool WifiTransport::deinit() {
+  if (dns) dns->close();
   MDNS.end();
   const bool ret = WiFi.disconnect(true);
   m_active = false;
@@ -593,6 +649,15 @@ void WifiTransport::startServer() {
           request->send(400, "text/plain", "Missing scaling mode parameter");
         }
       });
+
+  if (captivePortal) {
+    // After joining a network, phones and laptops fetch a known URL (e.g.
+    // /generate_204, /hotspot-detect.html). Redirecting those to the setup
+    // page makes them show it right away.
+    server->onNotFound([](AsyncWebServerRequest* request) {
+      request->redirect("http://" + WiFi.softAPIP().toString() + "/");
+    });
+  }
 
   // Start the web server
   server->begin();
