@@ -71,6 +71,8 @@
 #define UP_BUTTON_PIN 27
 #define DOWN_BUTTON_PIN 28
 #define FORWARD_BUTTON_PIN 26
+// On the Pico 2 W, GPIO 29 is the WiFi chip's SPI clock, so the backward
+// button is only used on boards without one (see HasBackwardButton()).
 #define BACKWARD_BUTTON_PIN 29
 #elif defined(DISPLAY_RM67162_AMOLED)
 #define UP_BUTTON_PIN 0

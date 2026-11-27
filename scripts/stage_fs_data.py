@@ -32,6 +32,10 @@ for resolution, asset_files in ASSET_MAP:
 if allowed_files is None:
     raise ValueError(f"No filesystem asset mapping defined for env '{env_name}'")
 
+# Extra files an env needs on top of the panel assets, e.g. the web UI for
+# WiFi-capable boards.
+allowed_files += tuple(env.GetProjectOption("custom_fs_extra_files", "").split())
+
 if staged_data_dir.exists():
     shutil.rmtree(staged_data_dir)
 staged_data_dir.mkdir(parents=True, exist_ok=True)

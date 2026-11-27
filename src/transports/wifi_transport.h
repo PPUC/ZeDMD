@@ -5,7 +5,11 @@
 
 #include <AsyncUDP.h>
 #include <ESPAsyncWebServer.h>
+#ifdef PICO_BUILD
+#include <SimpleMDNS.h>
+#else
 #include <ESPmDNS.h>
+#endif
 
 #include "transport.h"
 
@@ -36,7 +40,9 @@ class WifiTransport final : public Transport {
  private:
   void startServer();
 
-  static void HandleUdpPacket(AsyncUDPPacket packet);
+  void startCaptivePortalDns(const IPAddress &ip);
+
+  static void HandleUdpPacket(AsyncUDPPacket &packet);
 
   static void HandleTcpData(void *arg, AsyncClient *client, void *data,
                             size_t len);
@@ -48,7 +54,11 @@ class WifiTransport final : public Transport {
   AsyncWebServer *server = nullptr;
   AsyncServer *tcp = nullptr;
   AsyncUDP *udp = nullptr;
+  AsyncUDP *dns = nullptr;
   bool serverRunning = false;
+  // Set while running as access point: every DNS name resolves to us and
+  // unknown URLs redirect to the setup page, so phones open it on connect.
+  bool captivePortal = false;
 };
 
 #endif  // ZEDMD_NO_NETWORKING

@@ -57,6 +57,7 @@ Because the firmware pushes the cheap ESP32 to its limits, we can not provide a 
 * ZeDMD Pico 256x64 using two 128x64 panels driven by an RP2040 connected over USB
 * ZeDMD Pico2 128x32 using two 64x32 panels driven by an RP2350 connected over USB
 * ZeDMD Pico2 256x64 using two 128x64 panels driven by an RP2350 connected over USB
+* On a Raspberry Pi Pico 2 W, the same Pico2 firmware also connects over WiFi
 * ZeDMD Pico2 PPUC 128x32 using two 64x32 panels driven by an RP2350B connected over SPI to be used as part of PPUC/DMD
 
 There are different ways to flash the firmware on the ESP32.
@@ -127,6 +128,8 @@ To navigate the menu and adjust settings, you'll need to configure a few buttons
 | NOT USED        | GPIO 47        | GPIO 29       | Menu Right  |
 | GPIO 21         | GPIO 0         | GPIO 28       | Value +     |
 | NOT USED        | GPIO 45        | GPIO 27       | Value -     |
+
+On the Pico 2 W, GPIO 29 is used by the WiFi chip, so there is no `Menu Right` button. The firmware detects this at startup.
 
 ## First start
 
@@ -214,7 +217,7 @@ Some of these values could be adjusted, run `zedmd-client -h` to see a list of a
 ## ZeDMD-WiFi
 
 After activating either `WiFi UDP` or `WiFi TCP` in the settings menu, connect your mobile device or laptop to the `ZeDMD-WiFi` network using password `zedmd1234`.
-Then, open your web browser and navigate to http://ZeDMD-WiFi.local (IP: 192.168.4.1) to access the configuration settings.
+Then, open your web browser and navigate to http://ZeDMD-WiFi.local (IP: 192.168.4.1, or 192.168.42.1 on the Pico 2 W) to access the configuration settings.
 
 ## IMPORTANT LEGAL NOTICES:
 
