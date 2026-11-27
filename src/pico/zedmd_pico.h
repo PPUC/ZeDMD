@@ -71,4 +71,73 @@ inline BaseType_t xTaskCreatePinnedToCore(const TaskFunction_t pxTaskCode,
 }
 #endif
 
+#ifdef PICO_CYW43_SUPPORTED
+#include <hardware/adc.h>
+#include <hardware/gpio.h>
+#include <hardware/structs/iobank0.h>
+#include <hardware/structs/padsbank0.h>
+#include <hardware/structs/sio.h>
+
+// The same firmware runs on the Pico 2 and the Pico 2 W, but the core assumes
+// there is a WiFi chip on every RP2350. On the Pico 2 W, GPIO 25 (the chip's
+// SPI select) also switches the VSYS/3 sense divider onto GPIO 29 (ADC 3).
+// On a Pico 2 the divider is always connected, and on boards where GPIO 29 is
+// a button nothing follows GPIO 25 either. So GPIO 29 reading VSYS/3 with
+// GPIO 25 high and about 0 with it low means there's a WiFi chip. Measured on
+// a Pico 2 W powered over USB: 1827 and 16. Nothing else is driven.
+struct Cyw43Check {
+  uint16_t csHigh;
+  uint16_t csLow;
+  bool present;
+};
+
+inline uint16_t ReadAdcGpio29() {
+  adc_select_input(3);  // GPIO 29
+  busy_wait_us(200);    // let the divider settle
+  uint32_t sum = 0;
+  for (int i = 0; i < 8; i++) sum += adc_read();
+  return sum / 8;
+}
+
+// Call before anything else uses GPIO 25 or 29, i.e. before WiFi starts.
+inline Cyw43Check DetectCyw43() {
+  constexpr uint cs = 25, vsys = 29;
+  // Restore both pins exactly as they were, so the WiFi driver later finds
+  // them untouched.
+  const uint32_t csCtrl = io_bank0_hw->io[cs].ctrl;
+  const uint32_t csPad = pads_bank0_hw->io[cs];
+  const uint32_t vsysCtrl = io_bank0_hw->io[vsys].ctrl;
+  const uint32_t vsysPad = pads_bank0_hw->io[vsys];
+  const bool csOe = sio_hw->gpio_oe & (1u << cs);
+  const bool csOut = sio_hw->gpio_out & (1u << cs);
+
+  adc_init();
+  adc_gpio_init(vsys);  // no pulls, digital input off
+  gpio_init(cs);
+  gpio_set_dir(cs, GPIO_OUT);
+
+  Cyw43Check check;
+  gpio_put(cs, 1);
+  check.csHigh = ReadAdcGpio29();
+  gpio_put(cs, 0);
+  check.csLow = ReadAdcGpio29();
+  // VSYS above ~2 V while switched on, about 0 V while switched off.
+  check.present = check.csHigh > 800 && check.csLow < 300;
+
+  if (csOut)
+    sio_hw->gpio_set = 1u << cs;
+  else
+    sio_hw->gpio_clr = 1u << cs;
+  if (csOe)
+    sio_hw->gpio_oe_set = 1u << cs;
+  else
+    sio_hw->gpio_oe_clr = 1u << cs;
+  pads_bank0_hw->io[cs] = csPad;
+  io_bank0_hw->io[cs].ctrl = csCtrl;
+  pads_bank0_hw->io[vsys] = vsysPad;
+  io_bank0_hw->io[vsys].ctrl = vsysCtrl;
+  return check;
+}
+#endif
+
 #endif  // ZEDMD_PICO_H

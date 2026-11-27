@@ -19,6 +19,9 @@
 #ifdef PICO_BUILD
 #include "hardware/vreg.h"
 #include "pico/zedmd_pico.h"
+#ifdef PICO_CYW43_SUPPORTED
+#include <pico/cyw43_driver.h>
+#endif
 #endif
 #include <LittleFS.h>
 
@@ -323,6 +326,33 @@ void DisplayRGB(uint8_t r = 128, uint8_t g = 128, uint8_t b = 128) {
 #endif
 }
 
+#if defined(PICO_BUILD) && defined(PICO_CYW43_SUPPORTED)
+// Set in setup(): Pico 2 builds run on boards with and without a WiFi chip.
+Cyw43Check cyw43Check = {0, 0, false};
+#endif
+
+// Whether this board can use the WiFi transports.
+[[maybe_unused]] static bool WifiHardware() {
+#if defined(DMDREADER) || defined(ZEDMD_NO_NETWORKING)
+  return false;
+#elif defined(PICO_BUILD) && defined(PICO_CYW43_SUPPORTED)
+  return cyw43Check.present;
+#else
+  return true;
+#endif
+}
+
+#ifdef BACKWARD_BUTTON_PIN
+// On the Pico 2 W, GPIO 29 is the WiFi chip's SPI clock, not a button.
+[[maybe_unused]] static bool HasBackwardButton() {
+#if defined(PICO_BUILD) && defined(PICO_CYW43_SUPPORTED)
+  return !cyw43Check.present;
+#else
+  return true;
+#endif
+}
+#endif
+
 static uint8_t NormalizeTransportType(uint8_t type) {
 #ifdef DMDREADER
   (void)type;
@@ -334,7 +364,8 @@ static uint8_t NormalizeTransportType(uint8_t type) {
 #elif defined(ZEDMD_NO_NETWORKING)
   return Transport::USB;
 #else
-  return type <= Transport::WIFI_TCP ? type : Transport::USB;
+  if (type == Transport::USB) return type;
+  return type <= Transport::WIFI_TCP && WifiHardware() ? type : Transport::USB;
 #endif
 }
 
@@ -670,8 +701,8 @@ void CheckMenuButton() {
 #ifndef DISPLAY_RM67162_AMOLED
 
 #if defined(BACKWARD_BUTTON_PIN) && defined(PICO_BUILD)
-  if (!digitalRead(FORWARD_BUTTON_PIN) || 
-      !digitalRead(BACKWARD_BUTTON_PIN)) {
+  if (!digitalRead(FORWARD_BUTTON_PIN) ||
+      (HasBackwardButton() && !digitalRead(BACKWARD_BUTTON_PIN))) {
 #else
   if (!digitalRead(FORWARD_BUTTON_PIN)) {
 #endif
@@ -1532,6 +1563,14 @@ void setup() {
                             1000000);
   // overclock to achieve higher SPI transfer speed
   set_sys_clock_khz(SYS_CLK_MHZ * 1000, true);
+#ifdef PICO_CYW43_SUPPORTED
+  // The CYW43 radio is clocked from sys_clk via PIO, by default divided by 2.
+  // That's too fast at 266 MHz. The core only slows it down if the CPU is
+  // already overclocked at boot, so do it here. It takes effect when WiFi
+  // first brings the radio up.
+  cyw43_set_pio_clock_divisor(4, 0);
+  cyw43Check = DetectCyw43();
+#endif
 #endif
 
 #ifdef DMDREADER
@@ -1687,10 +1726,15 @@ void setup() {
     upButton->setPressedState(LOW);
 
 #if defined(ARDUINO_ESP32_S3_N16R8) || defined(PICO_BUILD)
-    const auto backwardButton = new Bounce2::Button();
-    backwardButton->attach(BACKWARD_BUTTON_PIN, INPUT_PULLUP);
-    backwardButton->interval(DEBOUNCE_INTERVAL);
-    backwardButton->setPressedState(LOW);
+#ifdef BACKWARD_BUTTON_PIN
+    Bounce2::Button *backwardButton = nullptr;
+    if (HasBackwardButton()) {
+      backwardButton = new Bounce2::Button();
+      backwardButton->attach(BACKWARD_BUTTON_PIN, INPUT_PULLUP);
+      backwardButton->interval(DEBOUNCE_INTERVAL);
+      backwardButton->setPressedState(LOW);
+    }
+#endif
 
     const auto downButton = new Bounce2::Button();
     downButton->attach(DOWN_BUTTON_PIN, INPUT_PULLUP);
@@ -1709,9 +1753,12 @@ void setup() {
       forwardButton->update();
       const bool forward = forwardButton->pressed();
       bool backward = false;
-#if defined(ARDUINO_ESP32_S3_N16R8) || defined(PICO_BUILD)
-      backwardButton->update();
-      backward = backwardButton->pressed();
+#if (defined(ARDUINO_ESP32_S3_N16R8) || defined(PICO_BUILD)) && \
+    defined(BACKWARD_BUTTON_PIN)
+      if (backwardButton) {
+        backwardButton->update();
+        backward = backwardButton->pressed();
+      }
 #endif
       bool buttonPressed = forward || backward;
       if ((buttonPressed || flashPosition) && ledTest == 0) {
@@ -1738,8 +1785,15 @@ void setup() {
         }
 #ifdef DMDREADER
         if (position == 5 || position == 6) position = forward ? 7 : 4;
-#elif defined(PICO_BUILD)
+#elif defined(PICO_BUILD) && defined(ZEDMD_NO_NETWORKING)
         if (position == 5 || position == 3) position = forward ? 6 : 2;
+#elif defined(PICO_BUILD)
+        // USB packet size is fixed on Pico; UDP delay only applies to UDP.
+        // Without a WiFi chip, USB is the only mode.
+        if (position == 3 ||
+            (position == 4 && transport->getType() != Transport::WIFI_UDP) ||
+            (position == 5 && !WifiHardware()))
+          position = forward ? (WifiHardware() ? 5 : 6) : 2;
 #endif
 
 #if defined(DMDREADER) && defined(RGB_ORDER_LOCK)
@@ -1911,11 +1965,15 @@ void setup() {
                                      ? Transport::SPI
                                      : Transport::USB;
 #else
+            // SPI isn't selectable on networking builds, so cycle through
+            // USB, WiFi UDP and WiFi TCP only.
             uint8_t type = transport->getType();
-            if (up && ++type > Transport::SPI)
-              type = Transport::USB;
-            else if (down && --type > Transport::SPI)
-              type = Transport::SPI;
+            if (up)
+              type = type >= Transport::WIFI_TCP ? Transport::USB : type + 1;
+            else if (down)
+              type = type == Transport::USB || type > Transport::WIFI_TCP
+                         ? Transport::WIFI_TCP
+                         : type - 1;
 #endif
             SaveTransport(type);
             RefreshSetupScreen();
@@ -2039,7 +2097,9 @@ void setup() {
   pinMode(FORWARD_BUTTON_PIN, INPUT_PULLUP);
 #ifdef PICO_BUILD
   // do not leave some pin configured as adc / floating
-  pinMode(BACKWARD_BUTTON_PIN, INPUT_PULLUP);
+#ifdef BACKWARD_BUTTON_PIN
+  if (HasBackwardButton()) pinMode(BACKWARD_BUTTON_PIN, INPUT_PULLUP);
+#endif
   pinMode(UP_BUTTON_PIN, INPUT_PULLUP);
   pinMode(DOWN_BUTTON_PIN, INPUT_PULLUP);
 #endif

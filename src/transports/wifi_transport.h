@@ -5,7 +5,11 @@
 
 #include <AsyncUDP.h>
 #include <ESPAsyncWebServer.h>
+#ifdef PICO_BUILD
+#include <SimpleMDNS.h>
+#else
 #include <ESPmDNS.h>
+#endif
 
 #include "transport.h"
 
@@ -38,7 +42,7 @@ class WifiTransport final : public Transport {
 
   void startCaptivePortalDns(const IPAddress &ip);
 
-  static void HandleUdpPacket(AsyncUDPPacket packet);
+  static void HandleUdpPacket(AsyncUDPPacket &packet);
 
   static void HandleTcpData(void *arg, AsyncClient *client, void *data,
                             size_t len);
