@@ -11,6 +11,8 @@
 #include <Arduino.h>
 #include <RP2040Support.h>
 
+#include <cstring>
+
 // in ram
 #define IRAM_ATTR __attribute__((section(".time_critical.")))
 
@@ -32,9 +34,13 @@
 class EspClass {
  public:
   static uint64_t getEfuseMac() {
-    static pico_unique_board_id_t board_id;
+    pico_unique_board_id_t board_id;
     pico_get_unique_board_id(&board_id);
-    return reinterpret_cast<uint64_t>(board_id.id);
+    // Copy the ID bytes; casting the array would return its address, which
+    // is the same on every board.
+    uint64_t id = 0;
+    memcpy(&id, board_id.id, sizeof(id));
+    return id;
   }
 };
 
