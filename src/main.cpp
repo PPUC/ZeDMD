@@ -2191,8 +2191,11 @@ void loop() {
     delay(200);
 #endif
   } else {
-    if (lastDataReceivedClock.getElapsedTime().asMilliseconds() >
-        CONNECTION_TIMEOUT) {
+    // Don't time out while received data is still queued: the transport
+    // would wait for a free buffer forever, as nothing processes them.
+    if (processingBuffer == lastBuffer &&
+        lastDataReceivedClock.getElapsedTime().asMilliseconds() >
+            CONNECTION_TIMEOUT) {
       transportActive = false;
       return;
     }
