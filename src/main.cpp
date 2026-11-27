@@ -1256,7 +1256,7 @@ uint8_t HandleData(uint8_t *pData, size_t len) {
             display->Render();
             SaveLum();
             SaveDebug();
-            SaveTransport();
+            SaveTransport(transport->getType());
 #ifndef DMDREADER
             SaveUsbPackageSizeMultiplier();
 #endif
