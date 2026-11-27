@@ -7,6 +7,7 @@
 
 #include "main.h"
 #include "panel.h"
+#include "utility/clock.h"
 #include "version.h"
 
 WifiTransport::WifiTransport() : Transport() { m_type = WIFI_UDP; }
@@ -216,6 +217,10 @@ void WifiTransport::HandleUdpPacket(AsyncUDPPacket packet) {
 
 void WifiTransport::HandleTcpData(void* arg, AsyncClient* client, void* data,
                                   size_t len) {
+  // Like UDP: if the main loop timed the connection out while the client was
+  // quiet, new data makes it active again. Otherwise nothing empties the
+  // buffers, and HandleData() blocks the network thread for good.
+  transportActive = true;
   HandleData(static_cast<uint8_t*>(data), len);
   client->ack(len);
 }
@@ -245,6 +250,9 @@ void WifiTransport::NewTcpClient(void* arg, AsyncClient* client) {
   payloadMissing = 0;
   headerBytesReceived = 0;
   numCtrlCharsFound = 0;
+  // The clock still holds the time of the last frame, possibly long ago, so
+  // the main loop would drop the new connection before its first keep-alive.
+  lastDataReceivedClock.restart();
   transportActive = true;
   client->setNoDelay(true);
   client->setAckTimeout(2);
