@@ -212,7 +212,9 @@ Clock lastDataReceivedClock;
 uint8_t throbberColors[6] __attribute__((aligned(4))) = {0};
 mz_ulong uncompressedBufferSize = 2048;
 uint16_t shortId;
-uint8_t wifiPower;
+// WiFi TX power in 0.25 dBm steps (ESP32's wifi_power_t). Defaults to the
+// ESP32 maximum of 21 dBm. Not used on the Pico, which keeps its chip default.
+uint8_t wifiPower = 84;
 #ifdef PICO_BUILD
 bool rebootToBootloader = false;
 #endif

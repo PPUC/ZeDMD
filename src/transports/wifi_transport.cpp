@@ -151,9 +151,13 @@ bool WifiTransport::loadConfig() {
     pwd = wifiConfig.readStringUntil('\n');
     pwd_length = wifiConfig.readStringUntil('\n').toInt();
     port = wifiConfig.readStringUntil('\n').toInt();
-    if (wifiConfig
-            .available())  // Backward compatibility, check if power line exists
-      wifiPower = wifiConfig.readStringUntil('\n').toInt();
+    if (wifiConfig.available()) {  // Older configs have no power line.
+      // Configs saved while the power default was missing hold 0, which
+      // isn't a valid power (ESP32 clamps it to the minimum), so keep the
+      // default then.
+      const uint8_t power = wifiConfig.readStringUntil('\n').toInt();
+      if (power != 0) wifiPower = power;
+    }
   }
 
   wifiConfig.close();
